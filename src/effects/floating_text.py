@@ -9,7 +9,11 @@ class FloatingText:
     __slots__ = ("x", "y", "text", "color", "life", "map_key")
 
     def __init__(
-        self, x: float, y: float, text: str, color: tuple[int, int, int],
+        self,
+        x: float,
+        y: float,
+        text: str,
+        color: tuple[int, int, int],
         map_key: str | tuple | None = None,
     ) -> None:
         self.x = x

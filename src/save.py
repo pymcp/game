@@ -267,6 +267,7 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     )
     # Equipment and durability (backward-compatible: empty if absent)
     from src.data.armor import ARMOR_SLOT_ORDER
+
     default_equip = {slot: None for slot in ARMOR_SLOT_ORDER}
     saved_equip = data.get("equipment", {})
     player.equipment = {**default_equip, **saved_equip}

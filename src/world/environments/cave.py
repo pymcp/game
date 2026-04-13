@@ -19,7 +19,11 @@ from src.config import (
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
 from src.world.environments.base import BaseEnvironment
-from src.world.environments.utils import cellular_automata, connect_regions, find_floor_near_row
+from src.world.environments.utils import (
+    cellular_automata,
+    connect_regions,
+    find_floor_near_row,
+)
 from src.world.map import GameMap
 
 # Enemy pools derived from ENEMY_TYPES definitions
@@ -54,12 +58,19 @@ def _drunkard_walk(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
         r = rng.randint(rows // 4, 3 * rows // 4)
         c = rng.randint(cols // 4, 3 * cols // 4)
         for _ in range(steps):
-            if MAP_BORDER <= r < rows - MAP_BORDER and MAP_BORDER <= c < cols - MAP_BORDER:
+            if (
+                MAP_BORDER <= r < rows - MAP_BORDER
+                and MAP_BORDER <= c < cols - MAP_BORDER
+            ):
                 grid[r][c] = 0
                 # Occasionally widen the corridor
                 if rng.random() < 0.3:
-                    nr = max(MAP_BORDER, min(rows - MAP_BORDER - 1, r + rng.randint(-1, 1)))
-                    nc = max(MAP_BORDER, min(cols - MAP_BORDER - 1, c + rng.randint(-1, 1)))
+                    nr = max(
+                        MAP_BORDER, min(rows - MAP_BORDER - 1, r + rng.randint(-1, 1))
+                    )
+                    nc = max(
+                        MAP_BORDER, min(cols - MAP_BORDER - 1, c + rng.randint(-1, 1))
+                    )
                     grid[nr][nc] = 0
             dr, dc = rng.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])
             r = max(MAP_BORDER, min(rows - MAP_BORDER - 1, r + dr))
@@ -106,7 +117,9 @@ class CaveEnvironment(BaseEnvironment):
         grid = (
             _drunkard_walk(rng, rows, cols)
             if is_labyrinth
-            else cellular_automata(rng, rows, cols, density=0.45, iterations=5, border=MAP_BORDER)
+            else cellular_automata(
+                rng, rows, cols, density=0.45, iterations=5, border=MAP_BORDER
+            )
         )
 
         # Build tile world from layout grid
@@ -164,19 +177,34 @@ class CaveEnvironment(BaseEnvironment):
         for r in range(exit_row, spawn_row + 1):
             for dc in range(-1, 2):  # 3-tile wide corridor
                 cc = spawn_col + dc
-                if MAP_BORDER <= cc < cols - MAP_BORDER and cave_world[r][cc] == CAVE_WALL:
+                if (
+                    MAP_BORDER <= cc < cols - MAP_BORDER
+                    and cave_world[r][cc] == CAVE_WALL
+                ):
                     cave_world[r][cc] = GRASS
 
         # Carve a 3×3 room around the spawn so the player has room to move
         for dr in range(-1, 2):
             for dc in range(-1, 2):
                 rr, rc = spawn_row + dr, spawn_col + dc
-                if MAP_BORDER <= rr < rows - MAP_BORDER and MAP_BORDER <= rc < cols - MAP_BORDER:
+                if (
+                    MAP_BORDER <= rr < rows - MAP_BORDER
+                    and MAP_BORDER <= rc < cols - MAP_BORDER
+                ):
                     if cave_world[rr][rc] == CAVE_WALL:
                         cave_world[rr][rc] = GRASS
 
         # Connect all isolated floor regions to the spawn/exit area
-        connect_regions(cave_world, rows, cols, spawn_col, spawn_row, {GRASS, CAVE_EXIT}, GRASS, MAP_BORDER)
+        connect_regions(
+            cave_world,
+            rows,
+            cols,
+            spawn_col,
+            spawn_row,
+            {GRASS, CAVE_EXIT},
+            GRASS,
+            MAP_BORDER,
+        )
 
         # Place treasure chest deep in the cave (opposite end from the exit)
         chest_col, chest_row = find_floor_near_row(
@@ -242,5 +270,3 @@ class CaveEnvironment(BaseEnvironment):
             spawn_count[key] += 1
 
         return enemies
-
-

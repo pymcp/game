@@ -45,26 +45,27 @@ class AccessoryEffect(Enum):
 
 # Per-material properties: (defense_pct per piece, max durability, RGB color)
 _MATERIAL_STATS: dict[ArmorMaterial, tuple[float, int, tuple[int, int, int]]] = {
-    ArmorMaterial.STONE:         (0.03, 15, (150, 150, 150)),
-    ArmorMaterial.IRON:          (0.07, 25, (186, 176, 166)),
-    ArmorMaterial.GOLD:          (0.11, 20, (230, 200,  60)),
-    ArmorMaterial.DIAMOND:       (0.16, 40, ( 90, 210, 240)),
-    ArmorMaterial.CORAL:         (0.09, 18, (240, 120, 130)),
-    ArmorMaterial.ANCIENT_STONE: (0.20, 45, (140,  90, 200)),
+    ArmorMaterial.STONE: (0.03, 15, (150, 150, 150)),
+    ArmorMaterial.IRON: (0.07, 25, (186, 176, 166)),
+    ArmorMaterial.GOLD: (0.11, 20, (230, 200, 60)),
+    ArmorMaterial.DIAMOND: (0.16, 40, (90, 210, 240)),
+    ArmorMaterial.CORAL: (0.09, 18, (240, 120, 130)),
+    ArmorMaterial.ANCIENT_STONE: (0.20, 45, (140, 90, 200)),
 }
 
 # Slot display names
 _SLOT_LABELS: dict[ArmorSlot, str] = {
     ArmorSlot.HELMET: "Helmet",
-    ArmorSlot.CHEST:  "Chest",
-    ArmorSlot.LEGS:   "Legs",
-    ArmorSlot.BOOTS:  "Boots",
+    ArmorSlot.CHEST: "Chest",
+    ArmorSlot.LEGS: "Legs",
+    ArmorSlot.BOOTS: "Boots",
 }
 
 
 # ---------------------------------------------------------------------------
 # ARMOR_PIECES — 24 entries (6 materials × 4 slots)
 # ---------------------------------------------------------------------------
+
 
 def _build_armor_pieces() -> dict[str, dict]:
     pieces: dict[str, dict] = {}
@@ -140,13 +141,13 @@ ARMOR_SLOT_ORDER: list[str] = [
 
 # Human-readable labels for each slot key
 SLOT_LABELS: dict[str, str] = {
-    ArmorSlot.HELMET.value:       "Helmet",
-    ArmorSlot.CHEST.value:        "Chest",
-    ArmorSlot.LEGS.value:         "Legs",
-    ArmorSlot.BOOTS.value:        "Boots",
-    AccessorySlot.RING1.value:    "Ring 1",
-    AccessorySlot.RING2.value:    "Ring 2",
-    AccessorySlot.AMULET.value:   "Amulet",
+    ArmorSlot.HELMET.value: "Helmet",
+    ArmorSlot.CHEST.value: "Chest",
+    ArmorSlot.LEGS.value: "Legs",
+    ArmorSlot.BOOTS.value: "Boots",
+    AccessorySlot.RING1.value: "Ring 1",
+    AccessorySlot.RING2.value: "Ring 2",
+    AccessorySlot.AMULET.value: "Amulet",
 }
 
 

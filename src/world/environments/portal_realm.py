@@ -10,7 +10,7 @@ from src.world.map import GameMap
 # Each sector maps to a SLOT_SIZE×SLOT_SIZE tile block in the realm.
 # The inner 4×4 floor is the discoverable chamber; 2-tile wall border on each side.
 SLOT_SIZE = 8
-INIT_BUFFER = 2   # slots in every direction from home sector for initial CA generation
+INIT_BUFFER = 2  # slots in every direction from home sector for initial CA generation
 
 # Tile padding outside the outermost slot — mirrors MAP_BORDER from config.py so
 # the HUD never overlaps walkable tiles in the portal realm either.
@@ -44,11 +44,13 @@ class PortalRealmEnvironment(BaseEnvironment):
         which keeps ix=0 slots at exactly REALM_PADDING tiles from the map edge.
         """
         rng = random.Random()
-        init_slots = INIT_BUFFER * 2 + 1                       # = 5
-        rows = init_slots * SLOT_SIZE + 2 * REALM_PADDING      # = 60
-        cols = init_slots * SLOT_SIZE + 2 * REALM_PADDING      # = 60
+        init_slots = INIT_BUFFER * 2 + 1  # = 5
+        rows = init_slots * SLOT_SIZE + 2 * REALM_PADDING  # = 60
+        cols = init_slots * SLOT_SIZE + 2 * REALM_PADDING  # = 60
 
-        layout = cellular_automata(rng, rows, cols, density=0.32, iterations=4, border=REALM_PADDING)
+        layout = cellular_automata(
+            rng, rows, cols, density=0.32, iterations=4, border=REALM_PADDING
+        )
 
         world = [
             [PORTAL_WALL if layout[r][c] else PORTAL_FLOOR for c in range(cols)]
@@ -78,23 +80,27 @@ class PortalRealmEnvironment(BaseEnvironment):
             break
 
         connect_regions(
-            world, rows, cols, spawn_col, spawn_row,
-            {PORTAL_FLOOR, TREASURE_CHEST, PORTAL_ACTIVE}, PORTAL_FLOOR, REALM_PADDING,
+            world,
+            rows,
+            cols,
+            spawn_col,
+            spawn_row,
+            {PORTAL_FLOOR, TREASURE_CHEST, PORTAL_ACTIVE},
+            PORTAL_FLOOR,
+            REALM_PADDING,
         )
 
         # No chests placed here — one chest is spawned per portal via Game._add_realm_portal().
 
         game_map = GameMap(world, tileset=self.TILESET)
-        game_map.spawn_col   = spawn_col
-        game_map.spawn_row   = spawn_row
-        game_map.origin_sx   = -INIT_BUFFER   # = -2
-        game_map.origin_sy   = -INIT_BUFFER   # = -2
-        game_map.slot_size   = SLOT_SIZE
+        game_map.spawn_col = spawn_col
+        game_map.spawn_row = spawn_row
+        game_map.origin_sx = -INIT_BUFFER  # = -2
+        game_map.origin_sy = -INIT_BUFFER  # = -2
+        game_map.slot_size = SLOT_SIZE
         game_map.slot_padding = REALM_PADDING
-        game_map.slot_cols   = INIT_BUFFER * 2 + 1   # number of slot columns = 5
-        game_map.slot_rows   = INIT_BUFFER * 2 + 1   # number of slot rows    = 5
-        game_map.portal_exits = {}            # (col, row) → dest map_key
+        game_map.slot_cols = INIT_BUFFER * 2 + 1  # number of slot columns = 5
+        game_map.slot_rows = INIT_BUFFER * 2 + 1  # number of slot rows    = 5
+        game_map.portal_exits = {}  # (col, row) → dest map_key
 
         return game_map
-
-

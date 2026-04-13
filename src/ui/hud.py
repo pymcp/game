@@ -44,14 +44,18 @@ def draw_hud(
     # Current pickaxe
     pick = PICKAXES[p.pick_level]
     pygame.draw.rect(screen, pick["color"], (16, y_off + 1, 10, 10))
-    pick_label = pick["name"] if p.pick_level < len(PICKAXES) - 1 else f"{pick['name']} (MAX)"
+    pick_label = (
+        pick["name"] if p.pick_level < len(PICKAXES) - 1 else f"{pick['name']} (MAX)"
+    )
     screen.blit(font.render(pick_label, True, WHITE), (32, y_off))
     y_off += 18
 
     # Current weapon
     wpn = WEAPONS[p.weapon_level]
     pygame.draw.rect(screen, wpn["color"], (16, y_off + 1, 10, 10))
-    wpn_label = wpn["name"] if p.weapon_level < len(WEAPONS) - 1 else f"{wpn['name']} (MAX)"
+    wpn_label = (
+        wpn["name"] if p.weapon_level < len(WEAPONS) - 1 else f"{wpn['name']} (MAX)"
+    )
     screen.blit(font.render(wpn_label, True, WHITE), (32, y_off))
     y_off += 18
 

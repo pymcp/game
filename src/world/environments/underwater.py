@@ -4,7 +4,11 @@ import random
 
 from src.config import TILE, MAP_BORDER
 from src.world.environments.base import BaseEnvironment
-from src.world.environments.utils import cellular_automata, connect_regions, find_floor_near_row
+from src.world.environments.utils import (
+    cellular_automata,
+    connect_regions,
+    find_floor_near_row,
+)
 from src.world.map import GameMap
 from src.config import SAND, CORAL, REEF, DIVE_EXIT
 
@@ -39,7 +43,9 @@ class UnderwaterEnvironment(BaseEnvironment):
         rng = random.Random(self.dive_col * 10_000 + self.dive_row)
         rows, cols = UNDERWATER_ROWS, UNDERWATER_COLS
 
-        grid = cellular_automata(rng, rows, cols, density=0.40, iterations=4, border=MAP_BORDER)
+        grid = cellular_automata(
+            rng, rows, cols, density=0.40, iterations=4, border=MAP_BORDER
+        )
 
         # Build tile world from layout grid
         world = [
@@ -67,7 +73,9 @@ class UnderwaterEnvironment(BaseEnvironment):
         scatter_coral(count=8, cluster_min=3, cluster_max=8)
 
         # Place DIVE_EXIT near the top
-        exit_col, exit_row = find_floor_near_row(world, rows, cols, rng, 3, SAND, border=MAP_BORDER)
+        exit_col, exit_row = find_floor_near_row(
+            world, rows, cols, rng, 3, SAND, border=MAP_BORDER
+        )
         world[exit_row][exit_col] = DIVE_EXIT
 
         # Spawn point a few rows below the exit
@@ -90,7 +98,16 @@ class UnderwaterEnvironment(BaseEnvironment):
                         world[rr][rc] = SAND
 
         # Connect all isolated regions
-        connect_regions(world, rows, cols, spawn_col, spawn_row, {SAND, DIVE_EXIT, CORAL}, SAND, MAP_BORDER)
+        connect_regions(
+            world,
+            rows,
+            cols,
+            spawn_col,
+            spawn_row,
+            {SAND, DIVE_EXIT, CORAL},
+            SAND,
+            MAP_BORDER,
+        )
 
         underwater_map = GameMap(world, tileset=self.TILESET)
         underwater_map.dive_col = self.dive_col

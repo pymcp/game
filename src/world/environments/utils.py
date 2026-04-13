@@ -37,7 +37,9 @@ def cellular_automata(
         border: Tile-width of the solid wall forced around every edge.
         threshold: Neighbour count at-or-above which a cell becomes (stays) a wall.
     """
-    grid = [[1 if rng.random() < density else 0 for _ in range(cols)] for _ in range(rows)]
+    grid = [
+        [1 if rng.random() < density else 0 for _ in range(cols)] for _ in range(rows)
+    ]
 
     # Force solid border so the HUD never overlaps walkable tiles.
     for r in range(rows):
@@ -91,7 +93,9 @@ def connect_regions(
         border: Tile-width of the solid edge; corridors are kept within it.
     """
 
-    def _bfs(start_c: int, start_r: int, candidates: set[tuple[int, int]]) -> set[tuple[int, int]]:
+    def _bfs(
+        start_c: int, start_r: int, candidates: set[tuple[int, int]]
+    ) -> set[tuple[int, int]]:
         region: set[tuple[int, int]] = set()
         q: collections.deque[tuple[int, int]] = collections.deque([(start_c, start_r)])
         region.add((start_c, start_r))
@@ -175,7 +179,9 @@ def find_floor_near_row(
     search_min = max(border, target_row - 2)
     search_max = min(rows - border, target_row + 6)
     for r in range(search_min, search_max):
-        candidates = [c for c in range(border, cols - border) if world[r][c] == floor_tile]
+        candidates = [
+            c for c in range(border, cols - border) if world[r][c] == floor_tile
+        ]
         if candidates:
             return rng.choice(candidates), r
 
