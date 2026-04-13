@@ -65,27 +65,27 @@ class SeaCreature(Creature):
         sx = int(self.x - offset_x)
         sy = int(self.y - offset_y)
         surf_w, surf_h = screen.get_size()
-        if sx < -TILE * 5 or sx > surf_w + TILE * 5 or sy < -TILE * 3 or sy > surf_h + TILE * 3:
+        if (
+            sx < -TILE * 5
+            or sx > surf_w + TILE * 5
+            or sy < -TILE * 3
+            or sy > surf_h + TILE * 3
+        ):
             return
 
         # --- Sprite path ---
         self._ensure_animator(self.kind)
         from src.rendering.sprite_draw import sprite_draw
+
         if sprite_draw(self, screen, offset_x, offset_y, dt=1.0):
             # Rider overlay drawn procedurally on top of the base sprite
             if rider_color is not None and self.kind == "dolphin":
-                r = int(
-                    __import__("src.config", fromlist=["TILE"]).TILE * self.size
-                )
+                r = int(__import__("src.config", fromlist=["TILE"]).TILE * self.size)
                 flip = 1 if self.facing_right else -1
                 seat_x = sx + flip * (r // 4)
                 seat_y = sy - r // 2 - 2
-                pygame.draw.rect(
-                    screen, rider_color, (seat_x - 4, seat_y - 9, 8, 9)
-                )
-                pygame.draw.circle(
-                    screen, (240, 200, 160), (seat_x, seat_y - 12), 5
-                )
+                pygame.draw.rect(screen, rider_color, (seat_x - 4, seat_y - 9, 8, 9))
+                pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 12), 5)
             return
 
         # --- Procedural fallback ---

@@ -53,13 +53,13 @@ CY: int = 48
 _MANIFEST: dict = {
     "frame_size": [FW, FH],
     "states": {
-        "idle":      {"row": 0, "frames": 4, "fps": 4.0},
-        "up":        {"row": 1, "frames": 4, "fps": 8.0},
-        "right":     {"row": 2, "frames": 4, "fps": 8.0},
-        "down":      {"row": 3, "frames": 4, "fps": 8.0},
-        "left":      {"row": 4, "frames": 4, "fps": 8.0},
+        "idle": {"row": 0, "frames": 4, "fps": 4.0},
+        "up": {"row": 1, "frames": 4, "fps": 8.0},
+        "right": {"row": 2, "frames": 4, "fps": 8.0},
+        "down": {"row": 3, "frames": 4, "fps": 8.0},
+        "left": {"row": 4, "frames": 4, "fps": 8.0},
         "attacking": {"row": 5, "frames": 4, "fps": 8.0},
-        "damaged":   {"row": 6, "frames": 4, "fps": 4.0},
+        "damaged": {"row": 6, "frames": 4, "fps": 4.0},
     },
 }
 
@@ -151,13 +151,13 @@ def _isolate_slot(full: pygame.Surface, player: Player, slot: str) -> pygame.Sur
 # ---------------------------------------------------------------------------
 
 FACING_DIRS: list[tuple[str, float, float]] = [
-    ("idle",  1.0,  0.0),   # row 0 — idle faces right by default
-    ("up",    0.0, -1.0),   # row 1
-    ("right", 1.0,  0.0),   # row 2
-    ("down",  0.0,  1.0),   # row 3
-    ("left", -1.0,  0.0),   # row 4
-    ("right", 1.0,  0.0),   # row 5 — attacking (same dir as right for now)
-    ("right", 1.0,  0.0),   # row 6 — damaged
+    ("idle", 1.0, 0.0),  # row 0 — idle faces right by default
+    ("up", 0.0, -1.0),  # row 1
+    ("right", 1.0, 0.0),  # row 2
+    ("down", 0.0, 1.0),  # row 3
+    ("left", -1.0, 0.0),  # row 4
+    ("right", 1.0, 0.0),  # row 5 — attacking (same dir as right for now)
+    ("right", 1.0, 0.0),  # row 6 — damaged
 ]
 
 # Small walk oscillation applied to frames within a directional row
@@ -187,12 +187,14 @@ def bake_base_and_overlays() -> None:
         # --- injury tint for damaged row ---
         is_damaged = dir_name == "damaged"
         if is_damaged:
-            p.hurt_timer = 99.0   # force hurt-flash red
+            p.hurt_timer = 99.0  # force hurt-flash red
         else:
             p.hurt_timer = 0.0
 
         base_row: list[pygame.Surface] = []
-        slot_overlay_row: dict[str, list[pygame.Surface]] = {s: [] for s in OVERLAY_SLOTS}
+        slot_overlay_row: dict[str, list[pygame.Surface]] = {
+            s: [] for s in OVERLAY_SLOTS
+        }
 
         for frame_idx in range(4):
             # Set facing direction

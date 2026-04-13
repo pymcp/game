@@ -613,6 +613,7 @@ class Player:
             return
         self._animator_checked = True
         from src.rendering.registry import SpriteRegistry
+
         self._animator = SpriteRegistry.get_instance().make_animator("player_base")
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
@@ -632,7 +633,9 @@ class Player:
             buf.fill((0, 0, 0, 0))
             self._draw_on_boat(buf, buf_w // 2, buf_h // 2, body_color)
             scaled = pygame.transform.scale(buf, (buf_w * _TS, buf_h * _TS))
-            surf.blit(scaled, (psx - scaled.get_width() // 2, psy - scaled.get_height() // 2))
+            surf.blit(
+                scaled, (psx - scaled.get_width() // 2, psy - scaled.get_height() // 2)
+            )
             return
         if self.on_mount:
             return  # the mounted creature renders the rider figure
@@ -650,7 +653,9 @@ class Player:
         buf.fill((0, 0, 0, 0))
         self._draw_normal(buf, buf_w // 2, buf_h // 2, body_color)
         scaled = pygame.transform.scale(buf, (buf_w * _TS, buf_h * _TS))
-        surf.blit(scaled, (psx - scaled.get_width() // 2, psy - scaled.get_height() // 2))
+        surf.blit(
+            scaled, (psx - scaled.get_width() // 2, psy - scaled.get_height() // 2)
+        )
 
     def _draw_sprite(
         self,
@@ -691,9 +696,12 @@ class Player:
                 continue
             # Match state to base animator state
             from src.rendering.animator import AnimationState
+
             dir_to_state = {
-                "up": AnimationState.UP, "down": AnimationState.DOWN,
-                "left": AnimationState.LEFT, "right": AnimationState.RIGHT,
+                "up": AnimationState.UP,
+                "down": AnimationState.DOWN,
+                "left": AnimationState.LEFT,
+                "right": AnimationState.RIGHT,
             }
             anim_state = dir_to_state.get(self.facing_direction, AnimationState.DOWN)
             overlay_anim.set_state(anim_state)
@@ -702,6 +710,7 @@ class Player:
                 continue
             # Tint overlay by the armor color
             from src.data.armor import ARMOR_PIECES
+
             armor_color = ARMOR_PIECES.get(item, {}).get("color")
             if armor_color is not None:
                 tinted = overlay_frame.copy()

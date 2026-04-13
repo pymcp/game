@@ -75,14 +75,21 @@ class MeleeArcAttack(Attack):
         end_rad = math.radians(-start_deg)
 
         color = (*self.color, alpha)
-        pygame.draw.arc(arc_surf, color, rect, start_rad, end_rad, max(2, int(self._radius * 0.3)))
+        pygame.draw.arc(
+            arc_surf, color, rect, start_rad, end_rad, max(2, int(self._radius * 0.3))
+        )
 
         # Draw a filled pie slice for the hitbox visualization
         n_points = 12
         points = [(rx, ry)]
         for i in range(n_points + 1):
             a = math.radians(start_deg + (end_deg - start_deg) * i / n_points)
-            points.append((rx + int(self._radius * math.cos(a)), ry - int(self._radius * math.sin(a))))
+            points.append(
+                (
+                    rx + int(self._radius * math.cos(a)),
+                    ry - int(self._radius * math.sin(a)),
+                )
+            )
         fill_color = (*self.color, alpha // 3)
         if len(points) > 2:
             pygame.draw.polygon(arc_surf, fill_color, points)

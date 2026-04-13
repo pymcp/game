@@ -117,12 +117,18 @@ class Pet:
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         surf_w, surf_h = surf.get_size()
-        if sx < -TILE * 2 or sx > surf_w + TILE * 2 or sy < -TILE * 2 or sy > surf_h + TILE * 2:
+        if (
+            sx < -TILE * 2
+            or sx > surf_w + TILE * 2
+            or sy < -TILE * 2
+            or sy > surf_h + TILE * 2
+        ):
             return
 
         # --- Sprite path ---
         self._ensure_animator()
         from src.rendering.sprite_draw import sprite_draw
+
         if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
             return
 

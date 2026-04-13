@@ -340,12 +340,11 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     elif "weapon_level" in data:
         # Legacy migration: old integer weapon_level → weapon_id
         from src.data.attack_patterns import LEGACY_WEAPON_MAP, DEFAULT_WEAPONS
+
         old_level = data["weapon_level"]
         player.weapon_id = LEGACY_WEAPON_MAP.get(old_level, DEFAULT_WEAPONS[0])
         player.unlocked_weapons = [
-            LEGACY_WEAPON_MAP[i]
-            for i in range(old_level + 1)
-            if i in LEGACY_WEAPON_MAP
+            LEGACY_WEAPON_MAP[i] for i in range(old_level + 1) if i in LEGACY_WEAPON_MAP
         ]
     player.inventory = data["inventory"]
     player.hp = data["hp"]

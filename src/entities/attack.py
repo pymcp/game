@@ -171,6 +171,7 @@ class Attack:
     def _bounds_check(self, world: list[list[int]]) -> None:
         """Kill the attack if it exits the world bounds."""
         from src.config import TILE
+
         rows = len(world)
         cols = len(world[0]) if rows else 0
         if self.x < 0 or self.x > cols * TILE or self.y < 0 or self.y > rows * TILE:

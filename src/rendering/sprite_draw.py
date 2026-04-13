@@ -69,9 +69,7 @@ def sprite_draw(
         return False
 
     # --- Determine animation state ---
-    hurt = getattr(entity, "hurt_flash", 0) or (
-        getattr(entity, "hurt_timer", 0.0) > 0
-    )
+    hurt = getattr(entity, "hurt_flash", 0) or (getattr(entity, "hurt_timer", 0.0) > 0)
     attacking = getattr(entity, "_is_attacking", False)
     is_moving = getattr(entity, "_is_moving", True)  # default True for entities that
     #                                                    don't track this explicitly

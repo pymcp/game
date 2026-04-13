@@ -57,23 +57,23 @@ ASSETS_DIR = os.path.join(_REPO_ROOT, "assets", "sprites")
 # ---------------------------------------------------------------------------
 # Unified cell dimensions — all entity sprites share this canvas size.
 # ---------------------------------------------------------------------------
-FW: int = 96   # frame width  (pixels)
-FH: int = 96   # frame height (pixels)
-CX: int = 48   # draw centre X within a cell
-CY: int = 48   # draw centre Y within a cell
+FW: int = 96  # frame width  (pixels)
+FH: int = 96  # frame height (pixels)
+CX: int = 48  # draw centre X within a cell
+CY: int = 48  # draw centre Y within a cell
 
 # Standard manifest template — identical for every entity type.
 # Row 4 (left) is intentionally absent from the JSON when blank so the
 # Animator's auto-flip logic kicks in.
 _STANDARD_STATES: list[tuple[str, int, int, float]] = [
     # (name,  row, frames, fps)
-    ("idle",      0, 4, 3.0),
-    ("up",        1, 4, 6.0),
-    ("right",     2, 4, 6.0),
-    ("down",      3, 4, 6.0),
+    ("idle", 0, 4, 3.0),
+    ("up", 1, 4, 6.0),
+    ("right", 2, 4, 6.0),
+    ("down", 3, 4, 6.0),
     # row 4 (left) omitted here → added only when explicit art is generated
     ("attacking", 5, 4, 6.0),
-    ("damaged",   6, 4, 3.0),
+    ("damaged", 6, 4, 3.0),
 ]
 
 
@@ -182,13 +182,13 @@ def _bake_enemy(type_key: str) -> None:
     e.hurt_flash = 0
 
     rows = [
-        idle_row,       # 0 idle
-        walk_row,       # 1 up
-        walk_row,       # 2 right
-        walk_row,       # 3 down
-        None,           # 4 left — blank, auto-mirrored from right at runtime
-        None,           # 5 attacking — blank, falls back to idle
-        damaged_row,    # 6 damaged
+        idle_row,  # 0 idle
+        walk_row,  # 1 up
+        walk_row,  # 2 right
+        walk_row,  # 3 down
+        None,  # 4 left — blank, auto-mirrored from right at runtime
+        None,  # 5 attacking — blank, falls back to idle
+        damaged_row,  # 6 damaged
     ]
 
     _save(type_key, "enemies", _pack_sheet(rows), _standard_manifest())
@@ -215,13 +215,13 @@ def _bake_sea_creature(kind: str) -> None:
     left_row = [_frame(t, "left") for t in swim_ticks]
 
     rows = [
-        idle_row,   # 0 idle
-        idle_row,   # 1 up   (best-effort; genuine up art from Gemini)
+        idle_row,  # 0 idle
+        idle_row,  # 1 up   (best-effort; genuine up art from Gemini)
         right_row,  # 2 right
-        idle_row,   # 3 down (best-effort)
-        left_row,   # 4 left — explicit art so no auto-flip needed
-        None,       # 5 attacking — blank
-        idle_row,   # 6 damaged (flash tint supplied by Gemini art)
+        idle_row,  # 3 down (best-effort)
+        left_row,  # 4 left — explicit art so no auto-flip needed
+        None,  # 5 attacking — blank
+        idle_row,  # 6 damaged (flash tint supplied by Gemini art)
     ]
 
     _save(kind, "creatures", _pack_sheet(rows), _standard_manifest(include_left=True))
@@ -236,7 +236,9 @@ def _bake_overland_creature(kind: str) -> None:
     walk_period = {"horse": 419}.get(kind, 400)
     walk_ticks = _ticks_seq(walk_period, 4)
 
-    def _frame(ticks: int, facing: str = "right", moving: bool = True) -> pygame.Surface:
+    def _frame(
+        ticks: int, facing: str = "right", moving: bool = True
+    ) -> pygame.Surface:
         surf = _blank()
         oc.facing_direction = facing
         oc._is_moving = moving
@@ -245,16 +247,16 @@ def _bake_overland_creature(kind: str) -> None:
 
     idle_row = [_frame(0, moving=False) for _ in range(4)]
     right_row = [_frame(t, "right") for t in walk_ticks]
-    left_row  = [_frame(t, "left")  for t in walk_ticks]
+    left_row = [_frame(t, "left") for t in walk_ticks]
 
     rows = [
-        idle_row,   # 0 idle
-        idle_row,   # 1 up   (best-effort)
+        idle_row,  # 0 idle
+        idle_row,  # 1 up   (best-effort)
         right_row,  # 2 right
-        idle_row,   # 3 down (best-effort)
-        left_row,   # 4 left — explicit
-        None,       # 5 attacking — blank
-        idle_row,   # 6 damaged (best-effort; Gemini will add flash)
+        idle_row,  # 3 down (best-effort)
+        left_row,  # 4 left — explicit
+        None,  # 5 attacking — blank
+        idle_row,  # 6 damaged (best-effort; Gemini will add flash)
     ]
 
     _save(kind, "creatures", _pack_sheet(rows), _standard_manifest(include_left=True))
@@ -282,8 +284,8 @@ def _bake_pet(kind: str) -> None:
         idle_row,  # 1 up
         idle_row,  # 2 right
         idle_row,  # 3 down
-        None,      # 4 left — blank, auto-flip
-        None,      # 5 attacking — blank
+        None,  # 4 left — blank, auto-flip
+        None,  # 5 attacking — blank
         idle_row,  # 6 damaged — blank, Gemini art will differ
     ]
 
@@ -312,8 +314,8 @@ def _bake_worker() -> None:
         idle_row,  # 1 up
         idle_row,  # 2 right
         idle_row,  # 3 down
-        None,      # 4 left — blank, auto-flip
-        None,      # 5 attacking — blank
+        None,  # 4 left — blank, auto-flip
+        None,  # 5 attacking — blank
         idle_row,  # 6 damaged
     ]
 
@@ -326,7 +328,9 @@ def _bake_worker() -> None:
 
 
 def main() -> None:
-    print(f"Baking unified 7×4 96×96 sprites into {os.path.relpath(ASSETS_DIR, _REPO_ROOT)}/\n")
+    print(
+        f"Baking unified 7×4 96×96 sprites into {os.path.relpath(ASSETS_DIR, _REPO_ROOT)}/\n"
+    )
 
     print("Enemies:")
     for type_key in ENEMY_TYPES:

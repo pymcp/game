@@ -118,7 +118,7 @@ class Enemy:
                     self.x = nx
                 if not self._blocked(self.x, ny, world):
                     self.y = ny
-                moved = (self.x != old_x or self.y != old_y)
+                moved = self.x != old_x or self.y != old_y
                 # Update facing from dominant movement axis
                 if abs(dy) >= abs(dx):
                     self.facing_direction = "down" if dy >= 0 else "up"
@@ -186,7 +186,12 @@ class Enemy:
         sy = int(self.y - cam_y)
         surf_w, surf_h = surf.get_size()
         _margin = TILE * 2
-        if sx < -_margin or sx > surf_w + _margin or sy < -_margin or sy > surf_h + _margin:
+        if (
+            sx < -_margin
+            or sx > surf_w + _margin
+            or sy < -_margin
+            or sy > surf_h + _margin
+        ):
             return
 
         _TS: int = TILE // 32  # procedural scale factor (2 when TILE=64)
@@ -194,6 +199,7 @@ class Enemy:
         # --- Sprite path ---
         self._ensure_animator()
         from src.rendering.sprite_draw import sprite_draw
+
         if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
             if self.hp < self.max_hp:
                 bar_w = 24 * _TS
@@ -201,7 +207,9 @@ class Enemy:
                 by = sy - 51 * _TS
                 ratio = max(0.0, self.hp / self.max_hp)
                 pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3 * _TS))
-                pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3 * _TS))
+                pygame.draw.rect(
+                    surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3 * _TS)
+                )
             return
 
         # --- Procedural fallback (draw at 32-unit scale then scale up) ---
@@ -228,7 +236,9 @@ class Enemy:
                 pygame.draw.ellipse(buf, c, (bx_c + xo, by_c + yo, w, h))
             elif shape == "line":
                 x1, y1, x2, y2, width = args
-                pygame.draw.line(buf, c, (bx_c + x1, by_c + y1), (bx_c + x2, by_c + y2), width)
+                pygame.draw.line(
+                    buf, c, (bx_c + x1, by_c + y1), (bx_c + x2, by_c + y2), width
+                )
             elif shape == "polygon":
                 points_off = args[0]
                 pts = [(bx_c + px_off, by_c + py_off) for px_off, py_off in points_off]

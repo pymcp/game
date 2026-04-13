@@ -35,17 +35,61 @@ _DUMMY = pygame.display.set_mode((1, 1))
 
 from src.config import (  # noqa: E402
     TILE,
-    GRASS, DIRT, STONE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
-    TREE, WATER, HOUSE, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL,
-    CAVE_EXIT, CAVE_WALL, PIER, BOAT, TREASURE_CHEST, SAND,
-    CORAL, REEF, DIVE_EXIT, PORTAL_RUINS, PORTAL_ACTIVE,
-    ANCIENT_STONE, PORTAL_WALL, PORTAL_FLOOR, WOOD_FLOOR,
-    WOOD_WALL, WORKTABLE, HOUSE_EXIT, DIRT_PATH, COBBLESTONE,
-    SETTLEMENT_HOUSE, STONE_PATH, ROAD, SNOW, ICE_PEAK,
-    FROZEN_LAKE, FROST_CRYSTAL_ORE, ASH_GROUND, LAVA_POOL,
-    MAGMA_STONE, MAGMA_ORE, DEAD_GRASS, RUINS_WALL, BONE_PILE,
-    GRAVE, DESERT_CRYSTAL_ORE, SANDSTONE, CACTUS_TILE,
-    VOID_ORE, PORTAL_LAVA, SIGN, BROKEN_LADDER, SKY_LADDER,
+    GRASS,
+    DIRT,
+    STONE,
+    IRON_ORE,
+    GOLD_ORE,
+    DIAMOND_ORE,
+    TREE,
+    WATER,
+    HOUSE,
+    MOUNTAIN,
+    CAVE_MOUNTAIN,
+    CAVE_HILL,
+    CAVE_EXIT,
+    CAVE_WALL,
+    PIER,
+    BOAT,
+    TREASURE_CHEST,
+    SAND,
+    CORAL,
+    REEF,
+    DIVE_EXIT,
+    PORTAL_RUINS,
+    PORTAL_ACTIVE,
+    ANCIENT_STONE,
+    PORTAL_WALL,
+    PORTAL_FLOOR,
+    WOOD_FLOOR,
+    WOOD_WALL,
+    WORKTABLE,
+    HOUSE_EXIT,
+    DIRT_PATH,
+    COBBLESTONE,
+    SETTLEMENT_HOUSE,
+    STONE_PATH,
+    ROAD,
+    SNOW,
+    ICE_PEAK,
+    FROZEN_LAKE,
+    FROST_CRYSTAL_ORE,
+    ASH_GROUND,
+    LAVA_POOL,
+    MAGMA_STONE,
+    MAGMA_ORE,
+    DEAD_GRASS,
+    RUINS_WALL,
+    BONE_PILE,
+    GRAVE,
+    DESERT_CRYSTAL_ORE,
+    SANDSTONE,
+    CACTUS_TILE,
+    VOID_ORE,
+    PORTAL_LAVA,
+    SIGN,
+    BROKEN_LADDER,
+    SKY_LADDER,
 )
 from src.data.tiles import TILE_INFO  # noqa: E402
 
@@ -54,11 +98,12 @@ from src.data.tiles import TILE_INFO  # noqa: E402
 # ---------------------------------------------------------------------------
 
 CELL = 64  # must match TILE
-COLS = 4   # animation frames per variant
+COLS = 4  # animation frames per variant
 ROWS_PER_TILE = 16  # one per adjacency mask
 
-OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "assets", "tiles")
+OUT_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "tiles"
+)
 STANDALONE_DIR = os.path.join(OUT_DIR, "standalone")
 
 # ---------------------------------------------------------------------------
@@ -66,64 +111,131 @@ STANDALONE_DIR = os.path.join(OUT_DIR, "standalone")
 # ---------------------------------------------------------------------------
 
 TILE_NAMES: dict[int, str] = {
-    GRASS: "grass", DIRT: "dirt", STONE: "stone", SAND: "sand",
-    SNOW: "snow", ASH_GROUND: "ash_ground", DEAD_GRASS: "dead_grass",
-    DIRT_PATH: "dirt_path", COBBLESTONE: "cobblestone",
-    STONE_PATH: "stone_path", ROAD: "road", SANDSTONE: "sandstone",
-    TREE: "tree", WATER: "water", MOUNTAIN: "mountain",
+    GRASS: "grass",
+    DIRT: "dirt",
+    STONE: "stone",
+    SAND: "sand",
+    SNOW: "snow",
+    ASH_GROUND: "ash_ground",
+    DEAD_GRASS: "dead_grass",
+    DIRT_PATH: "dirt_path",
+    COBBLESTONE: "cobblestone",
+    STONE_PATH: "stone_path",
+    ROAD: "road",
+    SANDSTONE: "sandstone",
+    TREE: "tree",
+    WATER: "water",
+    MOUNTAIN: "mountain",
     CACTUS_TILE: "cactus",
-    IRON_ORE: "iron_ore", GOLD_ORE: "gold_ore", DIAMOND_ORE: "diamond_ore",
-    FROST_CRYSTAL_ORE: "frost_crystal_ore", MAGMA_ORE: "magma_ore",
-    DESERT_CRYSTAL_ORE: "desert_crystal_ore", VOID_ORE: "void_ore",
+    IRON_ORE: "iron_ore",
+    GOLD_ORE: "gold_ore",
+    DIAMOND_ORE: "diamond_ore",
+    FROST_CRYSTAL_ORE: "frost_crystal_ore",
+    MAGMA_ORE: "magma_ore",
+    DESERT_CRYSTAL_ORE: "desert_crystal_ore",
+    VOID_ORE: "void_ore",
     MAGMA_STONE: "magma_stone",
-    CAVE_WALL: "cave_wall", CAVE_EXIT: "cave_exit",
-    CAVE_MOUNTAIN: "cave_mountain", CAVE_HILL: "cave_hill",
-    CORAL: "coral", REEF: "reef", DIVE_EXIT: "dive_exit",
-    PORTAL_WALL: "portal_wall", PORTAL_FLOOR: "portal_floor",
-    PORTAL_RUINS: "portal_ruins", PORTAL_ACTIVE: "portal_active",
-    PORTAL_LAVA: "portal_lava", ANCIENT_STONE: "ancient_stone",
-    HOUSE: "house", PIER: "pier", BOAT: "boat",
+    CAVE_WALL: "cave_wall",
+    CAVE_EXIT: "cave_exit",
+    CAVE_MOUNTAIN: "cave_mountain",
+    CAVE_HILL: "cave_hill",
+    CORAL: "coral",
+    REEF: "reef",
+    DIVE_EXIT: "dive_exit",
+    PORTAL_WALL: "portal_wall",
+    PORTAL_FLOOR: "portal_floor",
+    PORTAL_RUINS: "portal_ruins",
+    PORTAL_ACTIVE: "portal_active",
+    PORTAL_LAVA: "portal_lava",
+    ANCIENT_STONE: "ancient_stone",
+    HOUSE: "house",
+    PIER: "pier",
+    BOAT: "boat",
     TREASURE_CHEST: "treasure_chest",
-    WOOD_FLOOR: "wood_floor", WOOD_WALL: "wood_wall",
-    WORKTABLE: "worktable", HOUSE_EXIT: "house_exit",
+    WOOD_FLOOR: "wood_floor",
+    WOOD_WALL: "wood_wall",
+    WORKTABLE: "worktable",
+    HOUSE_EXIT: "house_exit",
     SETTLEMENT_HOUSE: "settlement_house",
-    ICE_PEAK: "ice_peak", FROZEN_LAKE: "frozen_lake",
-    LAVA_POOL: "lava_pool", RUINS_WALL: "ruins_wall",
-    BONE_PILE: "bone_pile", GRAVE: "grave",
-    SIGN: "sign", BROKEN_LADDER: "broken_ladder", SKY_LADDER: "sky_ladder",
+    ICE_PEAK: "ice_peak",
+    FROZEN_LAKE: "frozen_lake",
+    LAVA_POOL: "lava_pool",
+    RUINS_WALL: "ruins_wall",
+    BONE_PILE: "bone_pile",
+    GRAVE: "grave",
+    SIGN: "sign",
+    BROKEN_LADDER: "broken_ladder",
+    SKY_LADDER: "sky_ladder",
 }
 
 # Terrain group definitions: atlas_name → list of tile IDs
 TERRAIN_GROUPS: dict[str, list[int]] = {
     "terrain_basic": [
-        GRASS, DIRT, STONE, SAND, SNOW, ASH_GROUND, DEAD_GRASS,
-        DIRT_PATH, COBBLESTONE, STONE_PATH, ROAD, SANDSTONE,
+        GRASS,
+        DIRT,
+        STONE,
+        SAND,
+        SNOW,
+        ASH_GROUND,
+        DEAD_GRASS,
+        DIRT_PATH,
+        COBBLESTONE,
+        STONE_PATH,
+        ROAD,
+        SANDSTONE,
     ],
     "terrain_nature": [TREE, WATER, MOUNTAIN, CACTUS_TILE],
     "terrain_ore": [
-        IRON_ORE, GOLD_ORE, DIAMOND_ORE, FROST_CRYSTAL_ORE,
-        MAGMA_ORE, DESERT_CRYSTAL_ORE, VOID_ORE, MAGMA_STONE,
+        IRON_ORE,
+        GOLD_ORE,
+        DIAMOND_ORE,
+        FROST_CRYSTAL_ORE,
+        MAGMA_ORE,
+        DESERT_CRYSTAL_ORE,
+        VOID_ORE,
+        MAGMA_STONE,
     ],
     "terrain_cave": [CAVE_WALL, CAVE_EXIT, CAVE_MOUNTAIN, CAVE_HILL],
     "terrain_water": [CORAL, REEF, DIVE_EXIT],
     "terrain_portal": [
-        PORTAL_WALL, PORTAL_FLOOR, PORTAL_RUINS, PORTAL_ACTIVE,
-        PORTAL_LAVA, ANCIENT_STONE,
+        PORTAL_WALL,
+        PORTAL_FLOOR,
+        PORTAL_RUINS,
+        PORTAL_ACTIVE,
+        PORTAL_LAVA,
+        ANCIENT_STONE,
     ],
     "terrain_settlement": [
-        HOUSE, PIER, BOAT, TREASURE_CHEST, WOOD_FLOOR, WOOD_WALL,
-        WORKTABLE, HOUSE_EXIT, SETTLEMENT_HOUSE,
+        HOUSE,
+        PIER,
+        BOAT,
+        TREASURE_CHEST,
+        WOOD_FLOOR,
+        WOOD_WALL,
+        WORKTABLE,
+        HOUSE_EXIT,
+        SETTLEMENT_HOUSE,
     ],
     "terrain_biome": [
-        ICE_PEAK, FROZEN_LAKE, LAVA_POOL, RUINS_WALL, BONE_PILE, GRAVE,
+        ICE_PEAK,
+        FROZEN_LAKE,
+        LAVA_POOL,
+        RUINS_WALL,
+        BONE_PILE,
+        GRAVE,
     ],
 }
 
 # FPS per tile (0 = static).  Tiles not listed default to 0.
 TILE_FPS: dict[int, float] = {
-    WATER: 3.0, LAVA_POOL: 2.0, PORTAL_LAVA: 2.0,
-    PORTAL_ACTIVE: 2.0, CAVE_EXIT: 1.5, DIVE_EXIT: 1.5,
-    CORAL: 1.0, FROZEN_LAKE: 0.5,
+    WATER: 3.0,
+    LAVA_POOL: 2.0,
+    PORTAL_LAVA: 2.0,
+    PORTAL_ACTIVE: 2.0,
+    CAVE_EXIT: 1.5,
+    DIVE_EXIT: 1.5,
+    CORAL: 1.0,
+    FROZEN_LAKE: 0.5,
 }
 
 # Standalone tiles (not in adjacency atlases)
@@ -134,6 +246,7 @@ STANDALONE_TILES: list[int] = [SIGN, BROKEN_LADDER, SKY_LADDER]
 # Drawing helpers
 # ---------------------------------------------------------------------------
 
+
 def _base_color(tid: int) -> tuple[int, int, int]:
     """Get the base color for a tile ID."""
     info = TILE_INFO.get(tid, {})
@@ -141,17 +254,26 @@ def _base_color(tid: int) -> tuple[int, int, int]:
 
 
 def _darken(color: tuple[int, int, int], amount: int = 25) -> tuple[int, int, int]:
-    return (max(0, color[0] - amount), max(0, color[1] - amount),
-            max(0, color[2] - amount))
+    return (
+        max(0, color[0] - amount),
+        max(0, color[1] - amount),
+        max(0, color[2] - amount),
+    )
 
 
 def _lighten(color: tuple[int, int, int], amount: int = 25) -> tuple[int, int, int]:
-    return (min(255, color[0] + amount), min(255, color[1] + amount),
-            min(255, color[2] + amount))
+    return (
+        min(255, color[0] + amount),
+        min(255, color[1] + amount),
+        min(255, color[2] + amount),
+    )
 
 
 def _edge_borders(
-    surf: pygame.Surface, color: tuple[int, int, int], adj: int, width: int = 3,
+    surf: pygame.Surface,
+    color: tuple[int, int, int],
+    adj: int,
+    width: int = 3,
 ) -> None:
     """Draw darker edge borders on sides where there is NO same-type neighbor."""
     dark = _darken(color, 35)
@@ -167,8 +289,11 @@ def _edge_borders(
 
 
 def _noise_texture(
-    surf: pygame.Surface, color: tuple[int, int, int], rng: random.Random,
-    density: float = 0.08, var: int = 15,
+    surf: pygame.Surface,
+    color: tuple[int, int, int],
+    rng: random.Random,
+    density: float = 0.08,
+    var: int = 15,
 ) -> None:
     """Add subtle pixel noise texture to a surface."""
     c = CELL
@@ -177,9 +302,11 @@ def _noise_texture(
         x = rng.randint(0, c - 1)
         y = rng.randint(0, c - 1)
         d = rng.randint(-var, var)
-        nc = (max(0, min(255, color[0] + d)),
-              max(0, min(255, color[1] + d)),
-              max(0, min(255, color[2] + d)))
+        nc = (
+            max(0, min(255, color[0] + d)),
+            max(0, min(255, color[1] + d)),
+            max(0, min(255, color[2] + d)),
+        )
         surf.set_at((x, y), nc)
 
 
@@ -192,16 +319,19 @@ def _noise_texture(
 # frame: animation frame index (0-3)
 # rng: seeded Random for deterministic noise
 
-def _draw_flat(surf: pygame.Surface, tid: int, adj: int, frame: int,
-               rng: random.Random) -> None:
+
+def _draw_flat(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Generic flat terrain tile (grass, dirt, sand, etc.) with texture."""
     color = _base_color(tid)
     _noise_texture(surf, color, rng, density=0.06)
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_tree(surf: pygame.Surface, tid: int, adj: int, frame: int,
-               rng: random.Random) -> None:
+def _draw_tree(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Tree tile: trunk + canopy; adjacency-interior shows dense canopy."""
     color = _base_color(tid)
     canopy_green = (30, 130, 30)
@@ -235,8 +365,9 @@ def _draw_tree(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_water(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                rng: random.Random) -> None:
+def _draw_water(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Water tile with animated wave lines and shore edges."""
     color = _base_color(tid)
     c = CELL
@@ -260,8 +391,9 @@ def _draw_water(surf: pygame.Surface, tid: int, adj: int, frame: int,
         pygame.draw.rect(surf, shore, (0, 0, bw, c))
 
 
-def _draw_mountain(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                   rng: random.Random) -> None:
+def _draw_mountain(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Mountain tile: isolated = single peak, interior = ridge texture."""
     color = _base_color(tid)
     c = CELL
@@ -276,19 +408,20 @@ def _draw_mountain(surf: pygame.Surface, tid: int, adj: int, frame: int,
             pygame.draw.line(surf, ridge, (4, ry), (c - 4, ry), 1)
     else:
         # Draw a peak triangle
-        pygame.draw.polygon(surf, _lighten(color, 20),
-                            [(8, c - 4), (h, 4), (c - 8, c - 4)])
+        pygame.draw.polygon(
+            surf, _lighten(color, 20), [(8, c - 4), (h, 4), (c - 8, c - 4)]
+        )
         # Snow cap
-        pygame.draw.polygon(surf, (230, 230, 240),
-                            [(h - 8, 16), (h, 4), (h + 8, 16)])
+        pygame.draw.polygon(surf, (230, 230, 240), [(h - 8, 16), (h, 4), (h + 8, 16)])
         # Ridge crack details
         pygame.draw.line(surf, _darken(color, 20), (h - 6, 28), (h - 2, 18), 1)
         pygame.draw.line(surf, _darken(color, 20), (h + 6, 30), (h + 8, 20), 1)
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_ore(surf: pygame.Surface, tid: int, adj: int, frame: int,
-              rng: random.Random) -> None:
+def _draw_ore(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Ore tile: host rock with bright ore vein dots; denser when grouped."""
     info = TILE_INFO.get(tid, {})
     color = _base_color(tid)
@@ -305,8 +438,9 @@ def _draw_ore(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_cave_wall(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                    rng: random.Random) -> None:
+def _draw_cave_wall(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Cave wall with rough rock texture and edge seams."""
     color = _base_color(tid)
     _noise_texture(surf, color, rng, density=0.12, var=20)
@@ -321,16 +455,16 @@ def _draw_cave_wall(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=3)
 
 
-def _draw_cave_entrance(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                        rng: random.Random) -> None:
+def _draw_cave_entrance(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Cave entrance (mountain or hill style)."""
     color = _base_color(tid)
     c = CELL
     # Dark opening
     shadow = _darken(color, 30)
     pygame.draw.rect(surf, color, (8, 16, 48, 40))
-    pygame.draw.polygon(surf, shadow,
-                        [(16, 24), (48, 24), (40, 40), (20, 40)])
+    pygame.draw.polygon(surf, shadow, [(16, 24), (48, 24), (40, 40), (20, 40)])
     # Rock detail
     rock = _lighten(color, 20)
     pygame.draw.circle(surf, rock, (24, 30), 4)
@@ -339,8 +473,9 @@ def _draw_cave_entrance(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_cave_exit(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                    rng: random.Random) -> None:
+def _draw_cave_exit(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Cave exit: glowing ladder."""
     c = CELL
     pulse = int(math.sin(frame * 1.5) * 20 + 40)
@@ -354,8 +489,9 @@ def _draw_cave_exit(surf: pygame.Surface, tid: int, adj: int, frame: int,
     pygame.draw.line(surf, rung, (48, 8), (48, 56), 4)
 
 
-def _draw_pier(surf: pygame.Surface, tid: int, adj: int, frame: int,
-               rng: random.Random) -> None:
+def _draw_pier(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Wooden dock planks."""
     c = CELL
     plank = (155, 115, 50)
@@ -368,25 +504,25 @@ def _draw_pier(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, _base_color(tid), adj, width=2)
 
 
-def _draw_boat(surf: pygame.Surface, tid: int, adj: int, frame: int,
-               rng: random.Random) -> None:
+def _draw_boat(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Small moored boat."""
     c = CELL
     # Hull
-    pygame.draw.polygon(surf, (120, 80, 40),
-                        [(8, 36), (56, 36), (48, 56), (16, 56)])
+    pygame.draw.polygon(surf, (120, 80, 40), [(8, 36), (56, 36), (48, 56), (16, 56)])
     # Mast
     pygame.draw.line(surf, (80, 55, 25), (32, 8), (32, 36), 4)
     # Sail
-    pygame.draw.polygon(surf, (235, 225, 195),
-                        [(34, 10), (34, 34), (54, 22)])
+    pygame.draw.polygon(surf, (235, 225, 195), [(34, 10), (34, 34), (54, 22)])
     # Cabin
     pygame.draw.rect(surf, (160, 110, 55), (20, 24, 16, 14))
     pygame.draw.rect(surf, (180, 220, 255), (24, 26, 6, 6))
 
 
-def _draw_treasure(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                   rng: random.Random) -> None:
+def _draw_treasure(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Treasure chest with shimmer."""
     c = CELL
     body = (185, 130, 40)
@@ -403,12 +539,12 @@ def _draw_treasure(surf: pygame.Surface, tid: int, adj: int, frame: int,
     pygame.draw.ellipse(surf, dark, (26, 28, 12, 12))
     # Shimmer
     sp = int(math.sin(frame * 1.5) * 4) + 4
-    pygame.draw.line(surf, (255, 240, 130),
-                     (16, 8 + sp), (22, 2 + sp), 1)
+    pygame.draw.line(surf, (255, 240, 130), (16, 8 + sp), (22, 2 + sp), 1)
 
 
-def _draw_coral(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                rng: random.Random) -> None:
+def _draw_coral(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Coral formation with branching arms."""
     info = TILE_INFO.get(tid, {})
     color = info.get("color", (240, 80, 130))
@@ -428,8 +564,9 @@ def _draw_coral(surf: pygame.Surface, tid: int, adj: int, frame: int,
     pygame.draw.circle(surf, bright, (h + sway, h - 6), 6)
 
 
-def _draw_dive_exit(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                    rng: random.Random) -> None:
+def _draw_dive_exit(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Dive exit: upward chevrons with bubbles."""
     c = CELL
     pulse = int(math.sin(frame * 1.5) * 15 + 40)
@@ -443,8 +580,9 @@ def _draw_dive_exit(surf: pygame.Surface, tid: int, adj: int, frame: int,
     pygame.draw.circle(surf, (180, 230, 255), (48, 20 + bub), 4)
 
 
-def _draw_portal_wall(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                      rng: random.Random) -> None:
+def _draw_portal_wall(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Ancient stone brick pattern."""
     color = _base_color(tid)
     mortar = _darken(color, 20)
@@ -460,8 +598,9 @@ def _draw_portal_wall(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_portal_floor(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                       rng: random.Random) -> None:
+def _draw_portal_floor(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Portal floor with engraved cross/circle."""
     color = _base_color(tid)
     c = CELL
@@ -473,8 +612,9 @@ def _draw_portal_floor(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_portal_ruins(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                       rng: random.Random) -> None:
+def _draw_portal_ruins(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Crumbled stone ring."""
     c = CELL
     stone = (90, 80, 95)
@@ -488,8 +628,9 @@ def _draw_portal_ruins(surf: pygame.Surface, tid: int, adj: int, frame: int,
     pygame.draw.rect(surf, (25, 20, 30), (20, 28, 24, 20))
 
 
-def _draw_portal_active(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                        rng: random.Random) -> None:
+def _draw_portal_active(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Glowing portal ring with pulsing energy."""
     c = CELL
     h = c // 2
@@ -508,8 +649,9 @@ def _draw_portal_active(surf: pygame.Surface, tid: int, adj: int, frame: int,
     pygame.draw.ellipse(surf, (255, 200, ib), (24, 22, 16, 20))
 
 
-def _draw_ancient_stone(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                        rng: random.Random) -> None:
+def _draw_ancient_stone(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Stone obelisk."""
     c = CELL
     h = c // 2
@@ -522,8 +664,9 @@ def _draw_ancient_stone(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, _base_color(tid), adj, width=2)
 
 
-def _draw_house(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                rng: random.Random) -> None:
+def _draw_house(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """House tile with adjacency-aware walls/roof."""
     c = CELL
     wall = (160, 82, 45)
@@ -560,8 +703,9 @@ def _draw_house(surf: pygame.Surface, tid: int, adj: int, frame: int,
         pygame.draw.line(surf, _darken(wall, 25), (0, 0), (0, c), 1)
 
 
-def _draw_cactus(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                 rng: random.Random) -> None:
+def _draw_cactus(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Cactus tile: single cactus or denser when grouped."""
     color = _base_color(tid)
     c = CELL
@@ -582,8 +726,9 @@ def _draw_cactus(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=2)
 
 
-def _draw_lava(surf: pygame.Surface, tid: int, adj: int, frame: int,
-               rng: random.Random) -> None:
+def _draw_lava(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Lava or portal-lava tile with animated glow."""
     color = _base_color(tid)
     c = CELL
@@ -597,8 +742,9 @@ def _draw_lava(surf: pygame.Surface, tid: int, adj: int, frame: int,
     _edge_borders(surf, color, adj, width=3)
 
 
-def _draw_frozen_lake(surf: pygame.Surface, tid: int, adj: int, frame: int,
-                      rng: random.Random) -> None:
+def _draw_frozen_lake(
+    surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
+) -> None:
     """Frozen lake with ice crack texture."""
     color = _base_color(tid)
     c = CELL
@@ -625,21 +771,31 @@ DRAW_DISPATCH: dict[int, type] = {
     WATER: _draw_water,
     MOUNTAIN: _draw_mountain,
     CACTUS_TILE: _draw_cactus,
-    IRON_ORE: _draw_ore, GOLD_ORE: _draw_ore, DIAMOND_ORE: _draw_ore,
-    FROST_CRYSTAL_ORE: _draw_ore, MAGMA_ORE: _draw_ore,
-    DESERT_CRYSTAL_ORE: _draw_ore, VOID_ORE: _draw_ore,
+    IRON_ORE: _draw_ore,
+    GOLD_ORE: _draw_ore,
+    DIAMOND_ORE: _draw_ore,
+    FROST_CRYSTAL_ORE: _draw_ore,
+    MAGMA_ORE: _draw_ore,
+    DESERT_CRYSTAL_ORE: _draw_ore,
+    VOID_ORE: _draw_ore,
     MAGMA_STONE: _draw_ore,
     CAVE_WALL: _draw_cave_wall,
-    CAVE_MOUNTAIN: _draw_cave_entrance, CAVE_HILL: _draw_cave_entrance,
+    CAVE_MOUNTAIN: _draw_cave_entrance,
+    CAVE_HILL: _draw_cave_entrance,
     CAVE_EXIT: _draw_cave_exit,
-    PIER: _draw_pier, BOAT: _draw_boat,
+    PIER: _draw_pier,
+    BOAT: _draw_boat,
     TREASURE_CHEST: _draw_treasure,
-    CORAL: _draw_coral, DIVE_EXIT: _draw_dive_exit,
-    PORTAL_WALL: _draw_portal_wall, PORTAL_FLOOR: _draw_portal_floor,
-    PORTAL_RUINS: _draw_portal_ruins, PORTAL_ACTIVE: _draw_portal_active,
+    CORAL: _draw_coral,
+    DIVE_EXIT: _draw_dive_exit,
+    PORTAL_WALL: _draw_portal_wall,
+    PORTAL_FLOOR: _draw_portal_floor,
+    PORTAL_RUINS: _draw_portal_ruins,
+    PORTAL_ACTIVE: _draw_portal_active,
     ANCIENT_STONE: _draw_ancient_stone,
     HOUSE: _draw_house,
-    LAVA_POOL: _draw_lava, PORTAL_LAVA: _draw_lava,
+    LAVA_POOL: _draw_lava,
+    PORTAL_LAVA: _draw_lava,
     FROZEN_LAKE: _draw_frozen_lake,
     REEF: _draw_cave_wall,  # reuse rocky texture
 }
@@ -648,6 +804,7 @@ DRAW_DISPATCH: dict[int, type] = {
 # ---------------------------------------------------------------------------
 # Standalone tile baking
 # ---------------------------------------------------------------------------
+
 
 def _bake_standalone(tid: int, name: str) -> tuple[pygame.Surface, dict]:
     """Bake a standalone tile sprite (e.g. sign, ladder)."""
@@ -693,6 +850,7 @@ def _bake_standalone(tid: int, name: str) -> tuple[pygame.Surface, dict]:
 # ---------------------------------------------------------------------------
 # Atlas baking
 # ---------------------------------------------------------------------------
+
 
 def _bake_atlas(atlas_name: str, tile_ids: list[int]) -> None:
     """Bake one atlas PNG + JSON for a terrain group."""
@@ -751,14 +909,17 @@ def _bake_atlas(atlas_name: str, tile_ids: list[int]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     print("Baking tile atlases...")
 
     # Pre-load existing entity sprites for standalone reuse
     from src.rendering.registry import SpriteRegistry
+
     sprites_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "assets", "sprites",
+        "assets",
+        "sprites",
     )
     SpriteRegistry.get_instance().load_all(sprites_dir)
 

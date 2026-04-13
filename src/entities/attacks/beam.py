@@ -61,6 +61,7 @@ class BeamAttack(Attack):
     def _compute_wall_range(self, world: list[list[int]]) -> float:
         """Walk along the beam direction and find the first blocking tile."""
         from src.config import TILE
+
         step = TILE // 2  # check every half-tile
         for i in range(1, int(self._range / step) + 1):
             check_dist = step * i
@@ -106,12 +107,15 @@ class BeamAttack(Attack):
         pygame.draw.line(surf, self.color, (sx, sy), (end_x, end_y), self._width)
         # Bright center
         bright = tuple(min(255, c + 80) for c in self.color)
-        pygame.draw.line(surf, bright, (sx, sy), (end_x, end_y), max(1, self._width // 3))
+        pygame.draw.line(
+            surf, bright, (sx, sy), (end_x, end_y), max(1, self._width // 3)
+        )
 
         # Flicker at the tip
         flicker = int(math.sin(self.age * 0.5) * 3)
         pygame.draw.circle(
-            surf, bright,
+            surf,
+            bright,
             (end_x + flicker, end_y + flicker),
             self._width,
         )

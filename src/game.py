@@ -868,10 +868,7 @@ class Game:
             self._inventory_open[pid] = not self._inventory_open[pid]
             if self._inventory_open[pid]:
                 self._inventory_ui[pid] = InventoryState()
-        elif (
-            not self.player1.is_dead
-            and key == self.player1.controls.cycle_weapon_key
-        ):
+        elif not self.player1.is_dead and key == self.player1.controls.cycle_weapon_key:
             self.player1.cycle_weapon()
         # Player 2 controls (blocked while dead)
         elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
@@ -901,10 +898,7 @@ class Game:
             self._inventory_open[pid] = not self._inventory_open[pid]
             if self._inventory_open[pid]:
                 self._inventory_ui[pid] = InventoryState()
-        elif (
-            not self.player2.is_dead
-            and key == self.player2.controls.cycle_weapon_key
-        ):
+        elif not self.player2.is_dead and key == self.player2.controls.cycle_weapon_key:
             self.player2.cycle_weapon()
 
     def _try_build_house(self, player: Player) -> None:
@@ -3731,9 +3725,7 @@ class Game:
                     or player.auto_fire
                 )
             else:
-                fire_input = (
-                    keys[player.controls.fire_key] or player.auto_fire
-                )
+                fire_input = keys[player.controls.fire_key] or player.auto_fire
 
             # Beam management: keep existing beam alive while fire held
             scene = self.maps.get(player.current_map)
@@ -3773,12 +3765,9 @@ class Game:
     def _find_active_beam(scene: MapScene, player_id: int) -> Attack | None:
         """Return the active BeamAttack for a player, or None."""
         from src.entities.attacks.beam import BeamAttack
+
         for atk in scene.projectiles:
-            if (
-                isinstance(atk, BeamAttack)
-                and atk.alive
-                and atk.player_id == player_id
-            ):
+            if isinstance(atk, BeamAttack) and atk.alive and atk.player_id == player_id:
                 return atk
         return None
 
@@ -3796,7 +3785,11 @@ class Game:
                 if atk.alive:
                     atk.check_hits(scene.enemies, scene.particles, scene.floats)
                 # Spawn on-death attacks (e.g. bomb → explosion)
-                if not atk.alive and hasattr(atk, 'weapon') and atk.weapon.on_death_spawn:
+                if (
+                    not atk.alive
+                    and hasattr(atk, "weapon")
+                    and atk.weapon.on_death_spawn
+                ):
                     child_def = WEAPON_REGISTRY.get(atk.weapon.on_death_spawn)
                     if child_def is not None:
                         child = create_attack(
@@ -3871,8 +3864,12 @@ class Game:
             self.screen.blit(overlay, (0, 0))
             big_font = pygame.font.SysFont(None, 48)
             small_font = pygame.font.SysFont(None, 32)
-            prompt = big_font.render("Are you sure you want to exit?", True, (255, 255, 255))
-            hint = small_font.render("Y / Enter = Quit      N / Esc = Cancel", True, (200, 200, 200))
+            prompt = big_font.render(
+                "Are you sure you want to exit?", True, (255, 255, 255)
+            )
+            hint = small_font.render(
+                "Y / Enter = Quit      N / Esc = Cancel", True, (200, 200, 200)
+            )
             cx = screen_width // 2
             cy = screen_height // 2
             self.screen.blit(prompt, (cx - prompt.get_width() // 2, cy - 30))
@@ -3986,6 +3983,7 @@ class Game:
             STANDALONE_TILE_IDS as _STANDALONE_IDS,
             compute_adjacency as _compute_adj,
         )
+
         _tile_reg = _TileReg.get_instance()
         _tileset = current_map.tileset
 
@@ -4018,9 +4016,7 @@ class Game:
                     adj = _compute_adj(current_map, r, c, tid)
                     fps = _tile_reg.get_fps(tile_name)
                     fidx = int(ticks * fps / 1000.0) % 4 if fps > 0 else 0
-                    frame = _tile_reg.get_frame(
-                        tile_name, adj, fidx, _tileset
-                    )
+                    frame = _tile_reg.get_frame(tile_name, adj, fidx, _tileset)
                     if frame is not None:
                         self.screen.blit(frame, (sx, sy))
                         # ANCIENT_STONE: pulse overlay if next ritual target
@@ -4035,14 +4031,11 @@ class Game:
                                     current_map, "ritual_stone_positions", []
                                 )
                                 next_idx = quest["stones_activated"]
-                                if (
-                                    next_idx < len(positions)
-                                    and positions[next_idx] == (c, r)
-                                ):
+                                if next_idx < len(positions) and positions[
+                                    next_idx
+                                ] == (c, r):
                                     S = TILE // 32
-                                    pulse_y = int(
-                                        math.sin(ticks * 0.01) * 3 * S
-                                    )
+                                    pulse_y = int(math.sin(ticks * 0.01) * 3 * S)
                                     pygame.draw.polygon(
                                         self.screen,
                                         (240, 210, 50),
@@ -4197,9 +4190,7 @@ class Game:
             )
             n_unlocked = len(player.unlocked_weapons)
             wpn_label = (
-                f"{wpn_def.name} [{n_unlocked}]"
-                if n_unlocked > 1
-                else wpn_def.name
+                f"{wpn_def.name} [{n_unlocked}]" if n_unlocked > 1 else wpn_def.name
             )
         else:
             pygame.draw.rect(

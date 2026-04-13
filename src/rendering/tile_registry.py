@@ -59,46 +59,120 @@ if TYPE_CHECKING:
     from src.world.map import GameMap
 
 from src.config import (
-    GRASS, DIRT, STONE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
-    TREE, WATER, HOUSE, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL,
-    CAVE_EXIT, CAVE_WALL, PIER, BOAT, TREASURE_CHEST, SAND,
-    CORAL, REEF, DIVE_EXIT, PORTAL_RUINS, PORTAL_ACTIVE,
-    ANCIENT_STONE, PORTAL_WALL, PORTAL_FLOOR, WOOD_FLOOR,
-    WOOD_WALL, WORKTABLE, HOUSE_EXIT, DIRT_PATH, COBBLESTONE,
-    SETTLEMENT_HOUSE, STONE_PATH, ROAD, SNOW, ICE_PEAK,
-    FROZEN_LAKE, FROST_CRYSTAL_ORE, ASH_GROUND, LAVA_POOL,
-    MAGMA_STONE, MAGMA_ORE, DEAD_GRASS, RUINS_WALL, BONE_PILE,
-    GRAVE, DESERT_CRYSTAL_ORE, SANDSTONE, CACTUS_TILE,
-    VOID_ORE, PORTAL_LAVA, SIGN, BROKEN_LADDER, SKY_LADDER,
+    GRASS,
+    DIRT,
+    STONE,
+    IRON_ORE,
+    GOLD_ORE,
+    DIAMOND_ORE,
+    TREE,
+    WATER,
+    HOUSE,
+    MOUNTAIN,
+    CAVE_MOUNTAIN,
+    CAVE_HILL,
+    CAVE_EXIT,
+    CAVE_WALL,
+    PIER,
+    BOAT,
+    TREASURE_CHEST,
+    SAND,
+    CORAL,
+    REEF,
+    DIVE_EXIT,
+    PORTAL_RUINS,
+    PORTAL_ACTIVE,
+    ANCIENT_STONE,
+    PORTAL_WALL,
+    PORTAL_FLOOR,
+    WOOD_FLOOR,
+    WOOD_WALL,
+    WORKTABLE,
+    HOUSE_EXIT,
+    DIRT_PATH,
+    COBBLESTONE,
+    SETTLEMENT_HOUSE,
+    STONE_PATH,
+    ROAD,
+    SNOW,
+    ICE_PEAK,
+    FROZEN_LAKE,
+    FROST_CRYSTAL_ORE,
+    ASH_GROUND,
+    LAVA_POOL,
+    MAGMA_STONE,
+    MAGMA_ORE,
+    DEAD_GRASS,
+    RUINS_WALL,
+    BONE_PILE,
+    GRAVE,
+    DESERT_CRYSTAL_ORE,
+    SANDSTONE,
+    CACTUS_TILE,
+    VOID_ORE,
+    PORTAL_LAVA,
+    SIGN,
+    BROKEN_LADDER,
+    SKY_LADDER,
 )
 
 # Tile ID → sprite name used in atlas manifests & standalone lookups
 TILE_ID_TO_NAME: dict[int, str] = {
-    GRASS: "grass", DIRT: "dirt", STONE: "stone", SAND: "sand",
-    SNOW: "snow", ASH_GROUND: "ash_ground", DEAD_GRASS: "dead_grass",
-    DIRT_PATH: "dirt_path", COBBLESTONE: "cobblestone",
-    STONE_PATH: "stone_path", ROAD: "road", SANDSTONE: "sandstone",
-    TREE: "tree", WATER: "water", MOUNTAIN: "mountain",
+    GRASS: "grass",
+    DIRT: "dirt",
+    STONE: "stone",
+    SAND: "sand",
+    SNOW: "snow",
+    ASH_GROUND: "ash_ground",
+    DEAD_GRASS: "dead_grass",
+    DIRT_PATH: "dirt_path",
+    COBBLESTONE: "cobblestone",
+    STONE_PATH: "stone_path",
+    ROAD: "road",
+    SANDSTONE: "sandstone",
+    TREE: "tree",
+    WATER: "water",
+    MOUNTAIN: "mountain",
     CACTUS_TILE: "cactus",
-    IRON_ORE: "iron_ore", GOLD_ORE: "gold_ore", DIAMOND_ORE: "diamond_ore",
-    FROST_CRYSTAL_ORE: "frost_crystal_ore", MAGMA_ORE: "magma_ore",
-    DESERT_CRYSTAL_ORE: "desert_crystal_ore", VOID_ORE: "void_ore",
+    IRON_ORE: "iron_ore",
+    GOLD_ORE: "gold_ore",
+    DIAMOND_ORE: "diamond_ore",
+    FROST_CRYSTAL_ORE: "frost_crystal_ore",
+    MAGMA_ORE: "magma_ore",
+    DESERT_CRYSTAL_ORE: "desert_crystal_ore",
+    VOID_ORE: "void_ore",
     MAGMA_STONE: "magma_stone",
-    CAVE_WALL: "cave_wall", CAVE_EXIT: "cave_exit",
-    CAVE_MOUNTAIN: "cave_mountain", CAVE_HILL: "cave_hill",
-    CORAL: "coral", REEF: "reef", DIVE_EXIT: "dive_exit",
-    PORTAL_WALL: "portal_wall", PORTAL_FLOOR: "portal_floor",
-    PORTAL_RUINS: "portal_ruins", PORTAL_ACTIVE: "portal_active",
-    PORTAL_LAVA: "portal_lava", ANCIENT_STONE: "ancient_stone",
-    HOUSE: "house", PIER: "pier", BOAT: "boat",
+    CAVE_WALL: "cave_wall",
+    CAVE_EXIT: "cave_exit",
+    CAVE_MOUNTAIN: "cave_mountain",
+    CAVE_HILL: "cave_hill",
+    CORAL: "coral",
+    REEF: "reef",
+    DIVE_EXIT: "dive_exit",
+    PORTAL_WALL: "portal_wall",
+    PORTAL_FLOOR: "portal_floor",
+    PORTAL_RUINS: "portal_ruins",
+    PORTAL_ACTIVE: "portal_active",
+    PORTAL_LAVA: "portal_lava",
+    ANCIENT_STONE: "ancient_stone",
+    HOUSE: "house",
+    PIER: "pier",
+    BOAT: "boat",
     TREASURE_CHEST: "treasure_chest",
-    WOOD_FLOOR: "wood_floor", WOOD_WALL: "wood_wall",
-    WORKTABLE: "worktable", HOUSE_EXIT: "house_exit",
+    WOOD_FLOOR: "wood_floor",
+    WOOD_WALL: "wood_wall",
+    WORKTABLE: "worktable",
+    HOUSE_EXIT: "house_exit",
     SETTLEMENT_HOUSE: "settlement_house",
-    ICE_PEAK: "ice_peak", FROZEN_LAKE: "frozen_lake",
-    LAVA_POOL: "lava_pool", RUINS_WALL: "ruins_wall",
-    BONE_PILE: "bone_pile", GRAVE: "grave",
-    SIGN: "sign", BROKEN_LADDER: "broken_ladder", SKY_LADDER: "sky_ladder",
+    ICE_PEAK: "ice_peak",
+    FROZEN_LAKE: "frozen_lake",
+    LAVA_POOL: "lava_pool",
+    RUINS_WALL: "ruins_wall",
+    BONE_PILE: "bone_pile",
+    GRAVE: "grave",
+    SIGN: "sign",
+    BROKEN_LADDER: "broken_ladder",
+    SKY_LADDER: "sky_ladder",
 }
 
 # Standalone tile IDs (not in adjacency atlases)
@@ -109,8 +183,10 @@ STANDALONE_TILE_IDS: frozenset[int] = frozenset({SIGN, BROKEN_LADDER, SKY_LADDER
 # Adjacency helpers
 # ---------------------------------------------------------------------------
 
+
 class AdjBit(IntEnum):
     """Bit positions for the 4-bit cardinal adjacency mask."""
+
     NORTH = 3
     EAST = 2
     SOUTH = 1
@@ -136,20 +212,24 @@ def compute_adjacency(game_map: GameMap, row: int, col: int, tile_id: int) -> in
 # Each tileset maps to (r_mult, g_mult, b_mult, r_add, g_add, b_add).
 # Final channel = clamp(base * mult + add, 0, 255)
 TILESET_TINTS: dict[str, tuple[float, float, float, int, int, int]] = {
-    "cave":          (0.70, 0.80, 0.60,  0,  0,  0),
-    "underwater":    (0.65, 0.90, 1.30,  0,  0,  0),
-    "portal_realm":  (0.80, 0.70, 1.10, 15,  0, 20),
-    "cave_tundra":   (0.65, 0.75, 1.10, 20, 20, 40),
-    "cave_volcano":  (0.90, 0.55, 0.45, 40,  0,  0),
-    "cave_zombie":   (0.55, 0.75, 0.50,  0, 15,  0),
-    "cave_desert":   (0.85, 0.75, 0.50, 35, 15,  0),
+    "cave": (0.70, 0.80, 0.60, 0, 0, 0),
+    "underwater": (0.65, 0.90, 1.30, 0, 0, 0),
+    "portal_realm": (0.80, 0.70, 1.10, 15, 0, 20),
+    "cave_tundra": (0.65, 0.75, 1.10, 20, 20, 40),
+    "cave_volcano": (0.90, 0.55, 0.45, 40, 0, 0),
+    "cave_zombie": (0.55, 0.75, 0.50, 0, 15, 0),
+    "cave_desert": (0.85, 0.75, 0.50, 35, 15, 0),
 }
 
 
 def _tint_surface(
     surf: pygame.Surface,
-    r_mult: float, g_mult: float, b_mult: float,
-    r_add: int, g_add: int, b_add: int,
+    r_mult: float,
+    g_mult: float,
+    b_mult: float,
+    r_add: int,
+    g_add: int,
+    b_add: int,
 ) -> pygame.Surface:
     """Return a tinted copy of *surf* using per-channel multiply + add."""
     tinted = surf.copy()
@@ -163,9 +243,7 @@ def _tint_surface(
     # Step 2: additive offset (only when non-zero)
     if r_add or g_add or b_add:
         tinted.fill(
-            (max(0, min(255, r_add)),
-             max(0, min(255, g_add)),
-             max(0, min(255, b_add))),
+            (max(0, min(255, r_add)), max(0, min(255, g_add)), max(0, min(255, b_add))),
             special_flags=pygame.BLEND_RGB_ADD,
         )
     return tinted
@@ -174,6 +252,7 @@ def _tint_surface(
 # ---------------------------------------------------------------------------
 # TileAtlas  — one loaded atlas sheet
 # ---------------------------------------------------------------------------
+
 
 class TileAtlas:
     """One loaded tile atlas (PNG + manifest)."""
@@ -190,7 +269,10 @@ class TileAtlas:
         self.tiles: dict[str, dict] = manifest["tiles"]
 
     def get_frame(
-        self, tile_name: str, adjacency: int, frame_idx: int,
+        self,
+        tile_name: str,
+        adjacency: int,
+        frame_idx: int,
     ) -> pygame.Surface | None:
         """Extract a single frame for *tile_name* at *adjacency* mask."""
         entry = self.tiles.get(tile_name)
@@ -211,6 +293,7 @@ class TileAtlas:
 # ---------------------------------------------------------------------------
 # StandaloneTile — a single non-atlas tile sprite
 # ---------------------------------------------------------------------------
+
 
 class StandaloneTile:
     """A standalone tile sprite (e.g. tall signs/ladders)."""
@@ -238,6 +321,7 @@ class StandaloneTile:
 # ---------------------------------------------------------------------------
 # TileSpriteRegistry  — the singleton
 # ---------------------------------------------------------------------------
+
 
 class TileSpriteRegistry:
     """Singleton that holds loaded tile atlas data and standalone tile sprites."""
@@ -305,9 +389,7 @@ class TileSpriteRegistry:
             for fname in os.listdir(standalone_dir):
                 if not fname.endswith(".png"):
                     continue
-                json_path = os.path.join(
-                    standalone_dir, fname.replace(".png", ".json")
-                )
+                json_path = os.path.join(standalone_dir, fname.replace(".png", ".json"))
                 if not os.path.isfile(json_path):
                     continue
                 tile_name = os.path.splitext(fname)[0]
@@ -406,9 +488,7 @@ class TileSpriteRegistry:
         if key not in self._tint_cache:
             base_sheet = self._atlases[atlas_name].sheet
             rm, gm, bm, ra, ga, ba = TILESET_TINTS[tileset]
-            self._tint_cache[key] = _tint_surface(
-                base_sheet, rm, gm, bm, ra, ga, ba
-            )
+            self._tint_cache[key] = _tint_surface(base_sheet, rm, gm, bm, ra, ga, ba)
         return self._tint_cache[key]
 
     # ------------------------------------------------------------------

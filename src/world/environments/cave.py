@@ -48,6 +48,7 @@ CAVE_COLS = 36
 # Connectivity helpers
 # ---------------------------------------------------------------------------
 
+
 def _passable_neighbour_count(
     world: list[list[int]],
     rows: int,
@@ -283,7 +284,12 @@ class CaveEnvironment(BaseEnvironment):
         chest_col, chest_row = find_floor_near_row(
             cave_world, rows, cols, rng, rows - MAP_BORDER - 1, GRASS, border=MAP_BORDER
         )
-        if _passable_neighbour_count(cave_world, rows, cols, chest_col, chest_row, _PASSABLE) >= 2:
+        if (
+            _passable_neighbour_count(
+                cave_world, rows, cols, chest_col, chest_row, _PASSABLE
+            )
+            >= 2
+        ):
             cave_world[chest_row][chest_col] = TREASURE_CHEST
         else:
             # Fallback: scan nearby floor tiles for a safe spot
@@ -295,7 +301,10 @@ class CaveEnvironment(BaseEnvironment):
                         MAP_BORDER <= nr < rows - MAP_BORDER
                         and MAP_BORDER <= nc < cols - MAP_BORDER
                         and cave_world[nr][nc] == GRASS
-                        and _passable_neighbour_count(cave_world, rows, cols, nc, nr, _PASSABLE) >= 2
+                        and _passable_neighbour_count(
+                            cave_world, rows, cols, nc, nr, _PASSABLE
+                        )
+                        >= 2
                     ):
                         cave_world[nr][nc] = TREASURE_CHEST
                         chest_row, chest_col = nr, nc

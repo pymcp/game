@@ -57,7 +57,9 @@ class HomingAttack(Attack):
                 continue
             # Check if within acquisition cone
             angle_to = math.atan2(dy, dx)
-            diff = abs((angle_to - self._current_angle + math.pi) % (2 * math.pi) - math.pi)
+            diff = abs(
+                (angle_to - self._current_angle + math.pi) % (2 * math.pi) - math.pi
+            )
             if diff <= self._acquire_cone and dist < best_dist:
                 best_dist = dist
                 best = enemy

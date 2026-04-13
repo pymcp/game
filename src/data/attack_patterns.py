@@ -135,190 +135,243 @@ def _register(w: WeaponDef) -> WeaponDef:
 
 # -- Starting weapons (migrated from old WEAPONS list) ---------------------
 
-_register(WeaponDef(
-    weapon_id="rock_throw",
-    name="Rock Throw",
-    damage=8,
-    cooldown=25,
-    color=(160, 150, 140),
-    knockback=4,
-    pattern=AttackPattern.LINEAR,
-    wall_collide=True,
-    pierce=False,
-    draw=("circle",),
-    pattern_config={"speed": 5.0, "distance": TILE * 5, "size": 4},
-))
+_register(
+    WeaponDef(
+        weapon_id="rock_throw",
+        name="Rock Throw",
+        damage=8,
+        cooldown=25,
+        color=(160, 150, 140),
+        knockback=4,
+        pattern=AttackPattern.LINEAR,
+        wall_collide=True,
+        pierce=False,
+        draw=("circle",),
+        pattern_config={"speed": 5.0, "distance": TILE * 5, "size": 4},
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="iron_dagger",
-    name="Iron Dagger",
-    damage=15,
-    cooldown=18,
-    color=(200, 190, 180),
-    knockback=5,
-    pattern=AttackPattern.LINEAR,
-    wall_collide=True,
-    pierce=False,
-    draw=("line", 10, 2),
-    pattern_config={"speed": 7.0, "distance": TILE * 3, "size": 3},
-))
+_register(
+    WeaponDef(
+        weapon_id="iron_dagger",
+        name="Iron Dagger",
+        damage=15,
+        cooldown=18,
+        color=(200, 190, 180),
+        knockback=5,
+        pattern=AttackPattern.LINEAR,
+        wall_collide=True,
+        pierce=False,
+        draw=("line", 10, 2),
+        pattern_config={"speed": 7.0, "distance": TILE * 3, "size": 3},
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="fire_bolt",
-    name="Fire Bolt",
-    damage=25,
-    cooldown=35,
-    color=(255, 120, 30),
-    knockback=6,
-    pattern=AttackPattern.LINEAR,
-    wall_collide=True,
-    pierce=True,
-    draw=("circle",),
-    pattern_config={"speed": 6.0, "distance": TILE * 7, "size": 5},
-))
+_register(
+    WeaponDef(
+        weapon_id="fire_bolt",
+        name="Fire Bolt",
+        damage=25,
+        cooldown=35,
+        color=(255, 120, 30),
+        knockback=6,
+        pattern=AttackPattern.LINEAR,
+        wall_collide=True,
+        pierce=True,
+        draw=("circle",),
+        pattern_config={"speed": 6.0, "distance": TILE * 7, "size": 5},
+    )
+)
 
 # -- New weapons -----------------------------------------------------------
 
-_register(WeaponDef(
-    weapon_id="iron_sword",
-    name="Iron Sword",
-    damage=18,
-    cooldown=22,
-    color=(190, 185, 175),
-    knockback=6,
-    pattern=AttackPattern.MELEE_ARC,
-    wall_collide=False,
-    pierce=True,
-    draw=("arc",),
-    pattern_config={"arc_degrees": 120, "radius": TILE * 1.8, "duration_frames": 10},
-))
+_register(
+    WeaponDef(
+        weapon_id="iron_sword",
+        name="Iron Sword",
+        damage=18,
+        cooldown=22,
+        color=(190, 185, 175),
+        knockback=6,
+        pattern=AttackPattern.MELEE_ARC,
+        wall_collide=False,
+        pierce=True,
+        draw=("arc",),
+        pattern_config={
+            "arc_degrees": 120,
+            "radius": TILE * 1.8,
+            "duration_frames": 10,
+        },
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="wooden_bow",
-    name="Wooden Bow",
-    damage=12,
-    cooldown=20,
-    color=(180, 140, 70),
-    knockback=3,
-    pattern=AttackPattern.LINEAR,
-    wall_collide=True,
-    pierce=False,
-    draw=("line", 14, 2),
-    pattern_config={"speed": 8.0, "distance": TILE * 8, "size": 2},
-))
+_register(
+    WeaponDef(
+        weapon_id="wooden_bow",
+        name="Wooden Bow",
+        damage=12,
+        cooldown=20,
+        color=(180, 140, 70),
+        knockback=3,
+        pattern=AttackPattern.LINEAR,
+        wall_collide=True,
+        pierce=False,
+        draw=("line", 14, 2),
+        pattern_config={"speed": 8.0, "distance": TILE * 8, "size": 2},
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="boomerang",
-    name="Boomerang",
-    damage=14,
-    cooldown=30,
-    color=(180, 120, 60),
-    knockback=4,
-    pattern=AttackPattern.BOOMERANG,
-    wall_collide=True,
-    pierce=True,
-    draw=("line", 8, 3),
-    pattern_config={"speed": 5.5, "max_distance": TILE * 6, "return_speed": 7.0, "size": 5},
-))
+_register(
+    WeaponDef(
+        weapon_id="boomerang",
+        name="Boomerang",
+        damage=14,
+        cooldown=30,
+        color=(180, 120, 60),
+        knockback=4,
+        pattern=AttackPattern.BOOMERANG,
+        wall_collide=True,
+        pierce=True,
+        draw=("line", 8, 3),
+        pattern_config={
+            "speed": 5.5,
+            "max_distance": TILE * 6,
+            "return_speed": 7.0,
+            "size": 5,
+        },
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="bomb",
-    name="Bomb",
-    damage=10,
-    cooldown=50,
-    color=(80, 80, 80),
-    knockback=2,
-    pattern=AttackPattern.LINEAR,
-    wall_collide=True,
-    pierce=False,
-    draw=("circle",),
-    pattern_config={"speed": 4.0, "distance": TILE * 4, "size": 6},
-    on_death_spawn="bomb_explosion",
-))
+_register(
+    WeaponDef(
+        weapon_id="bomb",
+        name="Bomb",
+        damage=10,
+        cooldown=50,
+        color=(80, 80, 80),
+        knockback=2,
+        pattern=AttackPattern.LINEAR,
+        wall_collide=True,
+        pierce=False,
+        draw=("circle",),
+        pattern_config={"speed": 4.0, "distance": TILE * 4, "size": 6},
+        on_death_spawn="bomb_explosion",
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="bomb_explosion",
-    name="Bomb Explosion",
-    damage=30,
-    cooldown=0,
-    color=(255, 160, 40),
-    knockback=10,
-    pattern=AttackPattern.AOE,
-    wall_collide=False,
-    pierce=True,
-    draw=("circle",),
-    pattern_config={"radius": TILE * 2.5, "delay_frames": 0, "linger_frames": 12},
-))
+_register(
+    WeaponDef(
+        weapon_id="bomb_explosion",
+        name="Bomb Explosion",
+        damage=30,
+        cooldown=0,
+        color=(255, 160, 40),
+        knockback=10,
+        pattern=AttackPattern.AOE,
+        wall_collide=False,
+        pierce=True,
+        draw=("circle",),
+        pattern_config={"radius": TILE * 2.5, "delay_frames": 0, "linger_frames": 12},
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="lightning_chain",
-    name="Lightning Chain",
-    damage=20,
-    cooldown=40,
-    color=(130, 180, 255),
-    knockback=3,
-    pattern=AttackPattern.CHAIN,
-    wall_collide=False,
-    pierce=True,
-    draw=("line", 10, 2),
-    pattern_config={"speed": 9.0, "max_bounces": 4, "bounce_range": TILE * 5, "damage_decay": 0.75, "size": 4},
-))
+_register(
+    WeaponDef(
+        weapon_id="lightning_chain",
+        name="Lightning Chain",
+        damage=20,
+        cooldown=40,
+        color=(130, 180, 255),
+        knockback=3,
+        pattern=AttackPattern.CHAIN,
+        wall_collide=False,
+        pierce=True,
+        draw=("line", 10, 2),
+        pattern_config={
+            "speed": 9.0,
+            "max_bounces": 4,
+            "bounce_range": TILE * 5,
+            "damage_decay": 0.75,
+            "size": 4,
+        },
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="ice_beam",
-    name="Ice Beam",
-    damage=6,
-    cooldown=5,
-    color=(140, 220, 255),
-    knockback=1,
-    pattern=AttackPattern.BEAM,
-    wall_collide=True,
-    pierce=True,
-    draw=("line", 8, 6),
-    pattern_config={"range": TILE * 7, "width": 8, "tick_rate": 8},
-))
+_register(
+    WeaponDef(
+        weapon_id="ice_beam",
+        name="Ice Beam",
+        damage=6,
+        cooldown=5,
+        color=(140, 220, 255),
+        knockback=1,
+        pattern=AttackPattern.BEAM,
+        wall_collide=True,
+        pierce=True,
+        draw=("line", 8, 6),
+        pattern_config={"range": TILE * 7, "width": 8, "tick_rate": 8},
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="homing_orb",
-    name="Homing Orb",
-    damage=20,
-    cooldown=35,
-    color=(180, 100, 255),
-    knockback=5,
-    pattern=AttackPattern.HOMING,
-    wall_collide=True,
-    pierce=False,
-    draw=("circle",),
-    pattern_config={"speed": 4.5, "distance": TILE * 10, "turn_rate": 6.0, "acquire_cone": 90, "size": 5},
-))
+_register(
+    WeaponDef(
+        weapon_id="homing_orb",
+        name="Homing Orb",
+        damage=20,
+        cooldown=35,
+        color=(180, 100, 255),
+        knockback=5,
+        pattern=AttackPattern.HOMING,
+        wall_collide=True,
+        pierce=False,
+        draw=("circle",),
+        pattern_config={
+            "speed": 4.5,
+            "distance": TILE * 10,
+            "turn_rate": 6.0,
+            "acquire_cone": 90,
+            "size": 5,
+        },
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="spirit_blade",
-    name="Spirit Blade",
-    damage=12,
-    cooldown=45,
-    color=(100, 255, 180),
-    knockback=4,
-    pattern=AttackPattern.SPIRAL,
-    wall_collide=False,
-    pierce=True,
-    draw=("line", 12, 3),
-    pattern_config={"radius_min": TILE * 0.6, "radius_max": TILE * 2.5, "angular_speed": 10.0, "duration": 80, "size": 5},
-))
+_register(
+    WeaponDef(
+        weapon_id="spirit_blade",
+        name="Spirit Blade",
+        damage=12,
+        cooldown=45,
+        color=(100, 255, 180),
+        knockback=4,
+        pattern=AttackPattern.SPIRAL,
+        wall_collide=False,
+        pierce=True,
+        draw=("line", 12, 3),
+        pattern_config={
+            "radius_min": TILE * 0.6,
+            "radius_max": TILE * 2.5,
+            "angular_speed": 10.0,
+            "duration": 80,
+            "size": 5,
+        },
+    )
+)
 
-_register(WeaponDef(
-    weapon_id="ancient_staff",
-    name="Ancient Staff",
-    damage=35,
-    cooldown=45,
-    color=(180, 120, 255),
-    knockback=8,
-    pattern=AttackPattern.LINEAR,
-    wall_collide=True,
-    pierce=True,
-    draw=("circle",),
-    pattern_config={"speed": 7.0, "distance": TILE * 10, "size": 7},
-))
+_register(
+    WeaponDef(
+        weapon_id="ancient_staff",
+        name="Ancient Staff",
+        damage=35,
+        cooldown=45,
+        color=(180, 120, 255),
+        knockback=8,
+        pattern=AttackPattern.LINEAR,
+        wall_collide=True,
+        pierce=True,
+        draw=("circle",),
+        pattern_config={"speed": 7.0, "distance": TILE * 10, "size": 7},
+    )
+)
 
 # -- Ordered default unlock list ------------------------------------------
 # The first three match the old WEAPONS[0..2] for migration purposes.

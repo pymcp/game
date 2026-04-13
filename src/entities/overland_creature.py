@@ -67,12 +67,18 @@ class OverlandCreature(Creature):
         sx = int(self.x - offset_x)
         sy = int(self.y - offset_y)
         surf_w, surf_h = screen.get_size()
-        if sx < -TILE * 4 or sx > surf_w + TILE * 4 or sy < -TILE * 4 or sy > surf_h + TILE * 4:
+        if (
+            sx < -TILE * 4
+            or sx > surf_w + TILE * 4
+            or sy < -TILE * 4
+            or sy > surf_h + TILE * 4
+        ):
             return
 
         # --- Sprite path ---
         self._ensure_animator(self.kind)
         from src.rendering.sprite_draw import sprite_draw
+
         if sprite_draw(self, screen, offset_x, offset_y, dt=1.0):
             # Rider overlay drawn procedurally on top
             if rider_color is not None:
@@ -80,12 +86,8 @@ class OverlandCreature(Creature):
                 body_h = r
                 seat_x = sx
                 seat_y = sy - body_h // 2 - 2
-                pygame.draw.rect(
-                    screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10)
-                )
-                pygame.draw.circle(
-                    screen, (240, 200, 160), (seat_x, seat_y - 14), 5
-                )
+                pygame.draw.rect(screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10))
+                pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 14), 5)
                 for side in (-1, 1):
                     pygame.draw.rect(
                         screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8)
