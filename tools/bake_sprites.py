@@ -67,13 +67,13 @@ CY: int = 48   # draw centre Y within a cell
 # Animator's auto-flip logic kicks in.
 _STANDARD_STATES: list[tuple[str, int, int, float]] = [
     # (name,  row, frames, fps)
-    ("idle",      0, 4, 4.0),
-    ("up",        1, 4, 8.0),
-    ("right",     2, 4, 8.0),
-    ("down",      3, 4, 8.0),
+    ("idle",      0, 4, 3.0),
+    ("up",        1, 4, 6.0),
+    ("right",     2, 4, 6.0),
+    ("down",      3, 4, 6.0),
     # row 4 (left) omitted here → added only when explicit art is generated
-    ("attacking", 5, 4, 8.0),
-    ("damaged",   6, 4, 4.0),
+    ("attacking", 5, 4, 6.0),
+    ("damaged",   6, 4, 3.0),
 ]
 
 
@@ -88,7 +88,7 @@ def _standard_manifest(include_left: bool = False) -> dict:
     for name, row, frames, fps in _STANDARD_STATES:
         states[name] = {"row": row, "frames": frames, "fps": fps}
     if include_left:
-        states["left"] = {"row": 4, "frames": 4, "fps": 8.0}
+        states["left"] = {"row": 4, "frames": 4, "fps": 6.0}
     return {"frame_size": [FW, FH], "states": states}
 
 

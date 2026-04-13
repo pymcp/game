@@ -262,6 +262,7 @@ def _serialize_creature(c: Creature) -> dict:
         "speed": c.speed,
         "size": c.size,
         "body_color": list(c.body_color),
+        "facing_direction": getattr(c, "facing_direction", "right"),
         "facing_right": c.facing_right,
         "home_map": _key_to_str(c.home_map),
     }
@@ -438,7 +439,11 @@ def _deserialize_creature(data: dict) -> Creature:
     c.speed = data["speed"]
     c.size = data["size"]
     c.body_color = tuple(data["body_color"])  # type: ignore[assignment]
-    c.facing_right = data.get("facing_right", True)
+    # Prefer facing_direction (new saves); fall back to facing_right (old saves)
+    if "facing_direction" in data:
+        c.facing_direction = data["facing_direction"]
+    else:
+        c.facing_right = data.get("facing_right", True)
     c.rider_id = None
     return c
 

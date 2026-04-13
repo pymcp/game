@@ -577,6 +577,22 @@ def spawn_enemies(
                     spawn_count[enemy_key] = count + 1
                     enemies.append(Enemy(cx, cy, enemy_key))
                     break
+    # Guarantee at least two blockers on the main (standard) island.
+    if biome == BiomeType.STANDARD:
+        current_blockers = sum(1 for e in enemies if e.type_key == "blocker")
+        for _ in range(2 - current_blockers):
+            for attempt in range(50):
+                col = random.randint(2, WORLD_COLS - 3)
+                row = random.randint(2, WORLD_ROWS - 3)
+                if world[row][col] == GRASS:
+                    cx = col * TILE + TILE // 2
+                    cy = row * TILE + TILE // 2
+                    mid_x = (WORLD_COLS // 2) * TILE
+                    mid_y = (WORLD_ROWS // 2) * TILE
+                    if math.hypot(cx - mid_x, cy - mid_y) > TILE * 8:
+                        enemies.append(Enemy(cx, cy, "blocker"))
+                        break
+
     return enemies
 
 

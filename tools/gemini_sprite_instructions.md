@@ -18,7 +18,7 @@ You never deviate from canvas dimensions, layout, or style rules.
 Apply these to **every** sprite you generate:
 
 1. **Pixel art** — clean hard-edged pixels, no anti-aliasing, no blur.
-2. **Transparent background** — PNG with a proper alpha channel; background pixels must be fully transparent (alpha = 0).
+2. **Single color background** — PNG with the exact color #CC33BB
 3. **No drop shadows, no outlines** unless the entity description specifically calls for them.
 4. **No UI chrome** — no borders, frames, labels, or text anywhere on the image.
 5. **Crisp colours** — limited palette, strong contrast, no gradients unless they are discretised (pixel-stepped).
@@ -46,18 +46,18 @@ Every entity sheet (enemies, creatures, pets, workers, players) uses the **same 
 | 2 | 1 | **up** | 4 | 8 | Walking / moving away from the camera |
 | 3 | 2 | **right** | 4 | 8 | Walking / moving right |
 | 4 | 3 | **down** | 4 | 8 | Walking / moving toward the camera |
-| 5 | 4 | **left** | 4 | 8 | Walking / moving left — **may be left transparent** (see below) |
+| 5 | 4 | **left** | 4 | 8 | Walking / moving left — **may be left as color #CC33BB** (see below) |
 | 6 | 5 | **attacking** | 4 | 8 | Attack pose/animation — **blank for non-combat entities** |
 | 7 | 6 | **damaged** | 4 | 4 | Hurt recoil — body slightly lightened or flashed white |
 
 ### Left-row rule
 
-The game engine **automatically mirrors the right row** when the left row is fully transparent.  
+The game engine **automatically mirrors the right row** when the left row is fully as color #CC33BB.  
 Leave row 4 blank (all alpha 0) unless the entity is asymmetric and needs distinct left-facing art.
 
 ### Blank row rule
 
-Rows 5 (attacking) and 4 (left) may be left entirely transparent.  
+Rows 5 (attacking) and 4 (left) may be left entirely as color #CC33BB.  
 The engine falls back to idle when a row is blank.
 
 ---
@@ -78,7 +78,7 @@ Centre each frame in its 96×96 cell. The entity should fill roughly 60–80% of
 | `skeleton` | Bone-white skeleton, dagger in right hand | #E8DCC8 bones, dark eye sockets |
 | `cave_spider` | Large brown hairy spider, 8 legs | #7B5B3A carapace, pale underbelly |
 | `cave_troll` | Hulking grey-green troll, stone club | #6A7A5A skin, dark club |
-| `boss` | Imposing dark-armoured warrior, crown-like horns, glowing red eyes | #1A1A2E armour, #CC2222 glow |
+| `boss` | Imposing dark-armoured diamond-shaped monster, crown-like horns, glowing red eyes | #1A1A2E armour, #CC2222 glow |
 | `stone_sentinel` | Stone-block golem, runic engravings, orange eye glow | #888880 stone, #FF6622 eyes |
 | `lava_troll` | Orange-red troll, molten cracks glowing on skin | #CC4422 skin, #FF8800 cracks |
 | `fire_imp` | Small red imp, tiny bat wings, flame halo | #CC2200 body, #FF8800 flame |
@@ -134,7 +134,7 @@ Use luminance-mapped grey tones.
 Generate **five sheets** using identical 384×672 dimensions and row layout:
 
 1. `player_base.png` — greyscale stick-figure human body
-2. `helmet_overlay.png` — **pure white** pixels showing only the helmet region; all non-helmet pixels fully transparent
+2. `helmet_overlay.png` — **pure white** pixels showing only the helmet region; all non-helmet pixels fully as color #CC33BB
 3. `chest_overlay.png` — white chest/torso armour region only
 4. `legs_overlay.png` — white legs armour region only
 5. `boots_overlay.png` — white boots region only
@@ -166,10 +166,9 @@ The engine detects new sheets automatically on the next game launch — no code 
 ## COMMON MISTAKES TO AVOID
 
 - ❌ Wrong canvas size (must be exactly **384 × 672 px**)
-- ❌ Non-transparent background (no white, no grey fill — pure alpha 0)
+- ❌ Non-transparent background (no white, no grey fill — pure color #CC33BB)
 - ❌ Frames not aligned to 96×96 grid (even a 1px offset breaks animation)
 - ❌ Anti-aliased edges (sub-pixel blending ruins the pixel-art look)
-- ❌ Missing alpha channel (save as **PNG-32** with transparency, not PNG-24)
 - ❌ Decorative text, watermarks, or UI elements on the sheet
 
 ---
@@ -181,15 +180,15 @@ Copy this template and fill in `[ENTITY KEY]` and `[DESCRIPTION]`:
 > Generate the **[ENTITY KEY]** sprite sheet.  
 > Description: [DESCRIPTION]  
 > Follow the standard 384×672 px, 7-row × 4-column, 96×96 cell layout.  
-> [Leave row 4 / row 5 transparent if not applicable.]
+> [Leave row 4 / row 5 color #CC33BB if not applicable.]
 
 **Examples:**
 
 > Generate the **slime** sprite sheet.  
 > Description: Round gelatinous green blob, two white dot eyes, no limbs.  
 > Follow the standard 384×672 px, 7-row × 4-column, 96×96 cell layout.  
-> Leave row 4 (left) transparent — the engine will auto-mirror right.  
-> Leave row 5 (attacking) transparent.
+> Leave row 4 (left) color #CC33BB — the engine will auto-mirror right.  
+> Leave row 5 (attacking) color #CC33BB.
 
 > Generate the **horse** sprite sheet.  
 > Description: Bay brown horse with animated trot cycle.  

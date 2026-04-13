@@ -62,6 +62,11 @@ class Creature:
         """Backward-compat property — True when facing right or up."""
         return self.facing_direction in ("right", "up")
 
+    @facing_right.setter
+    def facing_right(self, value: bool) -> None:
+        """Backward-compat setter — maps bool to facing_direction."""
+        self.facing_direction = "right" if value else "left"
+
     def _update_facing(self, dx: float, dy: float) -> None:
         """Set facing_direction from a movement vector using dominant axis."""
         if dx == 0 and dy == 0:

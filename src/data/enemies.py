@@ -61,7 +61,7 @@ ENEMY_TYPES = {
     },
     "blocker": {
         "environments": [EnemyEnvironment.OVERLAND],
-        "maximum": 1,
+        "maximum": 2,
         "xp": 10,
         "name": "Blocker",
         "color": (180, 25, 25),

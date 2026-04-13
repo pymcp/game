@@ -7,32 +7,32 @@
     "idle": {
       "row": 0,
       "frames": 4,
-      "fps": 4.0
+      "fps": 3.0
     },
     "up": {
       "row": 1,
       "frames": 4,
-      "fps": 8.0
+      "fps": 6.0
     },
     "right": {
       "row": 2,
       "frames": 4,
-      "fps": 8.0
+      "fps": 6.0
     },
     "down": {
       "row": 3,
       "frames": 4,
-      "fps": 8.0
+      "fps": 6.0
     },
     "attacking": {
       "row": 5,
       "frames": 4,
-      "fps": 8.0
+      "fps": 6.0
     },
     "damaged": {
       "row": 6,
       "frames": 4,
-      "fps": 4.0
+      "fps": 3.0
     }
   }
 }

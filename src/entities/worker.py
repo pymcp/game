@@ -43,6 +43,7 @@ class Worker:
         self.dest_x = self.x
         self.dest_y = self.y
         self.facing_direction: str = "right"
+        self._is_moving: bool = False
 
         self._animator: Animator | None = None
         self._animator_checked: bool = False
@@ -200,14 +201,8 @@ class Worker:
         self.x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x))
         self.y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y))
 
-        # Advance animator
-        self._ensure_animator()
-        if self._animator is not None:
-            anim_state = (
-                AnimationState.WALK if self.state == "wander" else AnimationState.IDLE
-            )
-            self._animator.set_state(anim_state)
-            self._animator.update(dt)
+        # Expose state flag for sprite_draw() — animation is advanced there.
+        self._is_moving = self.state == "wander"
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw worker sprite."""

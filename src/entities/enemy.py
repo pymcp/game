@@ -41,6 +41,8 @@ class Enemy:
         self.knockback_vx = 0.0
         self.knockback_vy = 0.0
         self.facing_direction: str = "right"
+        self._is_moving: bool = False
+        self._is_attacking: bool = False
 
         # Sprite animator — lazily initialised from SpriteRegistry on first use.
         self._animator: Animator | None = None
@@ -132,26 +134,10 @@ class Enemy:
         world_cols = len(world[0]) if world_rows > 0 else 1
         self.x = max(TILE, min((world_cols - 1) * TILE, self.x))
         self.y = max(TILE, min((world_rows - 1) * TILE, self.y))
-        # Update animator state
-        self._ensure_animator()
-        if self._animator is not None:
-            from src.rendering.animator import AnimationState
-            if self.hurt_flash > 0:
-                self._animator.set_state(AnimationState.DAMAGED)
-            elif self.state == "attack":
-                self._animator.set_state(AnimationState.ATTACKING)
-            elif self.state == "chase":
-                from src.rendering.animator import AnimationState as AS
-                dir_map = {
-                    "up": AS.UP, "down": AS.DOWN,
-                    "left": AS.LEFT, "right": AS.RIGHT,
-                }
-                self._animator.set_state(
-                    dir_map.get(self.facing_direction, AS.RIGHT)
-                )
-            else:
-                self._animator.set_state(AnimationState.IDLE)
-            self._animator.update(dt)
+
+        # Expose state flags for sprite_draw() — animation is advanced there.
+        self._is_moving = self.state == "chase"
+        self._is_attacking = self.state == "attack"
 
     def try_attack(self, px: float, py: float) -> int:
         """Try to attack player. Returns damage if successful, 0 otherwise."""
