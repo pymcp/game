@@ -177,11 +177,25 @@ class CaveEnvironment(BaseEnvironment):
         )
         cave_world[exit_row][exit_col] = CAVE_EXIT
 
-        # Spawn point a few tiles below the exit (carve it open if needed)
-        spawn_col, spawn_row = exit_col, exit_row + 4
-        spawn_row = min(spawn_row, rows - 3)
-        if cave_world[spawn_row][spawn_col] == CAVE_WALL:
-            cave_world[spawn_row][spawn_col] = GRASS
+        # Spawn point a few tiles below the exit
+        spawn_row = min(exit_row + 5, rows - 4)
+        spawn_col = exit_col
+
+        # Carve a guaranteed open corridor from exit down to spawn so the
+        # player can always reach the exit, even in dense cellular-automata caves
+        for r in range(exit_row, spawn_row + 1):
+            for dc in range(-1, 2):  # 3-tile wide corridor
+                cc = spawn_col + dc
+                if 1 <= cc < cols - 1 and cave_world[r][cc] == CAVE_WALL:
+                    cave_world[r][cc] = GRASS
+
+        # Carve a 3×3 room around the spawn so the player has room to move
+        for dr in range(-1, 2):
+            for dc in range(-1, 2):
+                rr, rc = spawn_row + dr, spawn_col + dc
+                if 1 <= rr < rows - 1 and 1 <= rc < cols - 1:
+                    if cave_world[rr][rc] == CAVE_WALL:
+                        cave_world[rr][rc] = GRASS
 
         cave_map = GameMap(cave_world, tileset=self.TILESET)
         cave_map.exit_col = exit_col
