@@ -32,6 +32,12 @@ class GameMap:
         # Town cluster cache: maps (row, col) → cluster_size for HOUSE tiles
         self.town_clusters = {}
 
+        # Sky-ladder quest state (home overland map only)
+        self.sign_texts: dict[tuple[int, int], str] = {}  # (col, row) → text
+        self.ladder_repaired: bool = False
+        self.ladder_col: int = -1
+        self.ladder_row: int = -1
+
     def get_tile(self, row: int, col: int) -> int | None:
         """Get tile ID at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:

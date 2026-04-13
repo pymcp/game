@@ -41,6 +41,7 @@ class AnimationState(Enum):
     SWIM = "swim"
     HURT = "hurt"
     MOUNTED = "mounted"
+    EXTENDING = "extending"
 
 
 class Animator:

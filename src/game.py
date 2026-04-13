@@ -49,6 +49,9 @@ from src.config import (
     PORTAL_WARP_DURATION,
     BiomeType,
     PORTAL_LAVA,
+    SIGN,
+    BROKEN_LADDER,
+    SKY_LADDER,
 )
 from src.data import (
     TILE_INFO,
@@ -241,6 +244,17 @@ class Game:
         # Set of (sx, sy) sector coordinates that contain land (grass tiles)
         self.land_sectors: set = {(0, 0)}
 
+        # Sky-ladder quest state
+        self._sky_view: dict[int, bool] = {1: False, 2: False}
+        # phase: "ascend" | "sky" | "descend" | None; progress: 0.0 → 1.0 (ticks)
+        self._sky_anim: dict[int, dict | None] = {1: None, 2: None}
+        self._sky_clouds: list[dict] = []
+        self._sector_thumbnail_cache: dict[tuple, pygame.Surface] = {}
+        # Per-player sign text popup: {text: str, timer: float (seconds)}
+        self._sign_display: dict[int, dict | None] = {1: None, 2: None}
+        # Set of (sx, sy) coords revealed by the sky view (visible on minimap even if unvisited)
+        self.sky_revealed_sectors: set = set()
+
         # Load saved state if a save file exists
         save_data = load_game()
         if save_data is not None:
@@ -250,6 +264,10 @@ class Game:
         if "overland" not in self.portal_quests:
             self._assign_portal_quest("overland")
             self._place_portal_on_map(self.maps["overland"], "overland")
+
+        # Place broken ladder + sign on the overland map (new game only)
+        if save_data is None:
+            self._place_sky_ladder_quest(self.maps["overland"])
 
     # -- death challenge ---------------------------------------------------
 
@@ -450,6 +468,151 @@ class Game:
         # Combat: flag that the sentinel has not yet been spawned
         if quest["type"] == PortalQuestType.COMBAT:
             game_map.portal_guardian_spawned = quest.get("guardian_spawned", False)
+
+    def _place_sky_ladder_quest(self, game_map: "MapScene") -> None:
+        """Place the broken ladder and sign on the overland map for a new game.
+
+        Scans outward from the map centre for a GRASS tile that has another
+        GRASS tile immediately to its left, and places SIGN there and
+        BROKEN_LADDER one tile to the right.
+        """
+        rows, cols = game_map.rows, game_map.cols
+        cx, cy = cols // 2, rows // 2
+
+        placed = False
+        for dist in range(4, min(cx, cy)):
+            for r in range(max(1, cy - dist), min(rows - 1, cy + dist + 1)):
+                for c in range(max(2, cx - dist), min(cols - 1, cx + dist + 1)):
+                    if (
+                        game_map.get_tile(r, c) == GRASS
+                        and game_map.get_tile(r, c - 1) == GRASS
+                    ):
+                        sign_col, sign_row = c - 1, r
+                        ladder_col, ladder_row = c, r
+                        game_map.set_tile(sign_row, sign_col, SIGN)
+                        game_map.set_tile(ladder_row, ladder_col, BROKEN_LADDER)
+                        raw = object.__getattribute__(game_map, "map")
+                        raw.sign_texts[(sign_col, sign_row)] = (
+                            "This old ladder once reached the sky.\n"
+                            "Repair it with:\n"
+                            "  \u2022 30 Diamond\n"
+                            "  \u2022 30 Stone\n"
+                            "  \u2022 30 Wood"
+                        )
+                        raw.ladder_repaired = False
+                        raw.ladder_col = ladder_col
+                        raw.ladder_row = ladder_row
+                        placed = True
+                        break
+                if placed:
+                    break
+            if placed:
+                break
+
+    # ------------------------------------------------------------------
+    # Sky-view helpers
+    # ------------------------------------------------------------------
+
+    # Ladder repair cost
+    _SKY_LADDER_COST: dict[str, int] = {
+        "Diamond": 30,
+        "Stone": 30,
+        "Wood": 30,
+    }
+
+    def _enter_sky_view(self, player: Player) -> None:
+        """Begin the ascend animation for *player*, then show the sky view."""
+        pid = player.player_id
+        self._sky_view[pid] = True
+        self._sky_anim[pid] = {"phase": "ascend", "progress": 0.0}
+        self._reveal_sky_sectors(player)
+        if not self._sky_clouds:
+            self._init_sky_clouds()
+
+    def _exit_sky_view(self, player: Player) -> None:
+        """Begin the descend animation for *player*, closing the sky view."""
+        pid = player.player_id
+        anim = self._sky_anim[pid]
+        if anim is not None and anim["phase"] == "sky":
+            # Transition to descend
+            self._sky_anim[pid] = {"phase": "descend", "progress": 0.0}
+        else:
+            # Already animating — skip straight to closed
+            self._sky_view[pid] = False
+            self._sky_anim[pid] = None
+
+    def _reveal_sky_sectors(self, player: Player) -> None:
+        """Reveal a 5-sector radius around the player's current sector.
+
+        Land sectors within that radius are generated immediately so
+        that thumbnails can be built.  Ocean sectors are revealed in
+        the minimap but not materialised (they need no entities).
+        """
+        sector = self._get_player_sector(player)
+        if sector is None:
+            return
+        cx, cy = sector
+        RADIUS = 5
+        for dx in range(-RADIUS, RADIUS + 1):
+            for dy in range(-RADIUS, RADIUS + 1):
+                sx, sy = cx + dx, cy + dy
+                self.sky_revealed_sectors.add((sx, sy))
+                key = ("sector", sx, sy)
+                if key not in self.maps:
+                    # Generate the sector map (needed for thumbnail + entity spawning)
+                    world_data, has_island, biome = generate_ocean_sector(sx, sy, self.world_seed)
+                    sector_map = GameMap(world_data, tileset="overland")
+                    sector_map.biome = biome
+                    sector_map.enemies = spawn_enemies(world_data, biome)
+                    scene = MapScene(sector_map)
+                    self.maps[key] = scene
+                    if has_island:
+                        self.land_sectors.add((sx, sy))
+                        if key not in self.portal_quests:
+                            self._assign_portal_quest(key)
+                            self._place_portal_on_map(sector_map, key)
+                        if biome == BiomeType.STANDARD:
+                            from src.world.environments import OverlandEnvironment
+                            env = OverlandEnvironment(map_key=key)
+                            scene.creatures.extend(env.spawn_creatures(sector_map))
+
+    def _init_sky_clouds(self) -> None:
+        """Populate the cloud layer with 8 randomly positioned cloud instances."""
+        self._sky_clouds = []
+        from src.rendering.registry import SpriteRegistry
+        reg = SpriteRegistry.get_instance()
+        cloud_entry = reg.get("cloud")
+        n_frames = cloud_entry[1]["states"]["idle"]["frames"] if cloud_entry else 4
+        for i in range(8):
+            self._sky_clouds.append({
+                "x": float(random.randint(0, 1920)),
+                "y": float(random.randint(50, 900)),
+                "speed": random.uniform(0.15, 0.45),
+                "alpha": random.randint(70, 130),
+                "frame": random.randint(0, n_frames - 1),
+                "frame_timer": random.uniform(0.0, 2000.0),
+            })
+
+    def _generate_sector_thumbnail(self, sx: int, sy: int) -> pygame.Surface | None:
+        """Return (or build) an 80×60 thumbnail Surface for sector (sx, sy).
+
+        Each pixel represents one tile, coloured by TILE_INFO.
+        Returns None if the sector map is not yet loaded.
+        """
+        key = ("sector", sx, sy)
+        if key in self._sector_thumbnail_cache:
+            return self._sector_thumbnail_cache[key]
+        scene = self.maps.get(key)
+        if scene is None:
+            return None
+        thumb = pygame.Surface((scene.cols, scene.rows))
+        for r in range(scene.rows):
+            for c in range(scene.cols):
+                tid = scene.get_tile(r, c)
+                color = TILE_INFO.get(tid, {}).get("color", (50, 50, 50))
+                thumb.set_at((c, r), color)
+        self._sector_thumbnail_cache[key] = thumb
+        return thumb
 
     def _check_portal_restored(self, map_key: str | tuple) -> bool:
         """Evaluate whether a portal quest is complete and restore if so.
@@ -948,6 +1111,11 @@ class Game:
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
 
+        # 3.6 Sky-view exit — takes priority over everything else
+        if self._sky_view[pid]:
+            self._exit_sky_view(player)
+            return
+
         # 0. Enter housing environment — stand ON a HOUSE tile on any surface map
         if (
             current_map_obj.tileset == "overland"
@@ -1152,6 +1320,58 @@ class Game:
                 ty = rr * TILE + TILE // 2
                 self._open_treasure_chest(player, tx, ty)
                 return
+
+        # 4.4 Adjacent SIGN — read its text
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == SIGN:
+                    raw = object.__getattribute__(current_map_obj, "map")
+                    text = raw.sign_texts.get((cc, rr), "...")
+                    self._sign_display[pid] = {"text": text, "timer": 6.0}
+                    return
+
+        # 4.45 Adjacent BROKEN_LADDER — repair if player has materials
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == BROKEN_LADDER:
+                    tx = cc * TILE + TILE // 2
+                    ty = rr * TILE + TILE // 2
+                    if all(
+                        player.inventory.get(item, 0) >= qty
+                        for item, qty in self._SKY_LADDER_COST.items()
+                    ):
+                        for item, qty in self._SKY_LADDER_COST.items():
+                            player.inventory[item] -= qty
+                        current_map_obj.set_tile(rr, cc, SKY_LADDER)
+                        raw = object.__getattribute__(current_map_obj, "map")
+                        raw.ladder_repaired = True
+                        self.floats.append(FloatingText(
+                            tx, ty - 36,
+                            "Ladder repaired!", (120, 220, 80),
+                            player.current_map,
+                        ))
+                        for _ in range(14):
+                            self.particles.append(Particle(tx, ty, (200, 180, 80), player.current_map))
+                    else:
+                        needs = ", ".join(
+                            f"{qty} {item}" for item, qty in self._SKY_LADDER_COST.items()
+                        )
+                        self.floats.append(FloatingText(
+                            tx, ty - 30,
+                            f"Need: {needs}", (255, 120, 80),
+                            player.current_map,
+                        ))
+                    return
+
+        # 4.46 Adjacent SKY_LADDER — ascend to sky view
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == SKY_LADDER:
+                    self._enter_sky_view(player)
+                    return
 
         # 4.5. Adjacent ANCIENT_STONE — ritual quest progress (surface maps only)
         if current_map_obj.tileset == "overland":
@@ -2038,8 +2258,8 @@ class Game:
             "Stone": 50,
             "Iron": 30,
             "Gold": 20,
-            "Diamond": 10,
-            "Wood": 20,
+            "Diamond": 30,
+            "Wood": 30,
             "Dirt": 40,
             "Coral": 20,
             "Ancient Stone": 10,
@@ -2938,6 +3158,29 @@ class Game:
             self.portal_warp[pid]["progress"] += dt / PORTAL_WARP_DURATION
             if self.portal_warp[pid]["progress"] >= 1.0:
                 del self.portal_warp[pid]
+        # -- Sky-view animation tick ---------------------------------------
+        _SKY_ANIM_DURATION = 120.0  # frames at dt=1 (≈2 s at 60 fps)
+        for pid in (1, 2):
+            anim = self._sky_anim[pid]
+            if anim is None:
+                continue
+            anim["progress"] += dt / _SKY_ANIM_DURATION
+            if anim["phase"] == "ascend" and anim["progress"] >= 1.0:
+                anim["phase"] = "sky"
+                anim["progress"] = 0.0
+            elif anim["phase"] == "descend" and anim["progress"] >= 1.0:
+                self._sky_view[pid] = False
+                self._sky_anim[pid] = None
+        # -- Sign display timer tick ---------------------------------------
+        for pid in (1, 2):
+            disp = self._sign_display[pid]
+            if disp is not None:
+                disp["timer"] -= dt / 60.0  # dt≈1 at 60fps → decrement ~1/60 s
+                if disp["timer"] <= 0:
+                    self._sign_display[pid] = None
+        # -- Cloud drift tick ---------------------------------------------
+        for cloud in self._sky_clouds:
+            cloud["x"] += cloud["speed"] * dt
         # ----------------------------------------------------------------
 
         # -- Sector transitions for on-boat players -----------------------
@@ -3612,6 +3855,14 @@ class Game:
         """Draw a single player's viewport."""
         self.screen.set_clip(pygame.Rect(screen_x, screen_y, view_w, view_h))
 
+        pid = player.player_id
+
+        # Sky-view overlay replaces the normal world render
+        if self._sky_view[pid]:
+            self._draw_sky_view(player, screen_x, screen_y, view_w, view_h)
+            self.screen.set_clip(None)
+            return
+
         # Get the map the player is currently on
         current_map = self.get_player_current_map(player)
         if current_map is None:
@@ -4178,6 +4429,8 @@ class Game:
                     pygame.draw.line(
                         self.screen, etch_c, (sx + 8, sy + 16), (sx + 24, sy + 16), 1
                     )
+                elif tid in (SIGN, BROKEN_LADDER, SKY_LADDER):
+                    self._draw_world_tile_sprite(tid, sx, sy, ticks)
         # Draw all entities that belong to this scene
         scene = self.maps.get(player.current_map)
         if scene is not None:
@@ -4473,9 +4726,45 @@ class Game:
                     hint_x = screen_x + view_w // 2 - hint.get_width() // 2
                     hint_y = screen_y + view_h - 150
                     self.screen.blit(hint, (hint_x, hint_y))
+            elif any(
+                current_map_obj.get_tile(p_row + dr, p_col + dc) == SIGN
+                for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+            ):
+                hint = font_tiny.render(
+                    f"[{interact_key}] Read sign", True, (230, 200, 120)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
+            elif any(
+                current_map_obj.get_tile(p_row + dr, p_col + dc) == BROKEN_LADDER
+                for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+            ):
+                hint = font_tiny.render(
+                    f"[{interact_key}] Repair ladder", True, (200, 160, 90)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
+            elif any(
+                current_map_obj.get_tile(p_row + dr, p_col + dc) == SKY_LADDER
+                for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+            ):
+                hint = font_tiny.render(
+                    f"[{interact_key}] Ascend to sky", True, (140, 200, 255)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
 
         # Sector minimap (top-right corner)
         self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
+
+        # Sign text panel
+        self._draw_sign_display(player, screen_x, screen_y, view_w, view_h)
+
+        # Sky-ladder ascend/descend flash overlay
+        self._draw_sky_anim_overlay(player, screen_x, screen_y, view_w, view_h)
 
     def _draw_sector_minimap(
         self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
@@ -4538,10 +4827,20 @@ class Game:
                         }.get(biome, (50, 110, 50))
                     else:
                         color = (35, 55, 110)  # visited ocean — dark navy
+                elif (sx, sy) in self.sky_revealed_sectors:
+                    # Seen from sky but never visited on foot — lighter fog tint
+                    if (sx, sy) in self.land_sectors:
+                        color = (30, 65, 30)   # dim green land
+                    else:
+                        color = (20, 30, 60)   # dim ocean
                 else:
                     color = (25, 25, 35)  # fog / unvisited
 
                 pygame.draw.rect(self.screen, color, (cell_x, cell_y, CELL, CELL))
+
+                # Sky-revealed (but not foot-visited) land cells get a sky-blue tint border
+                if (sx, sy) in self.sky_revealed_sectors and (sx, sy) not in self.visited_sectors:
+                    pygame.draw.rect(self.screen, (60, 100, 160), (cell_x, cell_y, CELL, CELL), 1)
 
                 # Highlight current sector with a bright border
                 if sx == cx and sy == cy:
@@ -4555,6 +4854,231 @@ class Game:
         dot_x = panel_x + 4 + centre_col * (CELL + GAP) + CELL // 2
         dot_y = grid_top + centre_row * (CELL + GAP) + CELL // 2
         pygame.draw.circle(self.screen, (255, 255, 255), (dot_x, dot_y), 2)
+
+    # ------------------------------------------------------------------
+    # World tile sprite rendering (SIGN / BROKEN_LADDER / SKY_LADDER)
+    # ------------------------------------------------------------------
+
+    # Maps tile ID → (sprite_name, frame_w, frame_h) for above-tile sprites
+    _TILE_SPRITE_NAMES: dict[int, str] = {}   # populated lazily
+
+    def _draw_world_tile_sprite(self, tid: int, sx: int, sy: int, ticks: int) -> None:
+        """Draw a world-object sprite (sign, ladder) over the tile base rectangle.
+
+        Ladders are 1-tile wide × 2-tiles tall so they are drawn offset upward.
+        """
+        from src.rendering.registry import SpriteRegistry
+        from src.rendering.animator import AnimationState
+        names = {
+            SIGN:          ("sign",           32, 32),
+            BROKEN_LADDER: ("broken_ladder",  32, 64),
+            SKY_LADDER:    ("sky_ladder",     32, 64),
+        }
+        entry = names.get(tid)
+        if entry is None:
+            return
+        sprite_name, draw_w, draw_h = entry
+        data = SpriteRegistry.get_instance().get(sprite_name)
+        if data is None:
+            return
+        sheet, manifest = data
+        fw_raw, fh_raw = manifest["frame_size"]
+        state_data = manifest["states"].get("idle")
+        if state_data is None:
+            return
+        frame_surf = sheet.subsurface(pygame.Rect(0, state_data["row"] * fh_raw, fw_raw, fh_raw))
+        scaled = pygame.transform.scale(frame_surf, (draw_w, draw_h))
+        self.screen.blit(scaled, (sx, sy - (draw_h - 32)))
+
+    # ------------------------------------------------------------------
+    # Sign text popup
+    # ------------------------------------------------------------------
+
+    def _draw_sign_display(
+        self,
+        player: Player,
+        screen_x: int,
+        screen_y: int,
+        view_w: int,
+        view_h: int,
+    ) -> None:
+        """Draw the sign text panel at the bottom of player's viewport if active."""
+        pid = player.player_id
+        disp = self._sign_display[pid]
+        if disp is None:
+            return
+
+        lines = disp["text"].split("\n")
+        font = self.font_ui_sm
+        line_h = font.get_height() + 4
+        padding = 14
+        panel_h = line_h * len(lines) + padding * 2
+        panel_w = view_w - 80
+        panel_x = screen_x + 40
+        panel_y = screen_y + view_h - panel_h - 24
+
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((15, 10, 5, 210))
+        pygame.draw.rect(panel_surf, (180, 140, 70), (0, 0, panel_w, panel_h), 2, border_radius=4)
+        self.screen.blit(panel_surf, (panel_x, panel_y))
+
+        for i, line in enumerate(lines):
+            color = (230, 200, 130) if i == 0 else (210, 185, 145)
+            rendered = font.render(line, True, color)
+            self.screen.blit(rendered, (panel_x + padding, panel_y + padding + i * line_h))
+
+    # ------------------------------------------------------------------
+    # Sky-view ascend/descend overlay
+    # ------------------------------------------------------------------
+
+    def _draw_sky_anim_overlay(
+        self,
+        player: Player,
+        screen_x: int,
+        screen_y: int,
+        view_w: int,
+        view_h: int,
+    ) -> None:
+        """Draw the white flash overlay during ascend/descend animation."""
+        pid = player.player_id
+        anim = self._sky_anim[pid]
+        if anim is None or anim["phase"] == "sky":
+            return
+
+        progress = anim["progress"]   # 0.0 → 1.0
+        if anim["phase"] == "ascend":
+            # Fade from transparent to white as we ascend
+            alpha = int(progress * 255)
+        else:  # descend
+            alpha = int((1.0 - progress) * 255)
+
+        if alpha <= 0:
+            return
+        overlay = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+        overlay.fill((255, 255, 255, alpha))
+        self.screen.blit(overlay, (screen_x, screen_y))
+
+    # ------------------------------------------------------------------
+    # Sky view
+    # ------------------------------------------------------------------
+
+    def _draw_sky_view(
+        self,
+        player: Player,
+        screen_x: int,
+        screen_y: int,
+        view_w: int,
+        view_h: int,
+    ) -> None:
+        """Render the full sky-view overlay for *player*."""
+        pid = player.player_id
+
+        # --- Sky gradient background ---
+        for y in range(view_h):
+            t = y / view_h
+            r = int(30 + t * 70)
+            g = int(60 + t * 100)
+            b = int(120 + t * 100)
+            pygame.draw.line(self.screen, (r, g, b),
+                             (screen_x, screen_y + y), (screen_x + view_w, screen_y + y))
+
+        # --- Sector grid ---
+        player_sector = self._get_player_sector(player)
+        cx, cy = player_sector if player_sector is not None else (0, 0)
+
+        RADIUS = 5
+        GRID = RADIUS * 2 + 1    # 11
+        CELL_W, CELL_H = 68, 51  # px per sector cell
+        GAP = 5
+        total_w = GRID * (CELL_W + GAP) - GAP
+        total_h = GRID * (CELL_H + GAP) - GAP
+        grid_x0 = screen_x + (view_w - total_w) // 2
+        grid_y0 = screen_y + (view_h - total_h) // 2
+
+        for row in range(GRID):
+            for col in range(GRID):
+                sx_s = cx + (col - RADIUS)
+                sy_s = cy + (row - RADIUS)
+                cell_px = grid_x0 + col * (CELL_W + GAP)
+                cell_py = grid_y0 + row * (CELL_H + GAP)
+                cell_rect = pygame.Rect(cell_px, cell_py, CELL_W, CELL_H)
+
+                revealed = (
+                    (sx_s, sy_s) in self.visited_sectors
+                    or (sx_s, sy_s) in self.sky_revealed_sectors
+                )
+                is_land = (sx_s, sy_s) in self.land_sectors
+
+                if revealed and is_land:
+                    thumb = self._generate_sector_thumbnail(sx_s, sy_s)
+                    if thumb is not None:
+                        scaled_thumb = pygame.transform.scale(thumb, (CELL_W, CELL_H))
+                        self.screen.blit(scaled_thumb, (cell_px, cell_py))
+                    else:
+                        biome = get_sector_biome(self.world_seed, sx_s, sy_s)
+                        bg_c = {
+                            BiomeType.STANDARD: (50, 110, 50),
+                            BiomeType.TUNDRA: (120, 180, 220),
+                            BiomeType.VOLCANO: (200, 70, 20),
+                            BiomeType.ZOMBIE: (80, 95, 60),
+                            BiomeType.DESERT: (195, 170, 85),
+                        }.get(biome, (50, 110, 50))
+                        pygame.draw.rect(self.screen, bg_c, cell_rect)
+                elif revealed:
+                    pygame.draw.rect(self.screen, (35, 55, 110), cell_rect)
+                else:
+                    pygame.draw.rect(self.screen, (15, 15, 25), cell_rect)
+
+                # Border
+                border_c = (220, 220, 255) if (sx_s == cx and sy_s == cy) else (60, 70, 90)
+                pygame.draw.rect(self.screen, border_c, cell_rect, 1 if (sx_s != cx or sy_s != cy) else 2)
+
+        # --- Clouds ---
+        self._draw_sky_clouds(screen_x, screen_y, view_w, view_h)
+
+        # --- Header & footer ---
+        header = self.font_dc_sm.render(
+            f"Sky View  ·  Sector ({cx}, {cy})", True, (220, 235, 255)
+        )
+        self.screen.blit(header, (screen_x + view_w // 2 - header.get_width() // 2,
+                                   screen_y + 14))
+
+        interact_key = "E" if player.player_id == 1 else "5"
+        footer = self.font_ui_sm.render(
+            f"[{interact_key}] Descend", True, (180, 200, 230)
+        )
+        self.screen.blit(footer, (screen_x + view_w // 2 - footer.get_width() // 2,
+                                   screen_y + view_h - 36))
+
+        # --- Ascend/descend flash overlay on top ---
+        anim = self._sky_anim[pid]
+        if anim is not None and anim["phase"] != "sky":
+            self._draw_sky_anim_overlay(player, screen_x, screen_y, view_w, view_h)
+
+    def _draw_sky_clouds(
+        self,
+        screen_x: int,
+        screen_y: int,
+        view_w: int,
+        view_h: int,
+    ) -> None:
+        """Blit drifting translucent cloud sprites over the sky view."""
+        from src.rendering.registry import SpriteRegistry
+        data = SpriteRegistry.get_instance().get("cloud")
+        if data is None:
+            return
+        sheet, manifest = data
+        fw, fh = manifest["frame_size"]
+        state_data = manifest["states"].get("idle", {})
+        n_frames = state_data.get("frames", 4)
+
+        for cloud in self._sky_clouds:
+            frame_idx = int(cloud["frame"]) % n_frames
+            frame_surf = sheet.subsurface(pygame.Rect(frame_idx * fw, 0, fw, fh)).copy()
+            frame_surf.set_alpha(cloud["alpha"])
+            cx = screen_x + int(cloud["x"]) % view_w
+            cy = screen_y + int(cloud["y"]) % view_h
+            self.screen.blit(frame_surf, (cx - fw // 2, cy - fh // 2))
 
     def _open_treasure_chest(self, player: Player, tx: int, ty: int) -> None:
         """Award loot from a treasure chest, spawn particles, and queue a reveal popup."""

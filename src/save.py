@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 8
+SAVE_VERSION = 9
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +160,16 @@ def _serialize_map(game_map: "GameMap | MapScene") -> dict:
             f"{c}:{r}": (_key_to_str(v) if v is not None else None)
             for (c, r), v in raw.portal_exits.items()
         }
+    # Sky-ladder quest data (overland map only)
+    if getattr(raw, "sign_texts", {}):
+        data["sign_texts"] = {
+            f"{c}:{r}": text for (c, r), text in raw.sign_texts.items()
+        }
+    if getattr(raw, "ladder_repaired", False):
+        data["ladder_repaired"] = raw.ladder_repaired
+    if getattr(raw, "ladder_col", -1) >= 0:
+        data["ladder_col"] = raw.ladder_col
+        data["ladder_row"] = raw.ladder_row
     return data
 
 
@@ -298,6 +308,15 @@ def _deserialize_map(data: dict) -> MapScene:
             game_map.portal_exits[(int(col), int(row))] = (
                 _str_to_key(v) if v is not None else None
             )
+    # Sky-ladder quest data
+    if "sign_texts" in data:
+        game_map.sign_texts = {
+            (int(k.split(":")[0]), int(k.split(":")[1])): v
+            for k, v in data["sign_texts"].items()
+        }
+    game_map.ladder_repaired = data.get("ladder_repaired", False)
+    game_map.ladder_col = data.get("ladder_col", -1)
+    game_map.ladder_row = data.get("ladder_row", -1)
     # Wrap in a MapScene (enemies are transferred during __init__)
     scene = MapScene(game_map)
     # Restore per-scene entities
@@ -460,6 +479,7 @@ def save_game(game: "Game") -> None:
         ],
         "visited_sectors": [list(s) for s in game.visited_sectors],
         "land_sectors": [list(s) for s in game.land_sectors],
+        "sky_revealed_sectors": [list(s) for s in game.sky_revealed_sectors],
         "portal_quests": {
             _key_to_str(k): {**v, "type": v["type"].value}
             for k, v in game.portal_quests.items()
@@ -510,6 +530,7 @@ def apply_save(game: "Game", data: dict) -> None:
     # Visited sectors
     game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}
     game.land_sectors = {tuple(s) for s in data.get("land_sectors", [[0, 0]])}
+    game.sky_revealed_sectors = {tuple(s) for s in data.get("sky_revealed_sectors", [])}
 
     # Portal quest state
     raw_quests = data.get("portal_quests", {})

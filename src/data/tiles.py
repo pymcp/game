@@ -53,6 +53,9 @@ from src.config import (
     CACTUS_TILE,
     VOID_ORE,
     PORTAL_LAVA,
+    SIGN,
+    BROKEN_LADDER,
+    SKY_LADDER,
 )
 
 TILE_INFO = {
@@ -476,6 +479,31 @@ TILE_INFO = {
         "drop": None,
         "drop_color": None,
     },
+    # --- Sky Ladder quest objects ---
+    SIGN: {
+        "name": "Sign",
+        "color": (160, 110, 55),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    BROKEN_LADDER: {
+        "name": "Broken Ladder",
+        "color": (110, 85, 55),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    SKY_LADDER: {
+        "name": "Sky Ladder",
+        "color": (200, 170, 90),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
 }
 
 BLOCKING_TILES = (
@@ -491,4 +519,6 @@ BLOCKING_TILES = (
     MAGMA_STONE,
     RUINS_WALL,
     SANDSTONE,
+    BROKEN_LADDER,
+    SKY_LADDER,
 )
