@@ -42,6 +42,7 @@ from src.config import (
     PIER_BUILD_COST,
     BOAT_BUILD_COST,
     SECTOR_WIPE_DURATION,
+    PORTAL_WARP_DURATION,
 )
 from src.data import (
     TILE_INFO,
@@ -181,6 +182,8 @@ class Game:
         self.maps[("sector", 0, 0)] = self.maps["overland"]
         # Sector-wipe animation state: {player_id: {"progress": float, "direction": str}}
         self.sector_wipe = {}
+        # Portal-warp vortex animation state: {player_id: {"progress": float}}
+        self.portal_warp: dict[int, dict] = {}
         # Set of (sx, sy) sector coordinates the players have ever visited
         self.visited_sectors: set = {(0, 0)}
         # Set of (sx, sy) sector coordinates that contain land (grass tiles)
@@ -482,6 +485,7 @@ class Game:
                 return
 
         # --- Equipment menu input (takes priority over normal keys while open) ---
+        equip_consumed = False
         for player in (self.player1, self.player2):
             pid = player.player_id
             if self.equip_menus[pid] is None:
@@ -494,20 +498,26 @@ class Game:
                 # Navigating the main slot list
                 if key == up_key:
                     state["slot_idx"] = (state["slot_idx"] - 1) % num_slots
+                    equip_consumed = True
                 elif key == down_key:
                     state["slot_idx"] = (state["slot_idx"] + 1) % num_slots
+                    equip_consumed = True
                 elif key == player.controls.interact_key:
                     state["sub_idx"] = 0  # open sub-menu for this slot
+                    equip_consumed = True
                 elif key == pygame.K_ESCAPE or key == player.controls.equip_key:
                     self.equip_menus[pid] = None
+                    equip_consumed = True
             else:
                 # Navigating the sub-menu (compatible items + Unequip + Back)
                 slot_key = ARMOR_SLOT_ORDER[state["slot_idx"]]
                 options = self._equip_menu_options(player, slot_key)
                 if key == up_key:
                     state["sub_idx"] = (state["sub_idx"] - 1) % len(options)
+                    equip_consumed = True
                 elif key == down_key:
                     state["sub_idx"] = (state["sub_idx"] + 1) % len(options)
+                    equip_consumed = True
                 elif key == player.controls.interact_key:
                     chosen = options[state["sub_idx"]]
                     tx, ty = int(player.x), int(player.y) - 20
@@ -524,11 +534,15 @@ class Game:
                                 FloatingText(tx, ty, f"Equipped {chosen}!", (100, 220, 100))
                             )
                     state["sub_idx"] = None
+                    equip_consumed = True
                 elif key == pygame.K_ESCAPE:
                     state["sub_idx"] = None
+                    equip_consumed = True
+        if equip_consumed:
             return
 
         # --- Crafting menu input (takes priority over normal keys while open) ---
+        craft_consumed = False
         for player in (self.player1, self.player2):
             pid = player.player_id
             if self.craft_menus[pid] is None:
@@ -539,10 +553,10 @@ class Game:
             down_key = player.controls.move_keys["down"]
             if key == up_key:
                 self.craft_menus[pid] = (cursor - 1) % total_entries
-                return
+                craft_consumed = True
             elif key == down_key:
                 self.craft_menus[pid] = (cursor + 1) % total_entries
-                return
+                craft_consumed = True
             elif key == player.controls.interact_key:
                 if cursor < len(RECIPES):
                     recipe = RECIPES[cursor]
@@ -571,10 +585,12 @@ class Game:
                 else:
                     # "Close" entry selected
                     self.craft_menus[pid] = None
-                return
+                craft_consumed = True
             elif key == pygame.K_ESCAPE:
                 self.craft_menus[pid] = None
-                return
+                craft_consumed = True
+        if craft_consumed:
+            return
 
         if key == pygame.K_ESCAPE:
             self.running = False
@@ -1274,6 +1290,7 @@ class Game:
             player.y = realm_map.spawn_row * TILE + TILE // 2
 
         self._snap_camera_to_player(player)
+        self.portal_warp[player.player_id] = {"progress": 0.0}
         self.floats.append(
             FloatingText(
                 int(player.x),
@@ -1338,6 +1355,7 @@ class Game:
         player.current_map = dest_key
         player.portal_origin_map = None
         self._snap_camera_to_player(player)
+        self.portal_warp[player.player_id] = {"progress": 0.0}
         self.floats.append(
             FloatingText(
                 int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220)
@@ -2105,6 +2123,11 @@ class Game:
             self.sector_wipe[pid]["progress"] += dt / SECTOR_WIPE_DURATION
             if self.sector_wipe[pid]["progress"] >= 1.0:
                 del self.sector_wipe[pid]
+        # -- Portal-warp animation tick ------------------------------------
+        for pid in list(self.portal_warp.keys()):
+            self.portal_warp[pid]["progress"] += dt / PORTAL_WARP_DURATION
+            if self.portal_warp[pid]["progress"] >= 1.0:
+                del self.portal_warp[pid]
         # ----------------------------------------------------------------
 
         # -- Sector transitions for on-boat players -----------------------
@@ -2372,6 +2395,100 @@ class Game:
                 target_player.take_damage(dmg, self.particles, self.floats, target_player.current_map)
                 if target_player.hp <= 0 and not target_player.is_dead:
                     self._start_death_challenge(target_player)
+
+    def _draw_portal_warp_viewport(
+        self,
+        screen_x: int,
+        screen_y: int,
+        view_w: int,
+        view_h: int,
+        progress: float,
+    ) -> None:
+        """Spinning-vortex warp effect for portal transitions.
+
+        Timeline (progress 0→1 over PORTAL_WARP_DURATION seconds):
+          0.0 – 0.5 : Dark overlay and 8 purple blades spiral inward, spinning faster.
+          0.5        : Peak — bright white-purple flash.
+          0.5 – 1.0 : Blades unwind and fade out; overlay lifts.
+        """
+        import math
+
+        cx = screen_x + view_w // 2
+        cy = screen_y + view_h // 2
+        # Radius large enough to cover every viewport corner
+        radius = int(math.hypot(view_w / 2, view_h / 2)) + 4
+
+        t = progress  # 0 → 1
+
+        # --- Dark overlay (alpha peaks at midpoint) ---
+        overlay_alpha = int(210 * math.sin(t * math.pi))
+        overlay_alpha = max(0, min(255, overlay_alpha))
+        if overlay_alpha > 0:
+            overlay = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+            overlay.fill((10, 0, 20, overlay_alpha))
+            self.screen.blit(overlay, (screen_x, screen_y))
+
+        # --- Spinning blades ---
+        num_blades = 8
+        blade_arc = math.pi / num_blades  # each blade subtends this angle
+        # 3 full counter-clockwise spins across the whole animation
+        base_angle = -t * 3 * 2 * math.pi
+
+        blade_alpha = int(230 * math.sin(t * math.pi))
+        blade_alpha = max(0, min(255, blade_alpha))
+
+        if blade_alpha > 0:
+            blade_surf = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+            for i in range(num_blades):
+                a0 = base_angle + i * (2 * math.pi / num_blades)
+                a1 = a0 + blade_arc
+                # Lerp radius: blades grow from 0 → full in first half, shrink back in second
+                reach = radius * math.sin(t * math.pi)
+                local_cx = cx - screen_x
+                local_cy = cy - screen_y
+                pts = [
+                    (local_cx, local_cy),
+                    (
+                        local_cx + reach * math.cos(a0),
+                        local_cy + reach * math.sin(a0),
+                    ),
+                    (
+                        local_cx + reach * math.cos((a0 + a1) / 2) * 1.05,
+                        local_cy + reach * math.sin((a0 + a1) / 2) * 1.05,
+                    ),
+                    (
+                        local_cx + reach * math.cos(a1),
+                        local_cy + reach * math.sin(a1),
+                    ),
+                ]
+                # Alternate purple and cyan blades
+                if i % 2 == 0:
+                    color = (140, 30, 220, blade_alpha)
+                else:
+                    color = (30, 180, 220, blade_alpha)
+                pygame.draw.polygon(blade_surf, color, pts)
+            self.screen.blit(blade_surf, (screen_x, screen_y))
+
+        # --- Central glow circle ---
+        glow_radius = int(radius * 0.18 * math.sin(t * math.pi))
+        if glow_radius > 1:
+            glow_surf = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+            glow_alpha = int(200 * math.sin(t * math.pi))
+            pygame.draw.circle(
+                glow_surf,
+                (200, 140, 255, glow_alpha),
+                (cx - screen_x, cy - screen_y),
+                glow_radius,
+            )
+            self.screen.blit(glow_surf, (screen_x, screen_y))
+
+        # --- White flash spike at midpoint ---
+        flash_alpha = int(255 * max(0.0, 1.0 - abs(t - 0.5) / 0.08))
+        flash_alpha = max(0, min(255, flash_alpha))
+        if flash_alpha > 0:
+            flash = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+            flash.fill((255, 230, 255, flash_alpha))
+            self.screen.blit(flash, (screen_x, screen_y))
 
     def _draw_sector_wipe_viewport(
         self, screen_x: int, screen_y: int, view_w: int, view_h: int, progress: float
@@ -3187,6 +3304,13 @@ class Game:
         if wipe_state:
             self._draw_sector_wipe_viewport(
                 screen_x, screen_y, view_w, view_h, wipe_state["progress"]
+            )
+
+        # Portal-warp vortex overlay (drawn on top of sector wipe)
+        warp_state = self.portal_warp.get(player.player_id)
+        if warp_state:
+            self._draw_portal_warp_viewport(
+                screen_x, screen_y, view_w, view_h, warp_state["progress"]
             )
 
         self.screen.set_clip(None)

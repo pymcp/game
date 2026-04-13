@@ -63,4 +63,5 @@ PIER_BUILD_COST = 5  # Wood required to build a pier
 BOAT_BUILD_COST = 1  # Wood required to build a boat (+ 1 Sail)
 SCUBA_BUILD_COST = 5  # Wood required to craft Scuba Gear at a house
 SECTOR_WIPE_DURATION = 0.5  # Seconds for the edge-crossing scroll wipe
+PORTAL_WARP_DURATION = 2.5  # Seconds for the portal vortex warp effect
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island

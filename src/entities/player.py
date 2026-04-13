@@ -516,6 +516,12 @@ class Player:
 
     # -- drawing -----------------------------------------------------------
 
+    def _facing_dir(self) -> str:
+        """Reduce the continuous facing vector to one of four cardinal directions."""
+        if abs(self.facing_dy) >= abs(self.facing_dx):
+            return "down" if self.facing_dy >= 0 else "up"
+        return "left" if self.facing_dx < 0 else "right"
+
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw player sprite."""
         psx = int(self.x - cam_x)
@@ -534,49 +540,148 @@ class Player:
     def _draw_normal(
         self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]
     ) -> None:
-        """Draw the standard standing player with any equipped armor overlays."""
-        # Determine chest color: armor replaces the body color if equipped
+        """Draw the player facing the correct cardinal direction with directional armor."""
+        facing = self._facing_dir()
+        skin: tuple[int, int, int] = (240, 200, 160)
+        pick_color: tuple[int, int, int] = PICKAXES[self.pick_level]["color"]
+
         chest_item = self.equipment.get("chest")
-        if chest_item and chest_item in ARMOR_PIECES:
-            torso_color = ARMOR_PIECES[chest_item]["color"]
-        else:
-            torso_color = body_color
-
-        # Body (torso)
-        pygame.draw.rect(
-            surf, torso_color, (psx - 10, psy - 14, 20, 28), border_radius=4
+        torso_color: tuple[int, int, int] = (
+            ARMOR_PIECES[chest_item]["color"]
+            if chest_item and chest_item in ARMOR_PIECES
+            else body_color
         )
-
-        # Legs overlay
         legs_item = self.equipment.get("legs")
-        if legs_item and legs_item in ARMOR_PIECES:
-            pygame.draw.rect(
-                surf, ARMOR_PIECES[legs_item]["color"], (psx - 8, psy + 2, 16, 12), border_radius=2
-            )
-
-        # Boots overlay
-        boots_item = self.equipment.get("boots")
-        if boots_item and boots_item in ARMOR_PIECES:
-            bc = ARMOR_PIECES[boots_item]["color"]
-            pygame.draw.rect(surf, bc, (psx - 9, psy + 12, 8, 4), border_radius=1)
-            pygame.draw.rect(surf, bc, (psx + 1, psy + 12, 8, 4), border_radius=1)
-
-        # Head
-        pygame.draw.circle(surf, (240, 200, 160), (psx, psy - 18), 8)
-
-        # Helmet overlay
-        helmet_item = self.equipment.get("helmet")
-        if helmet_item and helmet_item in ARMOR_PIECES:
-            pygame.draw.rect(
-                surf, ARMOR_PIECES[helmet_item]["color"], (psx - 7, psy - 25, 14, 10), border_radius=3
-            )
-
-        # Pickaxe
-        pick_color = PICKAXES[self.pick_level]["color"]
-        pygame.draw.line(surf, pick_color, (psx + 10, psy - 8), (psx + 18, psy - 16), 3)
-        pygame.draw.line(
-            surf, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3
+        leg_color: tuple[int, int, int] | None = (
+            ARMOR_PIECES[legs_item]["color"]
+            if legs_item and legs_item in ARMOR_PIECES
+            else None
         )
+        boots_item = self.equipment.get("boots")
+        boot_color: tuple[int, int, int] | None = (
+            ARMOR_PIECES[boots_item]["color"]
+            if boots_item and boots_item in ARMOR_PIECES
+            else None
+        )
+        helmet_item = self.equipment.get("helmet")
+        helm_color: tuple[int, int, int] | None = (
+            ARMOR_PIECES[helmet_item]["color"]
+            if helmet_item and helmet_item in ARMOR_PIECES
+            else None
+        )
+        lc: tuple[int, int, int] = leg_color if leg_color is not None else body_color
+
+        if facing == "down":
+            # --- FRONT (facing toward viewer) ---
+            # Arms
+            pygame.draw.rect(surf, body_color, (psx - 16, psy - 12, 6, 18), border_radius=2)
+            pygame.draw.rect(surf, body_color, (psx + 10, psy - 12, 6, 18), border_radius=2)
+            # Torso
+            pygame.draw.rect(surf, torso_color, (psx - 10, psy - 14, 20, 24), border_radius=4)
+            # Chest front accent line
+            if chest_item and chest_item in ARMOR_PIECES:
+                ac = (max(0, torso_color[0] - 50), max(0, torso_color[1] - 50), max(0, torso_color[2] - 50))
+                pygame.draw.line(surf, ac, (psx, psy - 10), (psx, psy + 6), 2)
+            # Legs (separate left/right)
+            pygame.draw.rect(surf, lc, (psx - 9, psy + 10, 8, 14), border_radius=2)
+            pygame.draw.rect(surf, lc, (psx + 1, psy + 10, 8, 14), border_radius=2)
+            # Boots
+            if boot_color:
+                pygame.draw.rect(surf, boot_color, (psx - 10, psy + 22, 10, 5), border_radius=1)
+                pygame.draw.rect(surf, boot_color, (psx, psy + 22, 10, 5), border_radius=1)
+            # Head
+            pygame.draw.circle(surf, skin, (psx, psy - 20), 8)
+            # Eyes
+            pygame.draw.circle(surf, (60, 35, 20), (psx - 3, psy - 21), 2)
+            pygame.draw.circle(surf, (60, 35, 20), (psx + 3, psy - 21), 2)
+            # Helmet — front with visor strip
+            if helm_color:
+                pygame.draw.rect(surf, helm_color, (psx - 8, psy - 29, 16, 11), border_radius=3)
+                visor = (max(0, helm_color[0] - 70), max(0, helm_color[1] - 70), max(0, helm_color[2] - 70))
+                pygame.draw.rect(surf, visor, (psx - 6, psy - 21, 12, 4), border_radius=1)
+            # Pickaxe (right side)
+            pygame.draw.line(surf, pick_color, (psx + 16, psy - 8), (psx + 24, psy - 16), 3)
+            pygame.draw.line(surf, pick_color, (psx + 21, psy - 19), (psx + 27, psy - 13), 3)
+
+        elif facing == "up":
+            # --- BACK (facing away from viewer) ---
+            arm_dark = (max(0, body_color[0] - 20), max(0, body_color[1] - 20), max(0, body_color[2] - 20))
+            pygame.draw.rect(surf, arm_dark, (psx - 16, psy - 12, 6, 16), border_radius=2)
+            pygame.draw.rect(surf, arm_dark, (psx + 10, psy - 12, 6, 16), border_radius=2)
+            # Torso
+            pygame.draw.rect(surf, torso_color, (psx - 10, psy - 14, 20, 24), border_radius=4)
+            # Legs
+            pygame.draw.rect(surf, lc, (psx - 9, psy + 10, 8, 14), border_radius=2)
+            pygame.draw.rect(surf, lc, (psx + 1, psy + 10, 8, 14), border_radius=2)
+            # Boots
+            if boot_color:
+                pygame.draw.rect(surf, boot_color, (psx - 10, psy + 22, 10, 5), border_radius=1)
+                pygame.draw.rect(surf, boot_color, (psx, psy + 22, 10, 5), border_radius=1)
+            # Head (back — hair tuft, no eyes)
+            pygame.draw.circle(surf, skin, (psx, psy - 20), 8)
+            pygame.draw.rect(surf, (90, 55, 25), (psx - 5, psy - 28, 10, 6), border_radius=2)
+            # Helmet — back cap, no visor
+            if helm_color:
+                pygame.draw.rect(surf, helm_color, (psx - 8, psy - 29, 16, 11), border_radius=3)
+            # Pickaxe (trailing left side)
+            pygame.draw.line(surf, pick_color, (psx - 16, psy - 8), (psx - 24, psy - 16), 3)
+            pygame.draw.line(surf, pick_color, (psx - 21, psy - 19), (psx - 27, psy - 13), 3)
+
+        elif facing == "right":
+            # --- RIGHT PROFILE ---
+            # Back arm (darker, behind torso)
+            back_arm = (max(0, body_color[0] - 30), max(0, body_color[1] - 30), max(0, body_color[2] - 30))
+            pygame.draw.rect(surf, back_arm, (psx - 14, psy - 10, 5, 14), border_radius=2)
+            # Torso (narrower side profile)
+            pygame.draw.rect(surf, torso_color, (psx - 6, psy - 14, 14, 24), border_radius=3)
+            # Back leg (darker) then front leg on top
+            dark_lc = (max(0, lc[0] - 35), max(0, lc[1] - 35), max(0, lc[2] - 35))
+            pygame.draw.rect(surf, dark_lc, (psx - 5, psy + 10, 7, 12), border_radius=2)
+            pygame.draw.rect(surf, lc, (psx - 1, psy + 10, 7, 12), border_radius=2)
+            # Boot (forward foot)
+            if boot_color:
+                pygame.draw.rect(surf, boot_color, (psx - 2, psy + 20, 12, 5), border_radius=1)
+            # Front arm (on top)
+            pygame.draw.rect(surf, body_color, (psx + 8, psy - 12, 6, 18), border_radius=2)
+            # Head (shifted right)
+            pygame.draw.circle(surf, skin, (psx + 2, psy - 20), 8)
+            pygame.draw.circle(surf, (60, 35, 20), (psx + 5, psy - 21), 2)
+            # Helmet — side profile with forward nub
+            if helm_color:
+                pygame.draw.rect(surf, helm_color, (psx - 5, psy - 29, 15, 11), border_radius=3)
+                nub = (max(0, helm_color[0] - 60), max(0, helm_color[1] - 60), max(0, helm_color[2] - 60))
+                pygame.draw.rect(surf, nub, (psx + 9, psy - 23, 3, 5), border_radius=1)
+            # Pickaxe (forward)
+            pygame.draw.line(surf, pick_color, (psx + 14, psy - 10), (psx + 22, psy - 18), 3)
+            pygame.draw.line(surf, pick_color, (psx + 19, psy - 21), (psx + 25, psy - 15), 3)
+
+        else:  # left
+            # --- LEFT PROFILE ---
+            # Back arm (darker, behind torso)
+            back_arm = (max(0, body_color[0] - 30), max(0, body_color[1] - 30), max(0, body_color[2] - 30))
+            pygame.draw.rect(surf, back_arm, (psx + 9, psy - 10, 5, 14), border_radius=2)
+            # Torso (narrower side profile)
+            pygame.draw.rect(surf, torso_color, (psx - 8, psy - 14, 14, 24), border_radius=3)
+            # Back leg (darker) then front leg on top
+            dark_lc = (max(0, lc[0] - 35), max(0, lc[1] - 35), max(0, lc[2] - 35))
+            pygame.draw.rect(surf, dark_lc, (psx - 2, psy + 10, 7, 12), border_radius=2)
+            pygame.draw.rect(surf, lc, (psx - 6, psy + 10, 7, 12), border_radius=2)
+            # Boot (forward foot)
+            if boot_color:
+                pygame.draw.rect(surf, boot_color, (psx - 10, psy + 20, 12, 5), border_radius=1)
+            # Front arm (on top)
+            pygame.draw.rect(surf, body_color, (psx - 14, psy - 12, 6, 18), border_radius=2)
+            # Head (shifted left)
+            pygame.draw.circle(surf, skin, (psx - 2, psy - 20), 8)
+            pygame.draw.circle(surf, (60, 35, 20), (psx - 5, psy - 21), 2)
+            # Helmet — side profile with forward nub
+            if helm_color:
+                pygame.draw.rect(surf, helm_color, (psx - 10, psy - 29, 15, 11), border_radius=3)
+                nub = (max(0, helm_color[0] - 60), max(0, helm_color[1] - 60), max(0, helm_color[2] - 60))
+                pygame.draw.rect(surf, nub, (psx - 12, psy - 23, 3, 5), border_radius=1)
+            # Pickaxe (forward)
+            pygame.draw.line(surf, pick_color, (psx - 14, psy - 10), (psx - 22, psy - 18), 3)
+            pygame.draw.line(surf, pick_color, (psx - 19, psy - 21), (psx - 25, psy - 15), 3)
 
     def _draw_on_boat(
         self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]
