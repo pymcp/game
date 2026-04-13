@@ -514,34 +514,84 @@ class Game:
                         2,
                     )
                 elif tid == MOUNTAIN:
-                    pygame.draw.polygon(
-                        self.screen,
-                        (110, 100, 90),
-                        [
-                            (sx + 4, sy + TILE),
-                            (sx + 16, sy + 2),
-                            (sx + TILE - 4, sy + TILE),
-                        ],
+                    # Check if this is part of a 2x2 mountain group
+                    is_2x2 = (
+                        c + 1 < WORLD_COLS and r + 1 < WORLD_ROWS and
+                        self.world[r][c] == MOUNTAIN and
+                        self.world[r][c + 1] == MOUNTAIN and
+                        self.world[r + 1][c] == MOUNTAIN and
+                        self.world[r + 1][c + 1] == MOUNTAIN
                     )
-                    pygame.draw.polygon(
-                        self.screen,
-                        (230, 230, 240),
-                        [(sx + 12, sy + 8), (sx + 16, sy + 2), (sx + 20, sy + 8)],
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        (70, 65, 60),
-                        (sx + 10, sy + 18),
-                        (sx + 14, sy + 12),
-                        1,
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        (70, 65, 60),
-                        (sx + 20, sy + 20),
-                        (sx + 22, sy + 14),
-                        1,
-                    )
+                    
+                    if is_2x2 and c % 2 == 0 and r % 2 == 0:
+                        # Draw a large peak for 2x2 mountain groups
+                        # Peak apex centered in middle of 2x2 block
+                        peak_center_x = sx + TILE
+                        peak_center_y = sy + TILE
+                        peak_base_y = sy + TILE * 2
+                        peak_left_x = sx
+                        peak_right_x = sx + TILE * 2
+                        
+                        # Main mountain body (dark)
+                        pygame.draw.polygon(
+                            self.screen,
+                            (90, 80, 70),
+                            [
+                                (peak_left_x, peak_base_y),
+                                (peak_center_x, peak_center_y),
+                                (peak_right_x, peak_base_y),
+                            ],
+                        )
+                        # Left side shadow
+                        pygame.draw.polygon(
+                            self.screen,
+                            (70, 60, 50),
+                            [
+                                (peak_left_x, peak_base_y),
+                                (peak_center_x, peak_center_y),
+                                (peak_center_x, peak_base_y),
+                            ],
+                        )
+                        # Snow-capped peak
+                        pygame.draw.polygon(
+                            self.screen,
+                            (240, 245, 255),
+                            [
+                                (peak_center_x - 6, peak_center_y + 8),
+                                (peak_center_x, peak_center_y),
+                                (peak_center_x + 6, peak_center_y + 8),
+                            ],
+                        )
+                    else:
+                        # Draw regular small mountain triangles
+                        pygame.draw.polygon(
+                            self.screen,
+                            (110, 100, 90),
+                            [
+                                (sx + 4, sy + TILE),
+                                (sx + 16, sy + 2),
+                                (sx + TILE - 4, sy + TILE),
+                            ],
+                        )
+                        pygame.draw.polygon(
+                            self.screen,
+                            (230, 230, 240),
+                            [(sx + 12, sy + 8), (sx + 16, sy + 2), (sx + 20, sy + 8)],
+                        )
+                        pygame.draw.line(
+                            self.screen,
+                            (70, 65, 60),
+                            (sx + 10, sy + 18),
+                            (sx + 14, sy + 12),
+                            1,
+                        )
+                        pygame.draw.line(
+                            self.screen,
+                            (70, 65, 60),
+                            (sx + 20, sy + 20),
+                            (sx + 22, sy + 14),
+                            1,
+                        )
                 elif tid == HOUSE:
                     pygame.draw.rect(
                         self.screen, (180, 120, 60), (sx + 4, sy + 12, 24, 18)
