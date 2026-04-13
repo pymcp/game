@@ -13,6 +13,13 @@ VIEWPORT_H = SCREEN_H
 WORLD_COLS = 80
 WORLD_ROWS = 60
 
+# Minimum solid-wall border for enclosed maps (cave, underwater, portal realm).
+# Ensures the first walkable tile is always beyond the HUD panels:
+#   Left/Top HUD panel: ~248px wide, ~293px tall  → 10 tiles (10×32=320) clears both.
+#   Right minimap:       114px                    → 4 tiles minimum; 10 keeps symmetry.
+#   Bottom HUD:          138px                    → 5 tiles minimum; 10 keeps symmetry.
+MAP_BORDER = 10
+
 # Colors
 BG = (30, 30, 46)
 UI_BG = (20, 20, 30, 200)

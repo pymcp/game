@@ -1070,6 +1070,11 @@ class Game:
         realm_map.origin_sy -= top
         realm_map.spawn_col += add_left
         realm_map.spawn_row += add_top
+        # Track the number of slots (cols/rows // slot_size gives wrong answer with padding)
+        if hasattr(realm_map, "slot_cols"):
+            realm_map.slot_cols += left + right
+        if hasattr(realm_map, "slot_rows"):
+            realm_map.slot_rows += top + bottom
         # Shift all existing portal exit positions to match the new coordinate space
         new_exits: dict = {}
         for (col, row), mk in realm_map.portal_exits.items():
@@ -1087,10 +1092,16 @@ class Game:
 
         realm_map  = self.maps["portal_realm"]
         slot_size  = realm_map.slot_size
+        slot_pad   = getattr(realm_map, "slot_padding", 0)
         origin_sx  = realm_map.origin_sx
         origin_sy  = realm_map.origin_sy
-        cur_s_cols = realm_map.cols // slot_size
-        cur_s_rows = realm_map.rows // slot_size
+        # Number of slots in each dimension (may be tracked explicitly if padding present)
+        if hasattr(realm_map, "slot_cols"):
+            cur_s_cols = realm_map.slot_cols
+            cur_s_rows = realm_map.slot_rows
+        else:
+            cur_s_cols = realm_map.cols // slot_size
+            cur_s_rows = realm_map.rows // slot_size
 
         expand_left   = max(0, origin_sx - sx)
         expand_right  = max(0, sx - (origin_sx + cur_s_cols - 1))
@@ -1106,8 +1117,8 @@ class Game:
 
         ix = sx - origin_sx
         iy = sy - origin_sy
-        slot_col = ix * slot_size
-        slot_row = iy * slot_size
+        slot_col = slot_pad + ix * slot_size
+        slot_row = slot_pad + iy * slot_size
 
         carve_chamber(realm_map.world, slot_col, slot_row)
         _connect_regions(
@@ -1118,6 +1129,16 @@ class Game:
         portal_col = slot_col + slot_size // 2
         portal_row = slot_row + slot_size // 2
         return portal_col, portal_row
+
+    def _add_realm_chest_near(
+        self, realm_map: "GameMap", portal_col: int, portal_row: int
+    ) -> None:
+        """Place a TREASURE_CHEST on the nearest free PORTAL_FLOOR tile to the portal."""
+        for dc, dr in [(1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)]:
+            c, r = portal_col + dc, portal_row + dr
+            if realm_map.get_tile(r, c) == PORTAL_FLOOR:
+                realm_map.world[r][c] = TREASURE_CHEST
+                return
 
     def _add_realm_portal(self, dest_map_key: str | tuple) -> None:
         """Place a PORTAL_ACTIVE tile in the portal realm linking to dest_map_key.
@@ -1143,6 +1164,9 @@ class Game:
         portal_col, portal_row = self._ensure_realm_slot(sx, sy)
         realm_map.world[portal_row][portal_col] = PORTAL_ACTIVE
         realm_map.portal_exits[(portal_col, portal_row)] = dest_map_key
+
+        # Spawn a chest in the same slot, offset from the portal tile
+        self._add_realm_chest_near(realm_map, portal_col, portal_row)
 
     def _enter_portal_realm(self, player: Player) -> None:
         """Teleport the player into the portal realm, spawning at their origin portal."""
@@ -1310,9 +1334,10 @@ class Game:
             self._check_portal_restored(map_key)
 
     def _debug_ensure_nearby_island(self, origin_sx: int, origin_sy: int) -> None:
-        """Expand outward from origin until a sector with an island is found,
-        generate it if needed, and force-restore its portal."""
-        for dist in range(1, 8):
+        """Expand outward from origin until TWO sectors with islands are found,
+        generating them if needed, and force-restoring their portals."""
+        found = 0
+        for dist in range(1, 16):
             for dx in range(-dist, dist + 1):
                 for dy in range(-dist, dist + 1):
                     if abs(dx) != dist and abs(dy) != dist:
@@ -1327,7 +1352,9 @@ class Game:
                     sector_key = ("sector", sx, sy) if (sx, sy) != (0, 0) else "overland"
                     self._debug_force_portal_on_map(sector_key, sector_map)
                     self._add_realm_portal(sector_key)
-                    return  # done — one nearby island is enough
+                    found += 1
+                    if found >= 2:
+                        return
 
     def _on_sentinel_defeated(self, map_key: str | tuple) -> None:
         quest = self.portal_quests.get(map_key)

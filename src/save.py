@@ -91,6 +91,9 @@ _MAP_EXTRA_ATTRS = (
     "origin_sx",
     "origin_sy",
     "slot_size",
+    "slot_padding",
+    "slot_cols",
+    "slot_rows",
 )
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 

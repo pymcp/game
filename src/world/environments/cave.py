@@ -16,6 +16,7 @@ from src.config import (
     CAVE_EXIT,
     CAVE_WALL,
     TREASURE_CHEST,
+    MAP_BORDER,
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
 from src.world.environments.base import BaseEnvironment
@@ -33,8 +34,10 @@ _HILL_CAVE_ENEMIES = [
     if EnemyEnvironment.CAVE_HILL in v.get("environments", [])
 ]
 
-CAVE_ROWS = 50
-CAVE_COLS = 50
+# Size chosen so the 10-tile MAP_BORDER leaves a 46×46 walkable interior
+# (matches the original 50×50 map's 46×46 interior with its old 2-tile border).
+CAVE_ROWS = 66
+CAVE_COLS = 66
 
 
 # ---------------------------------------------------------------------------
@@ -46,17 +49,17 @@ def _cellular_automata(rng: random.Random, rows: int, cols: int) -> list[list[in
     """Open-cavern layout via 5 rounds of cellular automata."""
     grid = [[1 if rng.random() < 0.45 else 0 for _ in range(cols)] for _ in range(rows)]
 
-    # Force solid 2-tile border
+    # Force solid MAP_BORDER-tile border so the HUD never overlaps walkable tiles
     for r in range(rows):
         for c in range(cols):
-            if r <= 1 or r >= rows - 2 or c <= 1 or c >= cols - 2:
+            if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
                 grid[r][c] = 1
 
     for _ in range(5):
         new_grid = [[0] * cols for _ in range(rows)]
         for r in range(rows):
             for c in range(cols):
-                if r <= 1 or r >= rows - 2 or c <= 1 or c >= cols - 2:
+                if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
                     new_grid[r][c] = 1
                     continue
                 wall_neighbours = sum(
@@ -80,16 +83,16 @@ def _drunkard_walk(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
         r = rng.randint(rows // 4, 3 * rows // 4)
         c = rng.randint(cols // 4, 3 * cols // 4)
         for _ in range(steps):
-            if 2 <= r < rows - 2 and 2 <= c < cols - 2:
+            if MAP_BORDER <= r < rows - MAP_BORDER and MAP_BORDER <= c < cols - MAP_BORDER:
                 grid[r][c] = 0
                 # Occasionally widen the corridor
                 if rng.random() < 0.3:
-                    nr = max(2, min(rows - 3, r + rng.randint(-1, 1)))
-                    nc = max(2, min(cols - 3, c + rng.randint(-1, 1)))
+                    nr = max(MAP_BORDER, min(rows - MAP_BORDER - 1, r + rng.randint(-1, 1)))
+                    nc = max(MAP_BORDER, min(cols - MAP_BORDER - 1, c + rng.randint(-1, 1)))
                     grid[nr][nc] = 0
             dr, dc = rng.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])
-            r = max(2, min(rows - 3, r + dr))
-            c = max(2, min(cols - 3, c + dc))
+            r = max(MAP_BORDER, min(rows - MAP_BORDER - 1, r + dr))
+            c = max(MAP_BORDER, min(cols - MAP_BORDER - 1, c + dc))
 
     return grid
 
@@ -151,13 +154,13 @@ def _ensure_all_regions_connected(
         tc, tr = best_main
         while c != tc:
             c += 1 if tc > c else -1
-            if 1 <= c < cols - 1 and 1 <= r < rows - 1:
+            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
                 cave_world[r][c] = GRASS
                 all_floor.add((c, r))
                 main.add((c, r))
         while r != tr:
             r += 1 if tr > r else -1
-            if 1 <= c < cols - 1 and 1 <= r < rows - 1:
+            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
                 cave_world[r][c] = GRASS
                 all_floor.add((c, r))
                 main.add((c, r))
@@ -249,12 +252,12 @@ class CaveEnvironment(BaseEnvironment):
 
         # Place exit near the top; find a valid floor tile in upper rows
         exit_col, exit_row = self._find_floor_near_row(
-            cave_world, rows, cols, rng, target_row=3
+            cave_world, rows, cols, rng, target_row=MAP_BORDER
         )
         cave_world[exit_row][exit_col] = CAVE_EXIT
 
         # Spawn point a few tiles below the exit
-        spawn_row = min(exit_row + 5, rows - 4)
+        spawn_row = min(exit_row + 5, rows - MAP_BORDER - 1)
         spawn_col = exit_col
 
         # Carve a guaranteed open corridor from exit down to spawn so the
@@ -262,14 +265,14 @@ class CaveEnvironment(BaseEnvironment):
         for r in range(exit_row, spawn_row + 1):
             for dc in range(-1, 2):  # 3-tile wide corridor
                 cc = spawn_col + dc
-                if 1 <= cc < cols - 1 and cave_world[r][cc] == CAVE_WALL:
+                if MAP_BORDER <= cc < cols - MAP_BORDER and cave_world[r][cc] == CAVE_WALL:
                     cave_world[r][cc] = GRASS
 
         # Carve a 3×3 room around the spawn so the player has room to move
         for dr in range(-1, 2):
             for dc in range(-1, 2):
                 rr, rc = spawn_row + dr, spawn_col + dc
-                if 1 <= rr < rows - 1 and 1 <= rc < cols - 1:
+                if MAP_BORDER <= rr < rows - MAP_BORDER and MAP_BORDER <= rc < cols - MAP_BORDER:
                     if cave_world[rr][rc] == CAVE_WALL:
                         cave_world[rr][rc] = GRASS
 
@@ -278,7 +281,7 @@ class CaveEnvironment(BaseEnvironment):
 
         # Place treasure chest deep in the cave (opposite end from the exit)
         chest_col, chest_row = self._find_floor_near_row(
-            cave_world, rows, cols, rng, target_row=rows - 5
+            cave_world, rows, cols, rng, target_row=rows - MAP_BORDER - 1
         )
         cave_world[chest_row][chest_col] = TREASURE_CHEST
 

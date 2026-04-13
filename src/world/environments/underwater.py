@@ -3,13 +3,15 @@
 import collections
 import random
 
-from src.config import TILE
+from src.config import TILE, MAP_BORDER
 from src.world.environments.base import BaseEnvironment
 from src.world.map import GameMap
 from src.config import SAND, CORAL, REEF, DIVE_EXIT
 
-UNDERWATER_ROWS = 40
-UNDERWATER_COLS = 50
+# Sized so MAP_BORDER leaves a 36×46 walkable interior (same as the original
+# 40×50 map with its 2-tile border).
+UNDERWATER_ROWS = 56
+UNDERWATER_COLS = 66
 
 
 # ---------------------------------------------------------------------------
@@ -25,17 +27,17 @@ def _cellular_automata(rng: random.Random, rows: int, cols: int) -> list[list[in
     # Lower initial density than caves so the seafloor is more open
     grid = [[1 if rng.random() < 0.40 else 0 for _ in range(cols)] for _ in range(rows)]
 
-    # Force solid 2-tile border
+    # Force solid MAP_BORDER-tile border so the HUD never overlaps walkable tiles
     for r in range(rows):
         for c in range(cols):
-            if r <= 1 or r >= rows - 2 or c <= 1 or c >= cols - 2:
+            if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
                 grid[r][c] = 1
 
     for _ in range(4):
         new_grid = [[0] * cols for _ in range(rows)]
         for r in range(rows):
             for c in range(cols):
-                if r <= 1 or r >= rows - 2 or c <= 1 or c >= cols - 2:
+                if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
                     new_grid[r][c] = 1
                     continue
                 wall_neighbours = sum(
@@ -101,13 +103,13 @@ def _ensure_all_regions_connected(
         tc, tr = best_main
         while c != tc:
             c += 1 if tc > c else -1
-            if 1 <= c < cols - 1 and 1 <= r < rows - 1:
+            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
                 world[r][c] = SAND
                 all_floor.add((c, r))
                 main.add((c, r))
         while r != tr:
             r += 1 if tr > r else -1
-            if 1 <= c < cols - 1 and 1 <= r < rows - 1:
+            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
                 world[r][c] = SAND
                 all_floor.add((c, r))
                 main.add((c, r))
