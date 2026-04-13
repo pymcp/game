@@ -107,20 +107,24 @@ class Enemy:
                 self.state = "chase"
 
         elif self.state == "chase":
+            moved = False
             if dist > 1:
                 dx = (px - self.x) / dist
                 dy = (py - self.y) / dist
                 nx = self.x + dx * self.speed * dt
                 ny = self.y + dy * self.speed * dt
+                old_x, old_y = self.x, self.y
                 if not self._blocked(nx, self.y, world):
                     self.x = nx
                 if not self._blocked(self.x, ny, world):
                     self.y = ny
+                moved = (self.x != old_x or self.y != old_y)
                 # Update facing from dominant movement axis
                 if abs(dy) >= abs(dx):
                     self.facing_direction = "down" if dy >= 0 else "up"
                 else:
                     self.facing_direction = "right" if dx > 0 else "left"
+            self._is_moving = moved
             if dist < TILE * 0.9:
                 self.state = "attack"
             if dist > SCREEN_W and not self._on_screen(cam_x, cam_y, margin=TILE * 4):
@@ -136,7 +140,9 @@ class Enemy:
         self.y = max(TILE, min((world_rows - 1) * TILE, self.y))
 
         # Expose state flags for sprite_draw() — animation is advanced there.
-        self._is_moving = self.state == "chase"
+        # _is_moving is already set in the chase branch (True only if actually moved).
+        if self.state != "chase":
+            self._is_moving = False
         self._is_attacking = self.state == "attack"
 
     def try_attack(self, px: float, py: float) -> int:
