@@ -189,6 +189,9 @@ class Player:
         # Map tracking - "overland" or (cave_col, cave_row) or ("island", n)
         self.current_map = "overland"
 
+        # Portal tracking — the map key the player came from when entering portal realm
+        self.portal_origin_map: str | tuple | None = None
+
     # -- upgrades ----------------------------------------------------------
 
     def try_upgrade_pick(self) -> bool:

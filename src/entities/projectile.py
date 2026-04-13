@@ -90,11 +90,10 @@ class Projectile:
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw projectile to screen."""
-        from src.config import SCREEN_W, SCREEN_H
-
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
-        if sx < -20 or sx > SCREEN_W + 20 or sy < -20 or sy > SCREEN_H + 20:
+        surf_w, surf_h = surf.get_size()
+        if sx < -20 or sx > surf_w + 20 or sy < -20 or sy > surf_h + 20:
             return
         style = self.draw_style[0]
         if style == "circle":

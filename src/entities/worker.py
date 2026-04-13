@@ -3,7 +3,7 @@
 import random
 import math
 import pygame
-from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H
+from src.config import TILE, WORLD_COLS, WORLD_ROWS
 from src.data import TILE_INFO, BLOCKING_TILES
 from src.effects import Particle, FloatingText
 
@@ -176,7 +176,8 @@ class Worker:
         """Draw worker sprite."""
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
-        if sx < -40 or sx > SCREEN_W + 40 or sy < -40 or sy > SCREEN_H + 40:
+        surf_w, surf_h = surf.get_size()
+        if sx < -40 or sx > surf_w + 40 or sy < -40 or sy > surf_h + 40:
             return
         s = self.size_mod
         bw, bh = int(16 * s), int(22 * s)

@@ -84,6 +84,10 @@ _MAP_EXTRA_ATTRS = (
     "cave_style",
     "dive_col",
     "dive_row",
+    "portal_col",
+    "portal_row",
+    "ritual_stone_positions",
+    "portal_guardian_spawned",
 )
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
@@ -131,6 +135,7 @@ def _serialize_player(player: Player) -> dict:
         "boat_col": player.boat_col,
         "boat_row": player.boat_row,
         "current_map": _player_map_key_to_str(player.current_map),
+        "portal_origin_map": _key_to_str(player.portal_origin_map) if player.portal_origin_map is not None else None,
         "is_dead": player.is_dead,
     }
 
@@ -232,6 +237,8 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     player.boat_row = data["boat_row"]
     player.current_map = _str_to_player_map_key(data["current_map"])
     player.is_dead = data.get("is_dead", False)
+    raw_origin = data.get("portal_origin_map")
+    player.portal_origin_map = _str_to_key(raw_origin) if raw_origin is not None else None
     return player
 
 
@@ -321,6 +328,9 @@ def save_game(game: "Game") -> None:
         "sea_creatures": [_serialize_sea_creature(sc) for sc in game.sea_creatures],
         "visited_sectors": [list(s) for s in game.visited_sectors],
         "land_sectors": [list(s) for s in game.land_sectors],
+        "portal_quests": {
+            _key_to_str(k): v for k, v in game.portal_quests.items()
+        },
     }
 
     with open(SAVE_PATH, "w") as f:
@@ -370,6 +380,10 @@ def apply_save(game: "Game", data: dict) -> None:
     # Visited sectors
     game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}
     game.land_sectors = {tuple(s) for s in data.get("land_sectors", [[0, 0]])}
+
+    # Portal quest state
+    raw_quests = data.get("portal_quests", {})
+    game.portal_quests = {_str_to_key(k): v for k, v in raw_quests.items()}
 
     # Snap cameras to loaded player positions
     game.cam1_x = game.player1.x - game.viewport_w // 2

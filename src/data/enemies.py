@@ -27,6 +27,7 @@ class EnemyEnvironment(Enum):
     OVERLAND = "overland"
     CAVE_MOUNTAIN = "cave_mountain"
     CAVE_HILL = "cave_hill"
+    PORTAL_GUARDIAN = "portal_guardian"
 
 
 ENEMY_TYPES = {
@@ -165,6 +166,34 @@ ENEMY_TYPES = {
             ("line", (-30, -20, -20), 9, 5, 20, 10, 2),
             ("circle", (-40, -20, -40), -3, -8, 2),
             ("circle", (-40, -20, -40), 3, -8, 2),
+        ],
+    },
+    "stone_sentinel": {
+        "environments": [EnemyEnvironment.PORTAL_GUARDIAN],
+        "maximum": 1,
+        "xp": 50,
+        "name": "Stone Sentinel",
+        "color": (100, 90, 110),
+        "hp": 120,
+        "attack": 18,
+        "speed": 0.7,
+        "attack_cd": 80,
+        "chase_range": 200,
+        "draw_commands": [
+            # Body — wide stone torso
+            ("rect", (0, 0, 0), -14, -8, 28, 22),
+            # Head — square, slightly lighter
+            ("rect", (20, 18, 25), -9, -22, 18, 16),
+            # Left arm — thick stone slab
+            ("rect", (-15, -12, -18), -24, -6, 10, 18),
+            # Right arm
+            ("rect", (-15, -12, -18), 14, -6, 10, 18),
+            # Glowing eye slots
+            ("rect", (-100, -90, 100), -7, -18, 5, 4),
+            ("rect", (-100, -90, 100), 2, -18, 5, 4),
+            # Crack lines on body
+            ("line", (-30, -25, -30), -5, -6, -2, 8, 1),
+            ("line", (-30, -25, -30), 3, -4, 6, 10, 1),
         ],
     },
 }

@@ -30,6 +30,11 @@ from src.config import (
     CORAL,
     REEF,
     DIVE_EXIT,
+    PORTAL_RUINS,
+    PORTAL_ACTIVE,
+    ANCIENT_STONE,
+    PORTAL_WALL,
+    PORTAL_FLOOR,
     SCUBA_BUILD_COST,
     SETTLEMENT_TIER_SIZES,
     SETTLEMENT_TIER_NAMES,
@@ -48,7 +53,7 @@ from src.world import (
     compute_town_clusters,
 )
 from src.world.map import GameMap
-from src.world.environments import CaveEnvironment, UnderwaterEnvironment
+from src.world.environments import CaveEnvironment, UnderwaterEnvironment, PortalRealmEnvironment
 from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
@@ -142,6 +147,10 @@ class Game:
         # Crafting menu state: player_id → cursor index (None = closed)
         self.craft_menus: dict[int, int | None] = {1: None, 2: None}
 
+        # Portal quest state: map_key → quest dict
+        # {"type": "ritual"|"gather"|"combat", "restored": bool, ...type-specific keys}
+        self.portal_quests: dict[str | tuple, dict] = {}
+
         # Treasure reveal state: [{"player_id": int, "items": dict, "timer": float}]
         self.treasure_reveals = []
 
@@ -160,6 +169,11 @@ class Game:
         save_data = load_game()
         if save_data is not None:
             apply_save(self, save_data)
+
+        # Place/verify portal ruins on the overland map (skip if loaded from save)
+        if "overland" not in self.portal_quests:
+            self._assign_portal_quest("overland")
+            self._place_portal_on_map(self.maps["overland"], "overland")
 
     # -- death challenge ---------------------------------------------------
 
@@ -225,6 +239,147 @@ class Game:
                             return
         player.x = WORLD_COLS // 2 * TILE + TILE // 2
         player.y = WORLD_ROWS // 2 * TILE + TILE // 2
+
+    # -- portal quests -----------------------------------------------------
+
+    def _assign_portal_quest(self, map_key: str | tuple) -> dict:
+        """Deterministically assign a portal quest for the given map key.
+
+        Uses a seeded RNG derived from (world_seed, map_key) so island quests
+        are consistent across sessions.  Stores the result in portal_quests and
+        returns the quest dict.
+        """
+        seed = hash((self.world_seed, str(map_key))) & 0xFFFF_FFFF
+        rng = random.Random(seed)
+        quest_type = rng.choice(["ritual", "gather", "combat"])
+
+        if quest_type == "ritual":
+            quest: dict = {
+                "type": "ritual",
+                "restored": False,
+                "stones_total": 4,
+                "stones_activated": 0,
+            }
+        elif quest_type == "gather":
+            # Scale cost by island distance from (0, 0)
+            if isinstance(map_key, tuple) and len(map_key) == 3 and map_key[0] == "sector":
+                dist = abs(map_key[1]) + abs(map_key[2])
+            else:
+                dist = 0
+            gold_needed = max(5, 5 + dist)
+            diamond_needed = max(2, dist)
+            quest = {
+                "type": "gather",
+                "restored": False,
+                "required": {"Gold": gold_needed, "Diamond": diamond_needed},
+            }
+        else:  # combat
+            quest = {
+                "type": "combat",
+                "restored": False,
+                "guardian_defeated": False,
+                "guardian_spawned": False,
+            }
+
+        self.portal_quests[map_key] = quest
+        return quest
+
+    def _place_portal_on_map(self, game_map: "GameMap", map_key: str | tuple) -> None:
+        """Place portal tiles on a newly generated island map.
+
+        Finds a GRASS tile sufficiently far from the map centre, places
+        PORTAL_RUINS (or PORTAL_ACTIVE if the quest is already restored),
+        and sets up ritual stones or combat guardian flags.
+        """
+        quest = self.portal_quests.get(map_key)
+        if quest is None:
+            return
+
+        seed = hash((self.world_seed, str(map_key), "place")) & 0xFFFF_FFFF
+        rng = random.Random(seed)
+
+        rows, cols = game_map.rows, game_map.cols
+        cx, cy = cols // 2, rows // 2
+        min_dist = 12
+
+        # Collect candidate GRASS tiles far enough from centre
+        candidates = [
+            (c, r)
+            for r in range(rows)
+            for c in range(cols)
+            if game_map.get_tile(r, c) == GRASS
+            and abs(c - cx) + abs(r - cy) >= min_dist
+        ]
+        if not candidates:
+            # Fallback: any grass tile
+            candidates = [
+                (c, r)
+                for r in range(rows)
+                for c in range(cols)
+                if game_map.get_tile(r, c) == GRASS
+            ]
+        if not candidates:
+            return
+
+        rng.shuffle(candidates)
+        portal_col, portal_row = candidates[0]
+
+        tile_id = PORTAL_ACTIVE if quest["restored"] else PORTAL_RUINS
+        game_map.set_tile(portal_row, portal_col, tile_id)
+        game_map.portal_col = portal_col
+        game_map.portal_row = portal_row
+
+        # Ritual: scatter ANCIENT_STONE tiles around the island
+        if quest["type"] == "ritual":
+            stone_candidates = [
+                (c, r)
+                for r in range(rows)
+                for c in range(cols)
+                if game_map.get_tile(r, c) == GRASS
+                and (c, r) != (portal_col, portal_row)
+                and abs(c - cx) + abs(r - cy) >= 8
+            ]
+            rng.shuffle(stone_candidates)
+            positions: list[tuple[int, int]] = []
+            for sc, sr in stone_candidates:
+                # Ensure stones are spread out (at least 8 tiles apart from each other)
+                if all(abs(sc - ec) + abs(sr - er) >= 8 for ec, er in positions):
+                    game_map.set_tile(sr, sc, ANCIENT_STONE)
+                    positions.append((sc, sr))
+                    if len(positions) >= quest["stones_total"]:
+                        break
+            game_map.ritual_stone_positions = positions
+
+        # Combat: flag that the sentinel has not yet been spawned
+        if quest["type"] == "combat":
+            game_map.portal_guardian_spawned = quest.get("guardian_spawned", False)
+
+    def _check_portal_restored(self, map_key: str | tuple) -> bool:
+        """Evaluate whether a portal quest is complete and restore if so.
+
+        Returns True if the portal is (now) restored.
+        """
+        quest = self.portal_quests.get(map_key)
+        if quest is None:
+            return False
+        if quest["restored"]:
+            return True
+
+        complete = False
+        if quest["type"] == "ritual":
+            complete = quest["stones_activated"] >= quest["stones_total"]
+        elif quest["type"] == "gather":
+            complete = True  # gather completion is checked at delivery time
+        elif quest["type"] == "combat":
+            complete = quest.get("guardian_defeated", False)
+
+        if complete:
+            quest["restored"] = True
+            game_map = self.maps.get(map_key)
+            if game_map is not None and hasattr(game_map, "portal_col"):
+                game_map.set_tile(game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE)
+            return True
+        return False
 
     # -- main loop ---------------------------------------------------------
 
@@ -642,6 +797,38 @@ class Game:
                 self._open_treasure_chest(player, tx, ty)
                 return
 
+        # 4.5. Adjacent ANCIENT_STONE — ritual quest progress (surface maps only)
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == ANCIENT_STONE:
+                    self._try_activate_ritual_stone(player, current_map_obj, cc, rr)
+                    return
+
+        # 4.6. Adjacent PORTAL_RUINS — show quest status or gather delivery
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == PORTAL_RUINS:
+                    self._try_interact_portal_ruins(player, player.current_map)
+                    return
+
+        # 4.7. Adjacent PORTAL_ACTIVE on island — enter portal realm
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
+                    self._enter_portal_realm(player)
+                    return
+
+        # 4.8. PORTAL_ACTIVE tile inside portal realm — exit back to origin
+        if player.current_map == "portal_realm":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
+                    self._exit_portal_realm(player)
+                    return
+
         # 5. On a PIER tile → try to build a boat in the next water cell
         if current_map_obj.get_tile(p_row, p_col) == PIER:
             for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
@@ -702,8 +889,162 @@ class Game:
         for _ in range(12):
             self.particles.append(Particle(int(player.x), int(player.y), (40, 160, 220)))
 
+    def _try_activate_ritual_stone(
+        self,
+        player: Player,
+        game_map: "GameMap",
+        stone_col: int,
+        stone_row: int,
+    ) -> None:
+        """Handle a player interacting with an ANCIENT_STONE ritual tile."""
+        map_key = player.current_map
+        quest = self.portal_quests.get(map_key)
+        if quest is None or quest["type"] != "ritual" or quest["restored"]:
+            return
+
+        positions: list[tuple[int, int]] = getattr(game_map, "ritual_stone_positions", [])
+        if not positions:
+            return
+
+        next_idx = quest["stones_activated"]
+        if next_idx >= len(positions):
+            return
+
+        expected_col, expected_row = positions[next_idx]
+        tx = stone_col * TILE + TILE // 2
+        ty = stone_row * TILE + TILE // 2
+
+        if (stone_col, stone_row) == (expected_col, expected_row):
+            quest["stones_activated"] += 1
+            remaining = quest["stones_total"] - quest["stones_activated"]
+            self.floats.append(
+                FloatingText(tx, ty - 30, "Stone awakened!", (200, 180, 50))
+            )
+            for _ in range(10):
+                self.particles.append(Particle(tx, ty, (200, 180, 50)))
+            if remaining == 0:
+                if self._check_portal_restored(map_key):
+                    self._announce_portal_restored(player)
+        else:
+            self.floats.append(
+                FloatingText(tx, ty - 30, "Not the next stone!", (255, 100, 100))
+            )
+
+    def _try_interact_portal_ruins(self, player: Player, map_key: str | tuple) -> None:
+        """Handle a player interacting with a PORTAL_RUINS tile."""
+        quest = self.portal_quests.get(map_key)
+        tx = int(player.x)
+        ty = int(player.y) - 36
+
+        if quest is None:
+            self.floats.append(FloatingText(tx, ty, "Ancient portal...", (180, 160, 200)))
+            return
+
+        if quest["restored"]:
+            self.floats.append(FloatingText(tx, ty, "Portal is active!", (160, 60, 220)))
+            return
+
+        if quest["type"] == "ritual":
+            done = quest["stones_activated"]
+            total = quest["stones_total"]
+            self.floats.append(
+                FloatingText(tx, ty, f"Ritual: {done}/{total} stones", (200, 180, 50))
+            )
+
+        elif quest["type"] == "gather":
+            required = quest["required"]
+            # Try to spend items if the player has enough
+            can_afford = all(player.inventory.get(k, 0) >= v for k, v in required.items())
+            if can_afford:
+                from src.world import try_spend as _try_spend
+                if _try_spend(player.inventory, required):
+                    if self._check_portal_restored(map_key):
+                        self._announce_portal_restored(player)
+            else:
+                parts = ", ".join(f"{v} {k}" for k, v in required.items())
+                self.floats.append(
+                    FloatingText(tx, ty, f"Need: {parts}", (255, 160, 80))
+                )
+
+        elif quest["type"] == "combat":
+            if quest.get("guardian_defeated"):
+                if self._check_portal_restored(map_key):
+                    self._announce_portal_restored(player)
+            else:
+                self.floats.append(
+                    FloatingText(tx, ty, "A guardian blocks the portal!", (200, 80, 80))
+                )
+
+    def _announce_portal_restored(self, player: Player) -> None:
+        """Show a restoration announcement floating text."""
+        self.floats.append(
+            FloatingText(int(player.x), int(player.y) - 50, "Portal restored!", (160, 60, 220))
+        )
+        for _ in range(20):
+            self.particles.append(Particle(int(player.x), int(player.y), (160, 60, 220)))
+
+    def _enter_portal_realm(self, player: Player) -> None:
+        """Teleport the player into the portal realm."""
+        if "portal_realm" not in self.maps:
+            env = PortalRealmEnvironment()
+            self.maps["portal_realm"] = env.generate()
+
+        realm_map = self.maps["portal_realm"]
+        player.portal_origin_map = player.current_map
+        player.current_map = "portal_realm"
+        player.x = realm_map.spawn_col * TILE + TILE // 2
+        player.y = realm_map.spawn_row * TILE + TILE // 2
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(int(player.x), int(player.y) - 30, "Entered portal realm!", (160, 60, 220))
+        )
+
+    def _exit_portal_realm(self, player: Player) -> None:
+        """Return the player from the portal realm to their origin map."""
+        origin_key = player.portal_origin_map or "overland"
+        origin_map = self.maps.get(origin_key)
+        if origin_map is None:
+            origin_key = "overland"
+            origin_map = self.maps["overland"]
+
+        # Place near the portal
+        portal_col = getattr(origin_map, "portal_col", origin_map.cols // 2)
+        portal_row = getattr(origin_map, "portal_row", origin_map.rows // 2)
+        placed = False
+        for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)]:
+            adj_c = portal_col + dc
+            adj_r = portal_row + dr
+            if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
+                if origin_map.get_tile(adj_r, adj_c) == GRASS:
+                    player.x = adj_c * TILE + TILE // 2
+                    player.y = adj_r * TILE + TILE // 2
+                    placed = True
+                    break
+        if not placed:
+            player.x = portal_col * TILE + TILE // 2
+            player.y = portal_row * TILE + TILE // 2
+
+        player.current_map = origin_key
+        player.portal_origin_map = None
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220))
+        )
+
+    def _on_sentinel_defeated(self, map_key: str | tuple) -> None:
+        """Called when a Stone Sentinel dies; marks the combat quest guardian defeated."""
+        quest = self.portal_quests.get(map_key)
+        if quest is None or quest["type"] != "combat":
+            return
+        quest["guardian_defeated"] = True
+        if self._check_portal_restored(map_key):
+            # Announce to any player on this map
+            for player in (self.player1, self.player2):
+                if player.current_map == map_key:
+                    self._announce_portal_restored(player)
+                    break
+
     def _try_build_pier(self, player: Player) -> None:
-        """Build a 2-tile pier extending from the player's shore tile into water."""
         if player.on_boat:
             return
 
@@ -794,6 +1135,9 @@ class Game:
             # Record if this sector has a full island (not just atolls)
             if has_island:
                 self.land_sectors.add((sx, sy))
+                # Assign and place portal quest for this island
+                self._assign_portal_quest(key)
+                self._place_portal_on_map(sector_map, key)
         return self.maps[key]
 
     def _evict_distant_sectors(self) -> None:
@@ -1490,6 +1834,7 @@ class Game:
         # Enemies
         self._update_enemies(dt)
         self._update_cave_enemies(dt)
+        self._spawn_portal_guardians()
 
         # Weapon firing (for both players)
         self._update_combat(keys, mouse_buttons, dt)
@@ -1499,8 +1844,12 @@ class Game:
         self.player1.check_level_up(self.particles, self.floats)
         self.player2.check_level_up(self.particles, self.floats)
 
-        # Cull dead enemies
+        # Cull dead enemies; check sentinel defeat for combat portal quests
+        dead_overland = [e for e in self.enemies if e.hp <= 0]
         self.enemies = [e for e in self.enemies if e.hp > 0]
+        for dead in dead_overland:
+            if dead.type_key == "stone_sentinel":
+                self._on_sentinel_defeated("overland")
 
         # Cameras
         self.cam1_x += (self.player1.x - self.viewport_w // 2 - self.cam1_x) * 0.1
@@ -1534,6 +1883,37 @@ class Game:
         for rev in self.treasure_reveals:
             rev["timer"] -= dt
         self.treasure_reveals = [r for r in self.treasure_reveals if r["timer"] > 0]
+
+    def _spawn_portal_guardians(self) -> None:
+        """Spawn Stone Sentinel enemies for combat quests when a player is nearby."""
+        for map_key, quest in self.portal_quests.items():
+            if quest["type"] != "combat":
+                continue
+            if quest["restored"] or quest.get("guardian_defeated") or quest.get("guardian_spawned"):
+                continue
+            # Only spawn if a player is currently on this map
+            player_present = any(
+                p.current_map == map_key and not p.is_dead
+                for p in (self.player1, self.player2)
+            )
+            if not player_present:
+                continue
+            game_map = self.maps.get(map_key)
+            if game_map is None or not hasattr(game_map, "portal_col"):
+                continue
+            pcol = game_map.portal_col
+            prow = game_map.portal_row
+            spawn_x = float(pcol * TILE + TILE // 2 + TILE * 2)
+            spawn_y = float(prow * TILE + TILE // 2)
+            sentinel = Enemy(spawn_x, spawn_y, "stone_sentinel")
+            if map_key == "overland":
+                self.enemies.append(sentinel)
+            else:
+                game_map.enemies.append(sentinel)
+            quest["guardian_spawned"] = True
+            self.floats.append(
+                FloatingText(int(spawn_x), int(spawn_y) - 40, "A guardian awakens!", (200, 80, 80))
+            )
 
     def _update_enemies(self, dt: float) -> None:
         """Update all enemies and check for attacks on both players."""
@@ -1611,7 +1991,11 @@ class Game:
                     if target_player.hp <= 0 and not target_player.is_dead:
                         self._start_death_challenge(target_player)
 
+            dead_cave = [e for e in cave_map.enemies if e.hp <= 0]
             cave_map.enemies = [e for e in cave_map.enemies if e.hp > 0]
+            for dead in dead_cave:
+                if dead.type_key == "stone_sentinel":
+                    self._on_sentinel_defeated(cave_key)
 
     def _update_combat(
         self,
@@ -2164,6 +2548,98 @@ class Game:
                     pygame.draw.circle(
                         self.screen, (180, 230, 255), (sx + 24, sy + 10 + bub_off), 2
                     )
+                elif tid == PORTAL_RUINS:
+                    # Crumbled stone ring — partial pillars with gaps and moss tones
+                    stone_c = (90, 80, 95)
+                    moss_c = (60, 80, 55)
+                    # Base slab (worn)
+                    pygame.draw.rect(self.screen, stone_c, (sx + 4, sy + 24, 24, 5))
+                    # Four partial pillars at corners (some broken)
+                    pygame.draw.rect(self.screen, stone_c, (sx + 4, sy + 10, 5, 14))   # left
+                    pygame.draw.rect(self.screen, stone_c, (sx + 23, sy + 14, 5, 10))  # right (shorter — broken)
+                    pygame.draw.rect(self.screen, stone_c, (sx + 10, sy + 6, 5, 18))   # back-left
+                    # Moss accent
+                    pygame.draw.rect(self.screen, moss_c, (sx + 4, sy + 10, 3, 3))
+                    pygame.draw.rect(self.screen, moss_c, (sx + 23, sy + 14, 3, 2))
+                    # Dark center void
+                    pygame.draw.rect(self.screen, (25, 20, 30), (sx + 10, sy + 14, 12, 10))
+                elif tid == PORTAL_ACTIVE:
+                    # Glowing portal ring with pulsing inner energy
+                    pulse = math.sin(ticks * 0.006)
+                    stone_c = (110, 95, 125)
+                    # Complete stone ring pillars
+                    pygame.draw.rect(self.screen, stone_c, (sx + 4, sy + 24, 24, 5))
+                    pygame.draw.rect(self.screen, stone_c, (sx + 4, sy + 6, 5, 18))
+                    pygame.draw.rect(self.screen, stone_c, (sx + 23, sy + 6, 5, 18))
+                    pygame.draw.rect(self.screen, stone_c, (sx + 10, sy + 4, 12, 4))
+                    # Inner portal energy
+                    energy_r = max(0, min(255, int(140 + pulse * 30)))
+                    energy_g = max(0, min(255, int(50 + pulse * 20)))
+                    energy_b = max(0, min(255, int(220 + pulse * 35)))
+                    pygame.draw.ellipse(
+                        self.screen, (energy_r, energy_g, energy_b), (sx + 9, sy + 8, 14, 16)
+                    )
+                    # Bright centre shimmer
+                    inner_b = max(0, min(255, int(200 + pulse * 55)))
+                    pygame.draw.ellipse(
+                        self.screen, (255, 200, inner_b), (sx + 12, sy + 11, 8, 10)
+                    )
+                elif tid == ANCIENT_STONE:
+                    # Short stone obelisk; pulses yellow if it's the next ritual stone
+                    stone_c = (120, 110, 100)
+                    # Determine if this is the next stone to activate
+                    quest = self.portal_quests.get(player.current_map)
+                    is_next = False
+                    if quest and quest["type"] == "ritual" and not quest["restored"]:
+                        positions = getattr(current_map, "ritual_stone_positions", [])
+                        next_idx = quest["stones_activated"]
+                        tile_c_pos = int(sx + int(cam_x - screen_x)) // TILE if False else c
+                        # c and r are the tile coords from the outer loop
+                        if next_idx < len(positions) and positions[next_idx] == (c, r):
+                            is_next = True
+                    # Obelisk body
+                    pygame.draw.rect(self.screen, stone_c, (sx + 11, sy + 12, 10, 16))
+                    # Pointed top
+                    pygame.draw.polygon(
+                        self.screen, stone_c,
+                        [(sx + 11, sy + 12), (sx + 21, sy + 12), (sx + 16, sy + 6)]
+                    )
+                    if is_next:
+                        pulse_y = int(math.sin(ticks * 0.01) * 3)
+                        pygame.draw.polygon(
+                            self.screen, (240, 210, 50),
+                            [(sx + 10, sy + 11 + pulse_y), (sx + 22, sy + 11 + pulse_y),
+                             (sx + 16, sy + 5 + pulse_y)],
+                            2,
+                        )
+                    else:
+                        # Faint rune markings
+                        pygame.draw.line(
+                            self.screen, (80, 72, 65), (sx + 14, sy + 14), (sx + 18, sy + 14), 1
+                        )
+                        pygame.draw.line(
+                            self.screen, (80, 72, 65), (sx + 14, sy + 18), (sx + 18, sy + 18), 1
+                        )
+                elif tid == PORTAL_WALL:
+                    # Ancient stone brick pattern (darker base already set by tileset color)
+                    brick_c = tile_color
+                    mortar_c = tuple(max(0, ch - 20) for ch in brick_c)
+                    # Horizontal mortar lines
+                    pygame.draw.line(self.screen, mortar_c, (sx, sy + 10), (sx + TILE, sy + 10), 1)
+                    pygame.draw.line(self.screen, mortar_c, (sx, sy + 22), (sx + TILE, sy + 22), 1)
+                    # Alternating vertical mortar (brick offset pattern)
+                    pygame.draw.line(self.screen, mortar_c, (sx + 16, sy), (sx + 16, sy + 10), 1)
+                    pygame.draw.line(self.screen, mortar_c, (sx + 8, sy + 10), (sx + 8, sy + 22), 1)
+                    pygame.draw.line(self.screen, mortar_c, (sx + 24, sy + 10), (sx + 24, sy + 22), 1)
+                    pygame.draw.line(self.screen, mortar_c, (sx + 16, sy + 22), (sx + 16, sy + TILE), 1)
+                elif tid == PORTAL_FLOOR:
+                    # Flat floor with faint engraved cross/circle pattern
+                    etch_c = tuple(max(0, ch - 12) for ch in tile_color)
+                    # Faint circle
+                    pygame.draw.circle(self.screen, etch_c, (sx + 16, sy + 16), 8, 1)
+                    # Cross lines
+                    pygame.draw.line(self.screen, etch_c, (sx + 16, sy + 8), (sx + 16, sy + 24), 1)
+                    pygame.draw.line(self.screen, etch_c, (sx + 8, sy + 16), (sx + 24, sy + 16), 1)
         for par in self.particles:
             par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         for f in self.floats:
@@ -2189,8 +2665,9 @@ class Game:
         if player.current_map == "overland":
             for enemy in self.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        elif not (
-            isinstance(player.current_map, tuple) and len(player.current_map) == 3
+        elif (
+            isinstance(player.current_map, tuple)
+            and len(player.current_map) == 2
         ):
             # Draw enemies belonging to the cave the player is currently in
             cave_map = self.get_player_current_map(player)

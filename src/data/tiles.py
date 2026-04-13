@@ -22,6 +22,11 @@ from src.config import (
     CORAL,
     REEF,
     DIVE_EXIT,
+    PORTAL_RUINS,
+    PORTAL_ACTIVE,
+    ANCIENT_STONE,
+    PORTAL_WALL,
+    PORTAL_FLOOR,
 )
 
 TILE_INFO = {
@@ -193,6 +198,46 @@ TILE_INFO = {
         "drop": None,
         "drop_color": None,
     },
+    PORTAL_RUINS: {
+        "name": "Portal Ruins",
+        "color": (110, 95, 130),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    PORTAL_ACTIVE: {
+        "name": "Active Portal",
+        "color": (160, 60, 220),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    ANCIENT_STONE: {
+        "name": "Ancient Stone",
+        "color": (130, 115, 100),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    PORTAL_WALL: {
+        "name": "Portal Wall",
+        "color": (55, 48, 65),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    PORTAL_FLOOR: {
+        "name": "Portal Floor",
+        "color": (80, 72, 90),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
 }
 
-BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL, TREASURE_CHEST, REEF)
+BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL, TREASURE_CHEST, REEF, PORTAL_WALL)

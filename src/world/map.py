@@ -79,4 +79,12 @@ class GameMap:
             b = min(255, int(b * 1.3))
             return (r, g, b)
 
+        # Adjust colors for portal realm: dark stone with ancient purple tint
+        if self.tileset == "portal_realm":
+            r, g, b = base_color
+            r = max(0, int(r * 0.8 + 15))
+            g = max(0, int(g * 0.7))
+            b = min(255, int(b * 1.1 + 20))
+            return (r, g, b)
+
         return base_color
