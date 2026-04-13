@@ -8,6 +8,7 @@ Each enemy type is a dict with:
    speed       – movement speed (world-units per normalised frame)
    attack_cd   – cooldown between attacks in normalised frames
    chase_range – pixel distance at which enemy starts chasing (0 = viewport)
+   environments – list of EnemyEnvironment values indicating where this enemy spawns
    draw_commands – list of vector draw instructions executed relative to
                    the enemy's screen position (sx, sy).  Each entry is a
                    tuple:  (shape, color_offset, *args)
@@ -19,9 +20,19 @@ Each enemy type is a dict with:
    color_offset is added per-channel to the type's base color (clamped 0-255).
 """
 
+from enum import Enum
+
+
+class EnemyEnvironment(Enum):
+    OVERLAND = "overland"
+    CAVE_MOUNTAIN = "cave_mountain"
+    CAVE_HILL = "cave_hill"
+
+
 ENEMY_TYPES = {
     "slime": {
-        "maximum": 5,
+        "environments": [EnemyEnvironment.OVERLAND],
+        "maximum": 1,
         "xp": 10,
         "name": "Slime",
         "color": (50, 180, 50),
@@ -38,7 +49,8 @@ ENEMY_TYPES = {
         ],
     },
     "blocker": {
-        "maximum": 5,
+        "environments": [EnemyEnvironment.OVERLAND],
+        "maximum": 1,
         "xp": 10,
         "name": "Blocker",
         "color": (180, 25, 25),
@@ -54,6 +66,7 @@ ENEMY_TYPES = {
         ],
     },
     "boss": {
+        "environments": [EnemyEnvironment.OVERLAND],
         "maximum": 1,
         "xp": 20,
         "name": "Boss",
@@ -73,6 +86,7 @@ ENEMY_TYPES = {
     },
     # -- Mountain cave enemies --
     "bat": {
+        "environments": [EnemyEnvironment.CAVE_MOUNTAIN],
         "maximum": 8,
         "xp": 8,
         "name": "Bat",
@@ -91,6 +105,7 @@ ENEMY_TYPES = {
         ],
     },
     "cave_troll": {
+        "environments": [EnemyEnvironment.CAVE_MOUNTAIN],
         "maximum": 3,
         "xp": 35,
         "name": "Cave Troll",
@@ -111,6 +126,7 @@ ENEMY_TYPES = {
     },
     # -- Hill cave enemies --
     "goblin": {
+        "environments": [EnemyEnvironment.CAVE_HILL],
         "maximum": 6,
         "xp": 12,
         "name": "Goblin",
@@ -129,6 +145,7 @@ ENEMY_TYPES = {
         ],
     },
     "cave_spider": {
+        "environments": [EnemyEnvironment.CAVE_HILL],
         "maximum": 5,
         "xp": 15,
         "name": "Cave Spider",

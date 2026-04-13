@@ -15,12 +15,13 @@ from src.config import (
     CAVE_EXIT,
     CAVE_WALL,
 )
+from src.data import ENEMY_TYPES, EnemyEnvironment
 from src.world.environments.base import BaseEnvironment
 from src.world.map import GameMap
 
-# Enemy pools keyed by cave entrance type
-_MOUNTAIN_CAVE_ENEMIES = ["bat", "cave_troll"]
-_HILL_CAVE_ENEMIES = ["goblin", "cave_spider"]
+# Enemy pools derived from ENEMY_TYPES definitions
+_MOUNTAIN_CAVE_ENEMIES = [k for k, v in ENEMY_TYPES.items() if EnemyEnvironment.CAVE_MOUNTAIN in v.get("environments", [])]
+_HILL_CAVE_ENEMIES = [k for k, v in ENEMY_TYPES.items() if EnemyEnvironment.CAVE_HILL in v.get("environments", [])]
 
 CAVE_ROWS = 50
 CAVE_COLS = 50
@@ -189,7 +190,6 @@ class CaveEnvironment(BaseEnvironment):
     def spawn_enemies(self, game_map, rng=None):
         """Spawn cave-type enemies on floor tiles away from the spawn point."""
         from src.entities import Enemy
-        from src.data import ENEMY_TYPES
 
         if rng is None:
             rng = random.Random(self.cave_col * 10_000 + self.cave_row + 1)

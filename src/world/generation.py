@@ -23,7 +23,7 @@ from src.config import (
     TREASURE_CHEST,
     OCEAN_ISLAND_CHANCE,
 )
-from src.data import ENEMY_TYPES
+from src.data import ENEMY_TYPES, EnemyEnvironment
 
 
 def generate_world():
@@ -325,9 +325,13 @@ def _create_lake(world, center_col, center_row, radius_range=(1, 2)):
 
 
 def spawn_enemies(world):
-    """Scatter enemies on walkable tiles throughout the world."""
+    """Scatter overland enemies on walkable tiles."""
     from src.entities import Enemy
 
+    overland_types = [
+        k for k, v in ENEMY_TYPES.items()
+        if EnemyEnvironment.OVERLAND in v.get("environments", [])
+    ]
     enemies = []
     spawn_count = {}
     for _ in range(25):
@@ -340,7 +344,7 @@ def spawn_enemies(world):
                 mid_x = (WORLD_COLS // 2) * TILE
                 mid_y = (WORLD_ROWS // 2) * TILE
                 if math.hypot(cx - mid_x, cy - mid_y) > TILE * 8:
-                    enemy_key = random.choice(list(ENEMY_TYPES.keys()))
+                    enemy_key = random.choice(overland_types)
                     count = spawn_count.get(enemy_key, 0)
                     if count >= ENEMY_TYPES[enemy_key]["maximum"]:
                         continue
