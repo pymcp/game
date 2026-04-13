@@ -25,6 +25,7 @@ from src.config import (
     CAVE_EXIT,
     SETTLEMENT_TIER_SIZES,
     SETTLEMENT_TIER_NAMES,
+    HOUSE_BUILD_COST,
 )
 from src.data import TILE_INFO, WEAPONS, PICKAXES, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS
 from src.world import (
@@ -325,10 +326,10 @@ class Game:
         current_map = self.maps["overland"]
         if (
             current_map.get_tile(build_row, build_col) != GRASS
-            or player.inventory.get("Dirt", 0) < 20
+            or player.inventory.get("Dirt", 0) < HOUSE_BUILD_COST
         ):
             return
-        if not try_spend(player.inventory, {"Dirt": 20}):
+        if not try_spend(player.inventory, {"Dirt": HOUSE_BUILD_COST}):
             return
 
         current_map.set_tile(build_row, build_col, HOUSE)
@@ -1545,7 +1546,7 @@ class Game:
             upg_lines.append((f"Wpn ({wpn_name}):", None))
 
         # House
-        house_cost = _cost_str({"Dirt": 20}, player.inventory)
+        house_cost = _cost_str({"Dirt": HOUSE_BUILD_COST}, player.inventory)
         build_key = pygame.key.name(player.controls.build_house_key).upper()
         upg_lines.append((f"House ({build_key}):", house_cost))
 

@@ -38,3 +38,5 @@ CAVE_WALL = 13  # Solid cave wall tile (impassable, non-mineable)
 # Settlement tiers: minimum connected-house cluster size to reach each tier
 SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
 SETTLEMENT_TIER_NAMES = ["Cottage", "Hamlet", "Village", "Town", "Large Town", "City"]
+
+HOUSE_BUILD_COST = 20  # Dirt required to build a house
