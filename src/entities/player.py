@@ -458,18 +458,29 @@ class Player:
         elif keys[self.controls.mining_key] or self.auto_mine:
             center_col = int(self.x) // TILE
             center_row = int(self.y) // TILE
-            best, best_dist = None, 999
-            for dr in range(-1, 2):
-                for dc in range(-1, 2):
-                    c, r = center_col + dc, center_row + dr
-                    if 0 <= c < world_cols and 0 <= r < world_rows:
-                        if TILE_INFO[world[r][c]]["mineable"]:
-                            d = abs(dc) + abs(dr)
-                            if d < best_dist:
-                                best_dist = d
-                                best = (c, r)
-            if best:
-                target_col, target_row = best
+            # Prioritize the tile in the player's facing direction
+            face_dc = 1 if self.facing_dx > 0.1 else (-1 if self.facing_dx < -0.1 else 0)
+            face_dr = 1 if self.facing_dy > 0.1 else (-1 if self.facing_dy < -0.1 else 0)
+            fc, fr = center_col + face_dc, center_row + face_dr
+            if (
+                0 <= fc < world_cols
+                and 0 <= fr < world_rows
+                and TILE_INFO[world[fr][fc]]["mineable"]
+            ):
+                target_col, target_row = fc, fr
+            else:
+                best, best_dist = None, 999
+                for dr in range(-1, 2):
+                    for dc in range(-1, 2):
+                        c, r = center_col + dc, center_row + dr
+                        if 0 <= c < world_cols and 0 <= r < world_rows:
+                            if TILE_INFO[world[r][c]]["mineable"]:
+                                d = abs(dc) + abs(dr)
+                                if d < best_dist:
+                                    best_dist = d
+                                    best = (c, r)
+                if best:
+                    target_col, target_row = best
 
         if mining_input and target_col is not None and target_row is not None:
             if 0 <= target_col < world_cols and 0 <= target_row < world_rows:
