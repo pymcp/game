@@ -1,5 +1,6 @@
 """Cave environment — generates caverns with walls, ore, and cave-specific enemies."""
 
+import collections
 import math
 import random
 
@@ -90,6 +91,79 @@ def _drunkard_walk(rng, rows, cols):
             c = max(2, min(cols - 3, c + dc))
 
     return grid
+
+
+def _ensure_all_regions_connected(cave_world, rows, cols, spawn_col, spawn_row):
+    """Connect every isolated GRASS/CAVE_EXIT region to the spawn point.
+
+    After cellular-automata or drunkard-walk generation, open floor areas can
+    be split into disconnected pockets.  This function finds those pockets and
+    carves an L-shaped corridor between the closest pair of tiles linking each
+    pocket to the main (spawn-reachable) region, guaranteeing the player can
+    always walk from spawn to every open area.
+    """
+    passable = {GRASS, CAVE_EXIT}
+
+    def bfs(start_c, start_r, candidate_set):
+        region = set()
+        queue = collections.deque([(start_c, start_r)])
+        region.add((start_c, start_r))
+        while queue:
+            c, r = queue.popleft()
+            for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                nc, nr = c + dc, r + dr
+                if (nc, nr) not in region and (nc, nr) in candidate_set:
+                    region.add((nc, nr))
+                    queue.append((nc, nr))
+        return region
+
+    all_floor = {
+        (c, r)
+        for r in range(rows)
+        for c in range(cols)
+        if cave_world[r][c] in passable
+    }
+
+    if (spawn_col, spawn_row) not in all_floor:
+        return  # spawn is on a non-passable tile — shouldn't happen
+
+    main = bfs(spawn_col, spawn_row, all_floor)
+    remaining = all_floor - main
+
+    while remaining:
+        # Pick next isolated region
+        seed = next(iter(remaining))
+        iso = bfs(seed[0], seed[1], remaining)
+
+        # Find the closest tile pair (Manhattan) between main and iso regions
+        best_dist = float("inf")
+        best_main = best_iso = None
+        for mc, mr in main:
+            for ic, ir in iso:
+                d = abs(mc - ic) + abs(mr - ir)
+                if d < best_dist:
+                    best_dist = d
+                    best_main = (mc, mr)
+                    best_iso = (ic, ir)
+
+        # Carve an L-shaped corridor: horizontal first, then vertical
+        c, r = best_iso
+        tc, tr = best_main
+        while c != tc:
+            c += 1 if tc > c else -1
+            if 1 <= c < cols - 1 and 1 <= r < rows - 1:
+                cave_world[r][c] = GRASS
+                all_floor.add((c, r))
+                main.add((c, r))
+        while r != tr:
+            r += 1 if tr > r else -1
+            if 1 <= c < cols - 1 and 1 <= r < rows - 1:
+                cave_world[r][c] = GRASS
+                all_floor.add((c, r))
+                main.add((c, r))
+
+        main |= iso
+        remaining -= iso
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +270,9 @@ class CaveEnvironment(BaseEnvironment):
                 if 1 <= rr < rows - 1 and 1 <= rc < cols - 1:
                     if cave_world[rr][rc] == CAVE_WALL:
                         cave_world[rr][rc] = GRASS
+
+        # Connect all isolated floor regions to the spawn/exit area
+        _ensure_all_regions_connected(cave_world, rows, cols, spawn_col, spawn_row)
 
         cave_map = GameMap(cave_world, tileset=self.TILESET)
         cave_map.exit_col = exit_col
