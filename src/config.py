@@ -5,6 +5,10 @@ SCREEN_W, SCREEN_H = 960, 640
 TILE = 32
 FPS = 60
 
+# Split-screen for 2 players (each gets half the width)
+VIEWPORT_W = SCREEN_W // 2
+VIEWPORT_H = SCREEN_H
+
 # World size in tiles
 WORLD_COLS = 80
 WORLD_ROWS = 60

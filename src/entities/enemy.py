@@ -132,7 +132,9 @@ class Enemy:
             return
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
-        if sx < -40 or sx > SCREEN_W + 40 or sy < -40 or sy > SCREEN_H + 40:
+        # Use surface dimensions instead of hardcoded SCREEN_W/SCREEN_H for split-screen support
+        surf_w, surf_h = surf.get_size()
+        if sx < -40 or sx > surf_w + 40 or sy < -40 or sy > surf_h + 40:
             return
 
         base = (255, 255, 255) if self.hurt_flash > 0 else self.color

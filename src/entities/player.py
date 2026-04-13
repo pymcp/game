@@ -12,9 +12,16 @@ class Player:
     COLLISION_HALF = 10
     BOUNCE_DIST = TILE * 2
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, player_id=1):
+        """Initialize player.
+        
+        Args:
+            x, y: Starting position
+            player_id: 1 for WASD controls, 2 for arrow keys + numpad
+        """
         self.x = float(x)
         self.y = float(y)
+        self.player_id = player_id
         self.speed = 3.2
 
         # Equipment
@@ -62,18 +69,43 @@ class Player:
     # -- movement / collision ----------------------------------------------
 
     def update_movement(self, keys, dt, world):
-        """Handle WASD input and collision."""
+        """Handle input and collision.
+        
+        Player 1: WASD or Arrow keys
+        Player 2: Arrow keys or Numpad
+        """
         from src.config import GRASS, DIRT, MOUNTAIN
         
         dx = dy = 0
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            dx -= 1
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            dx += 1
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
-            dy -= 1
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            dy += 1
+        if self.player_id == 1:
+            # Player 1: WASD + arrow keys
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+                dx -= 1
+            if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+                dx += 1
+            if keys[pygame.K_w] or keys[pygame.K_UP]:
+                dy -= 1
+            if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+                dy += 1
+        else:
+            # Player 2: Arrow keys + Numpad (2,4,6,8 for 4-way, 1/3/7/9 for diagonals)
+            if keys[pygame.K_LEFT] or keys[pygame.K_KP_4]:
+                dx -= 1
+            if keys[pygame.K_RIGHT] or keys[pygame.K_KP_6]:
+                dx += 1
+            if keys[pygame.K_UP] or keys[pygame.K_KP_8]:
+                dy -= 1
+            if keys[pygame.K_DOWN] or keys[pygame.K_KP_2]:
+                dy += 1
+            # Numpad diagonals
+            if keys[pygame.K_KP_7]:
+                dx, dy = -1, -1
+            if keys[pygame.K_KP_9]:
+                dx, dy = 1, -1
+            if keys[pygame.K_KP_1]:
+                dx, dy = -1, 1
+            if keys[pygame.K_KP_3]:
+                dx, dy = 1, 1
 
         if dx and dy:
             dx *= 0.707
@@ -114,17 +146,25 @@ class Player:
     # -- mining ------------------------------------------------------------
 
     def update_mining(self, keys, mouse_buttons, dt, world, tile_hp, cam_x, cam_y, particles, floats):
-        """Handle mining input and tile breaking."""
+        """Handle mining input and tile breaking.
+        
+        Player 1: SPACE or mouse click
+        Player 2: KP_0 (numpad 0) or KP_Period
+        """
         from src.config import GRASS, DIRT, MOUNTAIN
         
-        mining_input = keys[pygame.K_SPACE] or mouse_buttons[0]
+        # Determine mining input
+        if self.player_id == 1:
+            mining_input = keys[pygame.K_SPACE] or mouse_buttons[0]
+        else:
+            mining_input = keys[pygame.K_KP_0] or keys[pygame.K_KP_PERIOD]
 
         target_col, target_row = None, None
-        if mouse_buttons[0]:
+        if self.player_id == 1 and mouse_buttons[0]:
             mx, my = pygame.mouse.get_pos()
             target_col = int((mx + cam_x) // TILE)
             target_row = int((my + cam_y) // TILE)
-        elif keys[pygame.K_SPACE]:
+        elif (self.player_id == 1 and keys[pygame.K_SPACE]) or (self.player_id == 2 and mining_input):
             center_col = int(self.x) // TILE
             center_row = int(self.y) // TILE
             best, best_dist = None, 999
