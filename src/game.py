@@ -517,13 +517,14 @@ class Game:
                 elif tid == MOUNTAIN:
                     # Check if this is part of a 2x2 mountain group starting from top-left
                     is_2x2_tl = (
-                        c + 1 < WORLD_COLS and r + 1 < WORLD_ROWS and
-                        self.world[r][c] == MOUNTAIN and
-                        self.world[r][c + 1] == MOUNTAIN and
-                        self.world[r + 1][c] == MOUNTAIN and
-                        self.world[r + 1][c + 1] == MOUNTAIN
+                        c + 1 < WORLD_COLS
+                        and r + 1 < WORLD_ROWS
+                        and self.world[r][c] == MOUNTAIN
+                        and self.world[r][c + 1] == MOUNTAIN
+                        and self.world[r + 1][c] == MOUNTAIN
+                        and self.world[r + 1][c + 1] == MOUNTAIN
                     )
-                    
+
                     # Check if current tile is part of a larger 2x2 block
                     is_part_of_2x2 = False
                     if is_2x2_tl:
@@ -532,27 +533,34 @@ class Game:
                         # Check if we're part of a 2x2 block from other positions
                         for dc, dr in [(-1, 0), (0, -1), (-1, -1)]:
                             check_c, check_r = c + dc, r + dr
-                            if check_c >= 0 and check_r >= 0 and check_c + 1 < WORLD_COLS and check_r + 1 < WORLD_ROWS:
-                                if (self.world[check_r][check_c] == MOUNTAIN and
-                                    self.world[check_r][check_c + 1] == MOUNTAIN and
-                                    self.world[check_r + 1][check_c] == MOUNTAIN and
-                                    self.world[check_r + 1][check_c + 1] == MOUNTAIN):
+                            if (
+                                check_c >= 0
+                                and check_r >= 0
+                                and check_c + 1 < WORLD_COLS
+                                and check_r + 1 < WORLD_ROWS
+                            ):
+                                if (
+                                    self.world[check_r][check_c] == MOUNTAIN
+                                    and self.world[check_r][check_c + 1] == MOUNTAIN
+                                    and self.world[check_r + 1][check_c] == MOUNTAIN
+                                    and self.world[check_r + 1][check_c + 1] == MOUNTAIN
+                                ):
                                     is_part_of_2x2 = True
                                     break
-                    
+
                     if is_2x2_tl:
                         # Draw multiple ridge-like peaks for 2x2 mountain groups
                         base_y = sy + TILE * 2
                         block_left_x = sx
                         block_right_x = sx + TILE * 2
-                        
+
                         # Define peaks (x_offset from block_left, height)
                         peaks = [
-                            (12, sy - TILE // 3),      # Left-center peak
-                            (24, sy - TILE // 5),      # Center-right peak  
-                            (36, sy - TILE // 3.5),    # Right peak
+                            (12, sy - TILE // 3),  # Left-center peak
+                            (24, sy - TILE // 5),  # Center-right peak
+                            (36, sy - TILE // 3.5),  # Right peak
                         ]
-                        
+
                         # Draw background mountain
                         pygame.draw.polygon(
                             self.screen,
@@ -564,12 +572,12 @@ class Game:
                                 (block_right_x, base_y),
                             ],
                         )
-                        
+
                         # Draw each peak (wider and ridge-like)
                         for peak_x, peak_y in peaks:
                             x = block_left_x + peak_x
                             width = 18  # Width of each ridge peak
-                            
+
                             # Left slope (darker)
                             pygame.draw.polygon(
                                 self.screen,
@@ -683,7 +691,7 @@ class Game:
         top_panel_surf = pygame.Surface((top_panel_w, top_panel_h), pygame.SRCALPHA)
         top_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
         self.screen.blit(top_panel_surf, (screen_x + 8, screen_y + 8))
-        
+
         # Top panel border
         pygame.draw.rect(
             self.screen,
@@ -730,10 +738,10 @@ class Game:
         inv_y = screen_y + 105
         inv_text = font_small.render("Inventory:", True, (200, 200, 200))
         self.screen.blit(inv_text, (screen_x + 18, inv_y))
-        
+
         items = list(player.inventory.items())
         items_per_column = 2
-        
+
         for idx, (res, qty) in enumerate(items):
             col = idx // items_per_column
             row = idx % items_per_column
@@ -751,10 +759,12 @@ class Game:
         ctrl_y_start = screen_y + view_h - 100
         bottom_panel_h = 92
         bottom_panel_w = 240
-        bottom_panel_surf = pygame.Surface((bottom_panel_w, bottom_panel_h), pygame.SRCALPHA)
+        bottom_panel_surf = pygame.Surface(
+            (bottom_panel_w, bottom_panel_h), pygame.SRCALPHA
+        )
         bottom_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
         self.screen.blit(bottom_panel_surf, (screen_x + 8, ctrl_y_start))
-        
+
         # Bottom panel border
         pygame.draw.rect(
             self.screen,
@@ -778,11 +788,11 @@ class Game:
                 "O: Upgrade Weapon",
                 "V: Build House",
             ]
-        
+
         ctrl_y = ctrl_y_start + 8
         ctrl_header = font_small.render("Controls:", True, (200, 200, 200))
         self.screen.blit(ctrl_header, (screen_x + 18, ctrl_y))
-        
+
         for idx, ctrl_text in enumerate(controls):
             ctrl_surf = font_tiny.render(ctrl_text, True, (180, 180, 180))
             self.screen.blit(ctrl_surf, (screen_x + 18, ctrl_y + 24 + idx * 15))
