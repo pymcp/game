@@ -12,7 +12,6 @@ class Player:
     """The player character."""
 
     COLLISION_HALF = 10
-    BOUNCE_DIST = TILE * 2
 
     def __init__(self, x, y, player_id=1):
         """Initialize player.
@@ -122,28 +121,14 @@ class Player:
         new_px = self.x + dx * self.speed * dt
         new_py = self.y + dy * self.speed * dt
 
-        # X axis
+        # X axis - stop if blocked, no bouncing
         if not out_of_bounds(new_px, self.y, h):
-            if hits_blocking(world, new_px, self.y, h):
-                bounce_dir = -1 if dx > 0 else 1 if dx < 0 else 0
-                bounce_px = self.x + bounce_dir * self.BOUNCE_DIST
-                if not out_of_bounds(bounce_px, self.y, h) and not hits_blocking(
-                    world, bounce_px, self.y, h
-                ):
-                    self.x = bounce_px
-            else:
+            if not hits_blocking(world, new_px, self.y, h):
                 self.x = new_px
 
-        # Y axis
+        # Y axis - stop if blocked, no bouncing
         if not out_of_bounds(self.x, new_py, h):
-            if hits_blocking(world, self.x, new_py, h):
-                bounce_dir = -1 if dy > 0 else 1 if dy < 0 else 0
-                bounce_py = self.y + bounce_dir * self.BOUNCE_DIST
-                if not out_of_bounds(self.x, bounce_py, h) and not hits_blocking(
-                    world, self.x, bounce_py, h
-                ):
-                    self.y = bounce_py
-            else:
+            if not hits_blocking(world, self.x, new_py, h):
                 self.y = new_py
 
         self.x = max(h, min(WORLD_COLS * TILE - h, self.x))
