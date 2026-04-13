@@ -15,6 +15,7 @@ _ARMOR_COSTS: dict[str, dict[str, int]] = {
     "Diamond": {"Diamond": 2},
     "Coral": {"Coral": 4},
     "Ancient Stone": {"Ancient Stone": 2},
+    "Ancient": {"Void Stone": 3, "Diamond": 1},
 }
 
 # Minimum housing tier required per armor material (0 = Cottage, 5 = City)
@@ -25,6 +26,7 @@ _ARMOR_MIN_TIER: dict[str, int] = {
     "Diamond": 2,
     "Coral": 3,
     "Ancient Stone": 4,
+    "Ancient": 5,
 }
 
 _SLOTS = ["Helmet", "Chest", "Legs", "Boots"]

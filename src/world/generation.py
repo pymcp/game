@@ -22,6 +22,23 @@ from src.config import (
     BOAT,
     TREASURE_CHEST,
     OCEAN_ISLAND_CHANCE,
+    SAND,
+    SNOW,
+    ICE_PEAK,
+    FROZEN_LAKE,
+    FROST_CRYSTAL_ORE,
+    ASH_GROUND,
+    LAVA_POOL,
+    MAGMA_STONE,
+    MAGMA_ORE,
+    DEAD_GRASS,
+    RUINS_WALL,
+    BONE_PILE,
+    GRAVE,
+    DESERT_CRYSTAL_ORE,
+    SANDSTONE,
+    CACTUS_TILE,
+    BiomeType,
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
 
@@ -74,33 +91,197 @@ def generate_world() -> list[list[int]]:
     return world
 
 
+# ---------------------------------------------------------------------------
+# Biome config: per-biome tile mapping for island generation
+# ---------------------------------------------------------------------------
+
+_BIOME_CONFIG: dict[BiomeType, dict] = {
+    BiomeType.TUNDRA: {
+        "floor": SNOW,
+        "water": FROZEN_LAKE,
+        "mountain": ICE_PEAK,
+        "ore": FROST_CRYSTAL_ORE,
+        "ore_count": 18,
+        "ore_scatter": (2, 5),
+    },
+    BiomeType.VOLCANO: {
+        "floor": ASH_GROUND,
+        "water": LAVA_POOL,
+        "mountain": MAGMA_STONE,
+        "ore": MAGMA_ORE,
+        "ore_count": 20,
+        "ore_scatter": (2, 5),
+    },
+    BiomeType.ZOMBIE: {
+        "floor": DEAD_GRASS,
+        "water": WATER,
+        "mountain": RUINS_WALL,
+        "ore": BONE_PILE,
+        "ore_count": 30,
+        "ore_scatter": (3, 7),
+    },
+    BiomeType.DESERT: {
+        "floor": SAND,
+        "water": WATER,
+        "mountain": SANDSTONE,
+        "ore": DESERT_CRYSTAL_ORE,
+        "ore_count": 20,
+        "ore_scatter": (2, 5),
+    },
+}
+
+
+def get_sector_biome(world_seed: int, sx: int, sy: int) -> BiomeType:
+    """Return the deterministic biome for a non-home sector island.
+
+    The result is consistent: the same (world_seed, sx, sy) always returns
+    the same biome so the minimap and generation always agree.
+    """
+    # Use an integer-only hash (Python randomises string hashes between runs)
+    sector_seed = hash((world_seed, sx, sy)) & 0xFFFF_FFFF
+    # XOR with a large prime to get a different seed from the island-presence roll
+    biome_seed = (sector_seed ^ 0x9E3779B9) & 0xFFFF_FFFF
+    rng = random.Random(biome_seed)
+    return rng.choices(
+        [
+            BiomeType.STANDARD,
+            BiomeType.TUNDRA,
+            BiomeType.VOLCANO,
+            BiomeType.ZOMBIE,
+            BiomeType.DESERT,
+        ],
+        weights=[40, 15, 15, 15, 15],
+    )[0]
+
+
+def generate_biome_island(rng: random.Random, biome: BiomeType) -> list[list[int]]:
+    """Generate a full island world using biome-specific tiles.
+
+    Reuses the same island mask and helper functions as generate_world(), but
+    plants biome tiles instead of the standard tileset.  ~20% of land tiles
+    receive a scatter of standard GRASS/DIRT/TREE for visual bleed-in.
+    """
+    cfg = _BIOME_CONFIG[biome]
+    floor_tile = cfg["floor"]
+    water_tile = cfg["water"]
+    mountain_tile = cfg["mountain"]
+    ore_tile = cfg["ore"]
+    ore_count = cfg["ore_count"]
+    ore_cmin, ore_cmax = cfg["ore_scatter"]
+
+    # Temporarily override global random so the existing helpers work
+    _prev_state = random.getstate()
+    random.setstate(rng.getstate())
+
+    world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+    land_mask = _generate_island_mask(WORLD_ROWS, WORLD_COLS)
+
+    # Stamp biome floor on all land tiles
+    for r in range(WORLD_ROWS):
+        for c in range(WORLD_COLS):
+            if land_mask[r][c]:
+                world[r][c] = floor_tile
+
+    def scatter(tile_id: int, count: int, cluster_min: int, cluster_max: int) -> None:
+        for _ in range(count):
+            cx = random.randint(0, WORLD_COLS - 1)
+            cy = random.randint(0, WORLD_ROWS - 1)
+            if not land_mask[cy][cx]:
+                continue
+            size = random.randint(cluster_min, cluster_max)
+            for __ in range(size):
+                nx = cx + random.randint(-2, 2)
+                ny = cy + random.randint(-2, 2)
+                if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS and land_mask[ny][nx]:
+                    world[ny][nx] = tile_id
+
+    # Biome ore
+    scatter(ore_tile, ore_count, ore_cmin, ore_cmax)
+
+    # Standard-mix bleed (~20%): small patches of GRASS, DIRT, TREE for variety
+    scatter(GRASS, 12, 2, 6)
+    scatter(DIRT, 12, 2, 6)
+    scatter(TREE, 15, 1, 4)
+
+    # Biome mountain ranges using the same clustering logic
+    for _ in range(30):
+        cx = random.randint(0, WORLD_COLS - 1)
+        cy = random.randint(0, WORLD_ROWS - 1)
+        if not land_mask[cy][cx]:
+            continue
+        size = random.randint(6, 20)
+        for __ in range(size):
+            nx = cx + random.randint(-3, 3)
+            ny = cy + random.randint(-3, 3)
+            if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS and land_mask[ny][nx]:
+                world[ny][nx] = mountain_tile
+    # Spread pass
+    for row in range(WORLD_ROWS):
+        for col in range(WORLD_COLS):
+            if world[row][col] == mountain_tile and random.random() < 0.35:
+                adj_col = col + random.randint(-1, 1)
+                adj_row = row + random.randint(-1, 1)
+                if 0 <= adj_col < WORLD_COLS and 0 <= adj_row < WORLD_ROWS:
+                    if world[adj_row][adj_col] in (floor_tile, GRASS, DIRT):
+                        world[adj_row][adj_col] = mountain_tile
+
+    # Interior water bodies — only for non-ocean water tiles, replace water interior
+    if water_tile != WATER:
+        for r in range(WORLD_ROWS):
+            for c in range(WORLD_COLS):
+                if world[r][c] == WATER and land_mask[r][c]:
+                    world[r][c] = water_tile
+
+    # Zombie biome gets extra grave decorations
+    if biome == BiomeType.ZOMBIE:
+        scatter(GRAVE, 25, 1, 3)
+
+    # Desert biome gets cactus clusters
+    if biome == BiomeType.DESERT:
+        scatter(CACTUS_TILE, 30, 1, 4)
+
+    # Cave entrances and pier (shared with standard islands)
+    _place_cave_entrances(world)
+    _place_pier_and_chest(world)
+
+    # Restore global random state and re-sync rng
+    rng.setstate(random.getstate())
+    random.setstate(_prev_state)
+
+    return world
+
+
 def generate_ocean_sector(
     sx: int, sy: int, world_seed: int
-) -> tuple[list[list[int]], bool]:
+) -> tuple[list[list[int]], bool, "BiomeType"]:
     """Generate a deterministic 80×60 ocean sector at grid position (sx, sy).
 
     The result is fully reproducible: calling with the same arguments always
     returns the same world layout.  Sector (0,0) is the home island and should
     never be generated here — use the existing generate_world() for that.
 
-    Returns a tuple (world, has_island) where world is a 2-D list of tile IDs
-    (WORLD_ROWS rows × WORLD_COLS cols) and has_island is True when the sector
-    contains a full generated island (not just atolls).
+    Returns a tuple (world, has_island, biome) where world is a 2-D list of tile IDs
+    (WORLD_ROWS rows × WORLD_COLS cols), has_island is True when the sector
+    contains a full generated island (not just atolls), and biome is the BiomeType
+    of the island.
     """
     # Deterministic seed derived from sector coordinates and the world seed
     sector_seed = hash((world_seed, sx, sy)) & 0xFFFF_FFFF
     rng = random.Random(sector_seed)
 
     has_island = rng.random() < OCEAN_ISLAND_CHANCE
+    biome = get_sector_biome(world_seed, sx, sy)
 
     if has_island:
-        # Generate a full island world using the same seeded rng
-        _prev_state = random.getstate()
-        random.setstate(rng.getstate())
-        world = generate_world()
-        # Re-sync rng state in case callers chain calls (not strictly needed)
-        random.setstate(_prev_state)
-        return world, True
+        if biome == BiomeType.STANDARD:
+            # Generate a full island world using the same seeded rng
+            _prev_state = random.getstate()
+            random.setstate(rng.getstate())
+            world = generate_world()
+            random.setstate(_prev_state)
+        else:
+            world = generate_biome_island(rng, biome)
+        return world, True, biome
 
     # --- Ocean-only sector: water + rocks + atolls ---
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
@@ -129,7 +310,7 @@ def generate_ocean_sector(
             if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
                 world[ny][nx] = GRASS
 
-    return world, False
+    return world, False, BiomeType.STANDARD
 
 
 def _generate_island_mask(rows: int, cols: int) -> list[list[bool]]:
@@ -333,28 +514,63 @@ def _create_lake(
                     lake_tiles.append((new_col, new_row))
 
 
-def spawn_enemies(world: list[list[int]]) -> list:
-    """Scatter overland enemies on walkable tiles."""
+def spawn_enemies(
+    world: list[list[int]], biome: BiomeType = BiomeType.STANDARD
+) -> list:
+    """Scatter overland enemies on walkable tiles.
+
+    For biome islands, spawns the biome-specific enemy types instead of
+    (or in addition to) the standard overland set.
+    """
     from src.entities import Enemy
 
-    overland_types = [
+    # Map BiomeType to the corresponding EnemyEnvironment tag
+    _BIOME_ENV = {
+        BiomeType.STANDARD: EnemyEnvironment.OVERLAND,
+        BiomeType.TUNDRA: EnemyEnvironment.TUNDRA,
+        BiomeType.VOLCANO: EnemyEnvironment.VOLCANO,
+        BiomeType.ZOMBIE: EnemyEnvironment.ZOMBIE,
+        BiomeType.DESERT: EnemyEnvironment.DESERT,
+    }
+    target_env = _BIOME_ENV.get(biome, EnemyEnvironment.OVERLAND)
+
+    # Standard islands use OVERLAND enemies; biome islands use biome-specific enemies
+    if biome == BiomeType.STANDARD:
+        valid_envs = {EnemyEnvironment.OVERLAND}
+    else:
+        valid_envs = {target_env}
+
+    eligible_types = [
         k
         for k, v in ENEMY_TYPES.items()
-        if EnemyEnvironment.OVERLAND in v.get("environments", [])
+        if any(env in v.get("environments", []) for env in valid_envs)
     ]
+
+    # Biome floor tiles that are valid enemy spawn tiles
+    _BIOME_FLOOR = {
+        BiomeType.STANDARD: GRASS,
+        BiomeType.TUNDRA: SNOW,
+        BiomeType.VOLCANO: ASH_GROUND,
+        BiomeType.ZOMBIE: DEAD_GRASS,
+        BiomeType.DESERT: SAND,
+    }
+    floor_tile = _BIOME_FLOOR.get(biome, GRASS)
+
     enemies = []
     spawn_count = {}
     for _ in range(25):
         for attempt in range(20):
             col = random.randint(2, WORLD_COLS - 3)
             row = random.randint(2, WORLD_ROWS - 3)
-            if world[row][col] == GRASS:
+            if world[row][col] in (GRASS, floor_tile):
                 cx = col * TILE + TILE // 2
                 cy = row * TILE + TILE // 2
                 mid_x = (WORLD_COLS // 2) * TILE
                 mid_y = (WORLD_ROWS // 2) * TILE
                 if math.hypot(cx - mid_x, cy - mid_y) > TILE * 8:
-                    enemy_key = random.choice(overland_types)
+                    if not eligible_types:
+                        break
+                    enemy_key = random.choice(eligible_types)
                     count = spawn_count.get(enemy_key, 0)
                     if count >= ENEMY_TYPES[enemy_key]["maximum"]:
                         continue

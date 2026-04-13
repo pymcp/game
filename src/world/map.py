@@ -1,5 +1,6 @@
 """Game map representation with tileset support."""
 
+from src.config import BiomeType
 from src.data import TILE_INFO
 
 
@@ -15,6 +16,7 @@ class GameMap:
         """
         self.world = world
         self.tileset = tileset
+        self.biome: BiomeType = BiomeType.STANDARD
         self.rows = len(world)
         self.cols = len(world[0]) if world else 0
 
@@ -85,6 +87,35 @@ class GameMap:
             r = max(0, int(r * 0.8 + 15))
             g = max(0, int(g * 0.7))
             b = min(255, int(b * 1.1 + 20))
+            return (r, g, b)
+
+        # Biome cave tints
+        if self.tileset == "cave_tundra":
+            r, g, b = base_color
+            r = max(0, int(r * 0.65 + 20))
+            g = max(0, int(g * 0.75 + 20))
+            b = min(255, int(b * 1.1 + 40))
+            return (r, g, b)
+
+        if self.tileset == "cave_volcano":
+            r, g, b = base_color
+            r = min(255, int(r * 0.9 + 40))
+            g = max(0, int(g * 0.55))
+            b = max(0, int(b * 0.45))
+            return (r, g, b)
+
+        if self.tileset == "cave_zombie":
+            r, g, b = base_color
+            r = max(0, int(r * 0.55))
+            g = max(0, int(g * 0.75 + 15))
+            b = max(0, int(b * 0.50))
+            return (r, g, b)
+
+        if self.tileset == "cave_desert":
+            r, g, b = base_color
+            r = min(255, int(r * 0.85 + 35))
+            g = max(0, int(g * 0.75 + 15))
+            b = max(0, int(b * 0.50))
             return (r, g, b)
 
         return base_color

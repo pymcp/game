@@ -5,6 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 from src.world.map import GameMap
+from src.config import BiomeType
 from src.entities.player import (
     Player,
     ControlScheme,
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 4
+SAVE_VERSION = 6
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +120,7 @@ def _serialize_map(game_map: GameMap) -> dict:
     data = {
         "world": game_map.world,
         "tileset": game_map.tileset,
+        "biome": game_map.biome.value,
         "tile_hp": game_map.tile_hp,
         "town_clusters": tc,
         "enemies": enemies,
@@ -241,6 +243,7 @@ def _serialize_sea_creature(sc: SeaCreature) -> dict:
 def _deserialize_map(data: dict) -> GameMap:
     """Reconstruct a GameMap from saved dict."""
     game_map = GameMap(data["world"], tileset=data["tileset"])
+    game_map.biome = BiomeType(data.get("biome", BiomeType.STANDARD.value))
     game_map.tile_hp = data["tile_hp"]
     game_map.town_clusters = {
         (int(k.split(":")[0]), int(k.split(":")[1])): v
@@ -257,7 +260,9 @@ def _deserialize_map(data: dict) -> GameMap:
         positions = []
         for entry in data["sub_house_positions"]:
             if len(entry) >= 4:
-                positions.append((int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3])))
+                positions.append(
+                    (int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3]))
+                )
             else:
                 # Backward compat: old saves stored only (col, row); default interior 3×3
                 positions.append((int(entry[0]), int(entry[1]), 3, 3))

@@ -462,7 +462,9 @@ class Player:
                                 )
                             )
                         for _ in range(12):
-                            particles.append(Particle(tile_cx, tile_cy, info["color"], map_key))
+                            particles.append(
+                                Particle(tile_cx, tile_cy, info["color"], map_key)
+                            )
                         new_tile = (
                             DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
                         )

@@ -10,7 +10,12 @@ from src.world.collision import (
     compute_town_clusters,
     xp_for_level,
 )
-from src.world.generation import generate_world, generate_ocean_sector, spawn_enemies
+from src.world.generation import (
+    generate_world,
+    generate_ocean_sector,
+    get_sector_biome,
+    spawn_enemies,
+)
 from src.world.environments import OverlandEnvironment, CaveEnvironment
 
 __all__ = [
@@ -24,6 +29,7 @@ __all__ = [
     "xp_for_level",
     "generate_world",
     "generate_ocean_sector",
+    "get_sector_biome",
     "spawn_enemies",
     "OverlandEnvironment",
     "CaveEnvironment",

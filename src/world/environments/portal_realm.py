@@ -2,7 +2,14 @@
 
 import random
 
-from src.config import TREASURE_CHEST, PORTAL_FLOOR, PORTAL_WALL, PORTAL_ACTIVE
+from src.config import (
+    TREASURE_CHEST,
+    PORTAL_FLOOR,
+    PORTAL_WALL,
+    PORTAL_ACTIVE,
+    VOID_ORE,
+    PORTAL_LAVA,
+)
 from src.world.environments.base import BaseEnvironment
 from src.world.environments.utils import cellular_automata, connect_regions
 from src.world.map import GameMap
@@ -22,6 +29,37 @@ def carve_chamber(world: list[list[int]], slot_col: int, slot_row: int) -> None:
     for r in range(slot_row + 2, slot_row + SLOT_SIZE - 2):
         for c in range(slot_col + 2, slot_col + SLOT_SIZE - 2):
             world[r][c] = PORTAL_FLOOR
+    # Scatter 2–4 VOID_ORE in the new chamber's floor
+    floor_tiles = [
+        (c, r)
+        for r in range(slot_row + 2, slot_row + SLOT_SIZE - 2)
+        for c in range(slot_col + 2, slot_col + SLOT_SIZE - 2)
+    ]
+    count = random.randint(2, 4)
+    for fc, fr in random.sample(floor_tiles, min(count, len(floor_tiles))):
+        world[fr][fc] = VOID_ORE
+
+
+def _carve_lava_river(
+    world: list[list[int]],
+    rows: int,
+    cols: int,
+    spawn_col: int,
+    spawn_row: int,
+) -> None:
+    """Carve a 4-tile-wide horizontal PORTAL_LAVA river across the portal realm.
+
+    The river runs through the vertical midpoint of the map. A 12-tile gap is
+    left around the spawn column so the player can always safely leave spawn.
+    """
+    mid_row = rows // 2
+    safe_min = max(REALM_PADDING, spawn_col - 6)
+    safe_max = min(cols - REALM_PADDING - 1, spawn_col + 6)
+    for r in range(mid_row - 2, mid_row + 2):
+        for c in range(REALM_PADDING, cols - REALM_PADDING):
+            if safe_min <= c <= safe_max:
+                continue  # preserve gap near spawn
+            world[r][c] = PORTAL_LAVA
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +129,20 @@ class PortalRealmEnvironment(BaseEnvironment):
         )
 
         # No chests placed here — one chest is spawned per portal via Game._add_realm_portal().
+
+        # Carve a lava river through the middle of the realm
+        _carve_lava_river(world, rows, cols, spawn_col, spawn_row)
+
+        # Scatter initial VOID_ORE on portal floor tiles
+        floor_tiles = [
+            (c, r)
+            for r in range(REALM_PADDING, rows - REALM_PADDING)
+            for c in range(REALM_PADDING, cols - REALM_PADDING)
+            if world[r][c] == PORTAL_FLOOR
+        ]
+        ore_count = min(15, len(floor_tiles))
+        for c, r in rng.sample(floor_tiles, ore_count):
+            world[r][c] = VOID_ORE
 
         game_map = GameMap(world, tileset=self.TILESET)
         game_map.spawn_col = spawn_col

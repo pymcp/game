@@ -47,6 +47,8 @@ from src.config import (
     BOAT_BUILD_COST,
     SECTOR_WIPE_DURATION,
     PORTAL_WARP_DURATION,
+    BiomeType,
+    PORTAL_LAVA,
 )
 from src.data import (
     TILE_INFO,
@@ -62,10 +64,12 @@ from src.data import (
     SLOT_LABELS,
     item_fits_slot,
     AccessoryEffect,
+    ArmorMaterial,
 )
 from src.world import (
     generate_world,
     generate_ocean_sector,
+    get_sector_biome,
     spawn_enemies,
     try_spend,
     has_adjacent_house,
@@ -189,6 +193,14 @@ class Game:
         self.sector_wipe = {}
         # Portal-warp vortex animation state: {player_id: {"progress": float}}
         self.portal_warp: dict[int, dict] = {}
+        # Biome entry damage: {player_id: {"biome": BiomeType, "frames": int} | None}
+        self._biome_warn_timers: dict[int, dict | None] = {1: None, 2: None}
+        # Portal lava hurt cooldown: {player_id: int} (frames until next lava damage tick)
+        self._lava_hurt_timers: dict[int, int] = {1: 0, 2: 0}
+        # Biome entry damage: {player_id: {"biome": BiomeType, "frames": int} | None}
+        self._biome_warn_timers: dict[int, dict | None] = {1: None, 2: None}
+        # Portal lava hurt cooldown: {player_id: int} (counts down frames between damage ticks)
+        self._lava_hurt_timers: dict[int, int] = {1: 0, 2: 0}
         # Set of (sx, sy) sector coordinates the players have ever visited
         self.visited_sectors: set = {(0, 0)}
         # Set of (sx, sy) sector coordinates that contain land (grass tiles)
@@ -244,7 +256,13 @@ class Game:
             del self.death_challenges[player.player_id]
             self._respawn_player(player)
             self.floats.append(
-                FloatingText(player.x, player.y - 30, "Respawned!", (100, 255, 100))
+                FloatingText(
+                    player.x,
+                    player.y - 30,
+                    "Respawned!",
+                    (100, 255, 100),
+                    player.current_map,
+                )
             )
         else:
             challenge["wrong"] = True
@@ -540,7 +558,13 @@ class Game:
                     if chosen == "_unequip":
                         player.unequip_item(slot_key)
                         self.floats.append(
-                            FloatingText(tx, ty, "Unequipped", (200, 200, 100))
+                            FloatingText(
+                                tx,
+                                ty,
+                                "Unequipped",
+                                (200, 200, 100),
+                                player.current_map,
+                            )
                         )
                     elif chosen == "_back":
                         pass  # fall through to closing sub-menu
@@ -548,7 +572,11 @@ class Game:
                         if player.equip_item(slot_key, chosen):
                             self.floats.append(
                                 FloatingText(
-                                    tx, ty, f"Equipped {chosen}!", (100, 220, 100)
+                                    tx,
+                                    ty,
+                                    f"Equipped {chosen}!",
+                                    (100, 220, 100),
+                                    player.current_map,
                                 )
                             )
                     state["sub_idx"] = None
@@ -589,6 +617,9 @@ class Game:
                     recipe = available_recipes[cursor]
                     tx = int(player.x)
                     ty = int(player.y) - 20
+                    cost_str = ", ".join(
+                        f"{qty} {item}" for item, qty in recipe["cost"].items()
+                    )
                     if try_spend(player.inventory, recipe["cost"]):
                         result = recipe["result"]
                         player.inventory[result["item"]] = (
@@ -596,18 +627,26 @@ class Game:
                         )
                         self.floats.append(
                             FloatingText(
-                                tx, ty, f"{result['item']} crafted!", (60, 200, 255)
+                                tx,
+                                ty,
+                                f"{result['qty']}x {result['item']}! (-{cost_str})",
+                                (60, 200, 255),
+                                player.current_map,
                             )
                         )
                         for _ in range(8):
-                            self.particles.append(Particle(tx, ty, (40, 160, 220)))
-                        self.craft_menus[pid] = None
+                            self.particles.append(
+                                Particle(tx, ty, (40, 160, 220), player.current_map)
+                            )
                     else:
-                        cost_str = ", ".join(
-                            f"{qty} {item}" for item, qty in recipe["cost"].items()
-                        )
                         self.floats.append(
-                            FloatingText(tx, ty, f"Need {cost_str}!", (255, 100, 100))
+                            FloatingText(
+                                tx,
+                                ty,
+                                f"Need {cost_str}!",
+                                (255, 100, 100),
+                                player.current_map,
+                            )
                         )
                 else:
                     # "Close" entry selected
@@ -721,29 +760,63 @@ class Game:
         tile_cx = build_col * TILE + TILE // 2
         tile_cy = build_row * TILE + TILE // 2
         self.floats.append(
-            FloatingText(tile_cx, tile_cy, "House built!", (210, 160, 60))
+            FloatingText(
+                tile_cx, tile_cy, "House built!", (210, 160, 60), player.current_map
+            )
         )
         for _ in range(10):
-            self.particles.append(Particle(tile_cx, tile_cy, (160, 82, 45)))
+            self.particles.append(
+                Particle(tile_cx, tile_cy, (160, 82, 45), player.current_map)
+            )
 
         home = player.current_map
         if random.random() < 0.25:
             self.pets.append(Pet(tile_cx, tile_cy, kind="dog", home_map=home))
             self.floats.append(
-                FloatingText(tile_cx, tile_cy - 20, "Dog spawned!", (180, 130, 70))
+                FloatingText(
+                    tile_cx,
+                    tile_cy - 20,
+                    "Dog spawned!",
+                    (180, 130, 70),
+                    player.current_map,
+                )
             )
         else:
-            self.workers.append(
-                Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
-            )
-            self.floats.append(
-                FloatingText(tile_cx, tile_cy - 20, "Worker spawned!", (100, 220, 255))
-            )
+            workers_on_map = sum(1 for w in self.workers if w.home_map == home)
+            if workers_on_map < 5:
+                self.workers.append(
+                    Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
+                )
+                self.floats.append(
+                    FloatingText(
+                        tile_cx,
+                        tile_cy - 20,
+                        "Worker spawned!",
+                        (100, 220, 255),
+                        player.current_map,
+                    )
+                )
+            else:
+                self.floats.append(
+                    FloatingText(
+                        tile_cx,
+                        tile_cy - 20,
+                        "Worker cap reached!",
+                        (255, 160, 60),
+                        player.current_map,
+                    )
+                )
 
         if has_adjacent_house(current_map.world, build_col, build_row):
             self.pets.append(Pet(tile_cx, tile_cy, kind="cat", home_map=home))
             self.floats.append(
-                FloatingText(tile_cx, tile_cy - 36, "Cat appeared!", (255, 165, 0))
+                FloatingText(
+                    tile_cx,
+                    tile_cy - 36,
+                    "Cat appeared!",
+                    (255, 165, 0),
+                    player.current_map,
+                )
             )
 
         self._update_town_clusters(build_col, build_row, player, current_map)
@@ -836,7 +909,12 @@ class Game:
             if tile_id in (CAVE_MOUNTAIN, CAVE_HILL):
                 cave_key = (p_col, p_row)
                 if cave_key not in self.maps:
-                    env = CaveEnvironment(p_col, p_row, cave_type=tile_id)
+                    surface_biome = getattr(
+                        current_map_obj, "biome", BiomeType.STANDARD
+                    )
+                    env = CaveEnvironment(
+                        p_col, p_row, cave_type=tile_id, biome=surface_biome
+                    )
                     self.maps[cave_key] = env.generate()
                 cave_map = self.maps[cave_key]
                 cave_map.origin_map = player.current_map
@@ -846,7 +924,11 @@ class Game:
                 self._snap_camera_to_player(player)
                 self.floats.append(
                     FloatingText(
-                        player.x, player.y - 30, "Entered cave!", (100, 150, 255)
+                        player.x,
+                        player.y - 30,
+                        "Entered cave!",
+                        (100, 150, 255),
+                        player.current_map,
                     )
                 )
                 return
@@ -893,7 +975,11 @@ class Game:
                 self._snap_camera_to_player(player)
                 self.floats.append(
                     FloatingText(
-                        player.x, player.y - 30, "Exited cave!", (100, 255, 150)
+                        player.x,
+                        player.y - 30,
+                        "Exited cave!",
+                        (100, 255, 150),
+                        player.current_map,
                     )
                 )
                 return
@@ -924,7 +1010,13 @@ class Game:
                 origin_map.set_tile(dive_row, dive_col, WATER)
                 self._snap_camera_to_player(player)
                 self.floats.append(
-                    FloatingText(player.x, player.y - 30, "Surfaced!", (60, 200, 255))
+                    FloatingText(
+                        player.x,
+                        player.y - 30,
+                        "Surfaced!",
+                        (60, 200, 255),
+                        player.current_map,
+                    )
                 )
                 return
 
@@ -939,6 +1031,7 @@ class Game:
                     int(player.y) - 36,
                     "Sail to the edge of the map!",
                     (100, 200, 255),
+                    player.current_map,
                 )
             )
             return
@@ -1001,6 +1094,7 @@ class Game:
                                 ty - 20,
                                 f"Need {BOAT_BUILD_COST} Wood + 1 Sail!",
                                 (255, 100, 100),
+                                player.current_map,
                             )
                         )
                         return
@@ -1009,10 +1103,18 @@ class Game:
                     btx = cc * TILE + TILE // 2
                     bty = rr * TILE + TILE // 2
                     self.floats.append(
-                        FloatingText(btx, bty - 20, "Boat built!", (100, 200, 255))
+                        FloatingText(
+                            btx,
+                            bty - 20,
+                            "Boat built!",
+                            (100, 200, 255),
+                            player.current_map,
+                        )
                     )
                     for _ in range(12):
-                        self.particles.append(Particle(btx, bty, (80, 160, 220)))
+                        self.particles.append(
+                            Particle(btx, bty, (80, 160, 220), player.current_map)
+                        )
                     return
 
     def _try_dive(self, player: Player) -> None:
@@ -1041,11 +1143,15 @@ class Game:
         player.current_map = dive_key
         self._snap_camera_to_player(player)
         self.floats.append(
-            FloatingText(player.x, player.y - 30, "Diving!", (60, 200, 255))
+            FloatingText(
+                player.x, player.y - 30, "Diving!", (60, 200, 255), player.current_map
+            )
         )
         for _ in range(12):
             self.particles.append(
-                Particle(int(player.x), int(player.y), (40, 160, 220))
+                Particle(
+                    int(player.x), int(player.y), (40, 160, 220), player.current_map
+                )
             )
 
     def _try_activate_ritual_stone(
@@ -1083,16 +1189,26 @@ class Game:
             quest["stones_activated"] += 1
             remaining = quest["stones_total"] - quest["stones_activated"]
             self.floats.append(
-                FloatingText(tx, ty - 30, "Stone awakened!", (200, 180, 50))
+                FloatingText(
+                    tx, ty - 30, "Stone awakened!", (200, 180, 50), player.current_map
+                )
             )
             for _ in range(10):
-                self.particles.append(Particle(tx, ty, (200, 180, 50)))
+                self.particles.append(
+                    Particle(tx, ty, (200, 180, 50), player.current_map)
+                )
             if remaining == 0:
                 if self._check_portal_restored(map_key):
                     self._announce_portal_restored(player)
         else:
             self.floats.append(
-                FloatingText(tx, ty - 30, "Not the next stone!", (255, 100, 100))
+                FloatingText(
+                    tx,
+                    ty - 30,
+                    "Not the next stone!",
+                    (255, 100, 100),
+                    player.current_map,
+                )
             )
 
     def _try_interact_portal_ruins(self, player: Player, map_key: str | tuple) -> None:
@@ -1103,13 +1219,17 @@ class Game:
 
         if quest is None:
             self.floats.append(
-                FloatingText(tx, ty, "Ancient portal...", (180, 160, 200))
+                FloatingText(
+                    tx, ty, "Ancient portal...", (180, 160, 200), player.current_map
+                )
             )
             return
 
         if quest["restored"]:
             self.floats.append(
-                FloatingText(tx, ty, "Portal is active!", (160, 60, 220))
+                FloatingText(
+                    tx, ty, "Portal is active!", (160, 60, 220), player.current_map
+                )
             )
             return
 
@@ -1117,7 +1237,13 @@ class Game:
             done = quest["stones_activated"]
             total = quest["stones_total"]
             self.floats.append(
-                FloatingText(tx, ty, f"Ritual: {done}/{total} stones", (200, 180, 50))
+                FloatingText(
+                    tx,
+                    ty,
+                    f"Ritual: {done}/{total} stones",
+                    (200, 180, 50),
+                    player.current_map,
+                )
             )
 
         elif quest["type"] == PortalQuestType.GATHER:
@@ -1135,7 +1261,9 @@ class Game:
             else:
                 parts = ", ".join(f"{v} {k}" for k, v in required.items())
                 self.floats.append(
-                    FloatingText(tx, ty, f"Need: {parts}", (255, 160, 80))
+                    FloatingText(
+                        tx, ty, f"Need: {parts}", (255, 160, 80), player.current_map
+                    )
                 )
 
         elif quest["type"] == PortalQuestType.COMBAT:
@@ -1144,19 +1272,31 @@ class Game:
                     self._announce_portal_restored(player)
             else:
                 self.floats.append(
-                    FloatingText(tx, ty, "A guardian blocks the portal!", (200, 80, 80))
+                    FloatingText(
+                        tx,
+                        ty,
+                        "A guardian blocks the portal!",
+                        (200, 80, 80),
+                        player.current_map,
+                    )
                 )
 
     def _announce_portal_restored(self, player: Player) -> None:
         """Show a restoration announcement floating text."""
         self.floats.append(
             FloatingText(
-                int(player.x), int(player.y) - 50, "Portal restored!", (160, 60, 220)
+                int(player.x),
+                int(player.y) - 50,
+                "Portal restored!",
+                (160, 60, 220),
+                player.current_map,
             )
         )
         for _ in range(20):
             self.particles.append(
-                Particle(int(player.x), int(player.y), (160, 60, 220))
+                Particle(
+                    int(player.x), int(player.y), (160, 60, 220), player.current_map
+                )
             )
         # Register this island's portal in the realm (no-op if realm not yet generated)
         self._add_realm_portal(player.current_map)
@@ -1346,8 +1486,12 @@ class Game:
                 else 1
             )
             tier, tier_name = self._get_settlement_tier(cluster_size)
-            exterior_tile = self._sample_exterior_tile(current_map_obj, entry_col, entry_row)
-            env = HousingEnvironment(entry_col, entry_row, tier, exterior_tile=exterior_tile)
+            exterior_tile = self._sample_exterior_tile(
+                current_map_obj, entry_col, entry_row
+            )
+            env = HousingEnvironment(
+                entry_col, entry_row, tier, exterior_tile=exterior_tile
+            )
             house_map = env.generate()
             house_map.housing_tier = tier
             house_map.entrance_col = entry_col
@@ -1366,7 +1510,11 @@ class Game:
         self._snap_camera_to_player(player)
         self.floats.append(
             FloatingText(
-                player.x, player.y - 30, f"Entered {tier_name}!", (255, 200, 120)
+                player.x,
+                player.y - 30,
+                f"Entered {tier_name}!",
+                (255, 200, 120),
+                player.current_map,
             )
         )
 
@@ -1392,9 +1540,7 @@ class Game:
                         counts[t] = counts.get(t, 0) + 1
         return max(counts, key=lambda k: counts[k]) if counts else GRASS
 
-    def _enter_sub_house(
-        self, player: Player, sh_col: int, sh_row: int
-    ) -> None:
+    def _enter_sub_house(self, player: Player, sh_col: int, sh_row: int) -> None:
         """Enter one of the SETTLEMENT_HOUSE tiles within a settlement environment."""
         parent_key = player.current_map
         # Look up this sub-house in the parent map's sub_house_positions list.
@@ -1405,7 +1551,11 @@ class Game:
             (i for i, e in enumerate(positions) if e[0] == sh_col and e[1] == sh_row),
             sh_col * 1000 + sh_row,  # fallback unique id if not found
         )
-        entry = positions[sub_idx] if isinstance(sub_idx, int) and sub_idx < len(positions) else None
+        entry = (
+            positions[sub_idx]
+            if isinstance(sub_idx, int) and sub_idx < len(positions)
+            else None
+        )
         iw = int(entry[2]) if entry is not None and len(entry) >= 4 else 3
         ih = int(entry[3]) if entry is not None and len(entry) >= 4 else 3
 
@@ -1414,7 +1564,9 @@ class Game:
             # Generate a variable-sized interior matching the exterior footprint
             sub_seed_col = sh_col + (sub_idx if isinstance(sub_idx, int) else 0) * 37
             sub_seed_row = sh_row + (sub_idx if isinstance(sub_idx, int) else 0) * 53
-            env = HousingEnvironment(sub_seed_col, sub_seed_row, tier=0, sub_w=iw, sub_h=ih)
+            env = HousingEnvironment(
+                sub_seed_col, sub_seed_row, tier=0, sub_w=iw, sub_h=ih
+            )
             sub_map = env.generate()
             sub_map.housing_tier = 0
             sub_map.entrance_col = sh_col
@@ -1430,7 +1582,13 @@ class Game:
         player.current_map = sub_key
         self._snap_camera_to_player(player)
         self.floats.append(
-            FloatingText(player.x, player.y - 30, "Entered house!", (255, 200, 120))
+            FloatingText(
+                player.x,
+                player.y - 30,
+                "Entered house!",
+                (255, 200, 120),
+                player.current_map,
+            )
         )
 
     def _exit_housing(self, player: Player) -> None:
@@ -1455,7 +1613,16 @@ class Game:
         else:
             # Returning to overland/sector — find a walkable tile near the entrance
             placed = False
-            for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]:
+            for dr, dc in [
+                (1, 0),
+                (-1, 0),
+                (0, 1),
+                (0, -1),
+                (1, 1),
+                (-1, -1),
+                (1, -1),
+                (-1, 1),
+            ]:
                 adj_c = entrance_col + dc
                 adj_r = entrance_row + dr
                 if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
@@ -1472,7 +1639,13 @@ class Game:
         player.current_map = origin_key
         self._snap_camera_to_player(player)
         self.floats.append(
-            FloatingText(player.x, player.y - 30, "Exited house!", (200, 255, 200))
+            FloatingText(
+                player.x,
+                player.y - 30,
+                "Exited house!",
+                (200, 255, 200),
+                player.current_map,
+            )
         )
 
     def _enter_portal_realm(self, player: Player) -> None:
@@ -1524,6 +1697,7 @@ class Game:
                 int(player.y) - 30,
                 "Entered portal realm!",
                 (160, 60, 220),
+                player.current_map,
             )
         )
 
@@ -1592,7 +1766,11 @@ class Game:
         self.portal_warp[player.player_id] = {"progress": 0.0}
         self.floats.append(
             FloatingText(
-                int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220)
+                int(player.x),
+                int(player.y) - 30,
+                "Left portal realm!",
+                (180, 160, 220),
+                player.current_map,
             )
         )
 
@@ -1619,6 +1797,7 @@ class Game:
                     int(player.y) - 30,
                     "[DEBUG] Must be on overland!",
                     (255, 100, 100),
+                    player.current_map,
                 )
             )
             return
@@ -1696,6 +1875,7 @@ class Game:
                         int(player.y) - 30,
                         f"[DEBUG] No room for {name}!",
                         (255, 180, 100),
+                        player.current_map,
                     )
                 )
                 continue
@@ -1717,6 +1897,7 @@ class Game:
                     int(player.y) - 52,
                     f"[DEBUG] {placed_count}/6 tier clusters spawned!",
                     (255, 200, 100),
+                    player.current_map,
                 )
             )
 
@@ -1749,6 +1930,7 @@ class Game:
                 int(self.player1.y) - 52,
                 "[DEBUG] All items granted!",
                 (100, 220, 255),
+                self.player1.current_map,
             )
         )
 
@@ -1764,6 +1946,7 @@ class Game:
                     int(player.y) - 36,
                     "[DEBUG] No portal here",
                     (180, 80, 80),
+                    player.current_map,
                 )
             )
             return
@@ -1787,6 +1970,7 @@ class Game:
                 int(player.y) - 36,
                 "[DEBUG] Portal + nearby island ready!",
                 (160, 60, 220),
+                player.current_map,
             )
         )
 
@@ -1869,14 +2053,20 @@ class Game:
 
         if current_map_obj.get_tile(p_row, p_col) not in (GRASS, DIRT):
             self.floats.append(
-                FloatingText(tx, ty - 20, "Build on land!", (255, 100, 100))
+                FloatingText(
+                    tx, ty - 20, "Build on land!", (255, 100, 100), player.current_map
+                )
             )
             return
 
         if not try_spend(player.inventory, {"Wood": PIER_BUILD_COST}):
             self.floats.append(
                 FloatingText(
-                    tx, ty - 20, f"Need {PIER_BUILD_COST} Wood!", (255, 100, 100)
+                    tx,
+                    ty - 20,
+                    f"Need {PIER_BUILD_COST} Wood!",
+                    (255, 100, 100),
+                    player.current_map,
                 )
             )
             return
@@ -1906,14 +2096,22 @@ class Game:
                 current_map_obj.set_tile(r2, c2, PIER)
                 current_map_obj.set_tile_hp(r2, c2, 0)
                 self.floats.append(
-                    FloatingText(tx, ty - 20, "Pier built!", (200, 160, 60))
+                    FloatingText(
+                        tx, ty - 20, "Pier built!", (200, 160, 60), player.current_map
+                    )
                 )
                 return
 
         # Refund
         player.inventory["Wood"] = player.inventory.get("Wood", 0) + PIER_BUILD_COST
         self.floats.append(
-            FloatingText(tx, ty - 20, "No water to build on!", (255, 100, 100))
+            FloatingText(
+                tx,
+                ty - 20,
+                "No water to build on!",
+                (255, 100, 100),
+                player.current_map,
+            )
         )
 
     def _get_player_sector(self, player: Player) -> tuple[int, int] | None:
@@ -1936,9 +2134,12 @@ class Game:
             return self.maps["overland"]
         key = ("sector", sx, sy)
         if key not in self.maps:
-            world_data, has_island = generate_ocean_sector(sx, sy, self.world_seed)
+            world_data, has_island, biome = generate_ocean_sector(
+                sx, sy, self.world_seed
+            )
             sector_map = GameMap(world_data, tileset="overland")
-            sector_map.enemies = spawn_enemies(world_data)
+            sector_map.biome = biome
+            sector_map.enemies = spawn_enemies(world_data, biome)
             self.maps[key] = sector_map
             # Record if this sector has a full island (not just atolls)
             if has_island:
@@ -1968,6 +2169,30 @@ class Game:
                         to_evict.append(key)
         for key in to_evict:
             del self.maps[key]
+
+    def _check_biome_entry_armor(self, player: Player, biome: BiomeType) -> bool:
+        """Return True if the player meets the armor requirement for the given biome."""
+        body_slots = ["helmet", "chest", "legs", "boots"]
+        if biome == BiomeType.TUNDRA:
+            # Any armor equipped in any body slot
+            return any(player.equipment.get(s) is not None for s in body_slots)
+        if biome == BiomeType.VOLCANO:
+            # Full armor set — all 4 body slots occupied
+            return all(player.equipment.get(s) is not None for s in body_slots)
+        return True
+
+    def _has_ancient_armor(self, player: Player) -> bool:
+        """Return True if the player has at least one Ancient material armor piece equipped."""
+        body_slots = ["helmet", "chest", "legs", "boots"]
+        for slot in body_slots:
+            item_name = player.equipment.get(slot)
+            if (
+                item_name
+                and ARMOR_PIECES.get(item_name, {}).get("material")
+                == ArmorMaterial.ANCIENT
+            ):
+                return True
+        return False
 
     def check_sector_transitions(self, player: Player) -> None:
         """Detect when an on-boat player crosses the edge of their current sector
@@ -2030,11 +2255,39 @@ class Game:
         # Record the new sector as visited
         self.visited_sectors.add((new_sx, new_sy))
 
-        # Start the wipe animation
-        self.sector_wipe[pid] = {
-            "progress": 0.0,
-            "direction": direction,
-        }
+        # Check biome entry armor requirement for island sectors
+        if (new_sx, new_sy) in self.land_sectors and new_sx != 0 and new_sy != 0:
+            from src.world.generation import get_sector_biome
+
+            biome = get_sector_biome(self.world_seed, new_sx, new_sy)
+            if not self._check_biome_entry_armor(player, biome):
+                _BIOME_WARNINGS = {
+                    BiomeType.TUNDRA: "Too cold! Equip armor!",
+                    BiomeType.VOLCANO: "Too hot! Full armor set needed!",
+                }
+                msg = _BIOME_WARNINGS.get(biome)
+                if msg:
+                    self.floats.append(
+                        FloatingText(
+                            int(player.x),
+                            int(player.y) - 30,
+                            msg,
+                            (100, 200, 255),
+                            player.current_map,
+                        )
+                    )
+                    self._biome_warn_timers[pid] = {"biome": biome, "frames": 120}
+            else:
+                self._biome_warn_timers[pid] = None
+        else:
+            self._biome_warn_timers[pid] = None
+
+        # Start the wipe animation (skip if player is on a boat)
+        if not player.on_boat:
+            self.sector_wipe[pid] = {
+                "progress": 0.0,
+                "direction": direction,
+            }
 
         self._evict_distant_sectors()
 
@@ -2087,10 +2340,18 @@ class Game:
 
             # Tier-up announcement
             self.floats.append(
-                FloatingText(tile_cx, tile_cy - 40, f"{new_tier_name}!", (255, 220, 80))
+                FloatingText(
+                    tile_cx,
+                    tile_cy - 40,
+                    f"{new_tier_name}!",
+                    (255, 220, 80),
+                    player.current_map,
+                )
             )
             for _ in range(25):
-                self.particles.append(Particle(tile_cx, tile_cy, (255, 200, 60)))
+                self.particles.append(
+                    Particle(tile_cx, tile_cy, (255, 200, 60), player.current_map)
+                )
 
             # Gameplay bonuses scale with tier
             bonus_workers = new_tier_idx
@@ -2107,14 +2368,24 @@ class Game:
 
             home = player.current_map
             for _ in range(bonus_workers):
-                self.workers.append(
-                    Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
-                )
+                workers_on_map = sum(1 for w in self.workers if w.home_map == home)
+                if workers_on_map < 5:
+                    self.workers.append(
+                        Worker(
+                            tile_cx, tile_cy, player_id=player.player_id, home_map=home
+                        )
+                    )
 
             if bonus_resources:
                 res_text = ", ".join(f"+{v} {k}" for k, v in bonus_resources.items())
                 self.floats.append(
-                    FloatingText(tile_cx, tile_cy - 56, res_text, (120, 255, 120))
+                    FloatingText(
+                        tile_cx,
+                        tile_cy - 56,
+                        res_text,
+                        (120, 255, 120),
+                        player.current_map,
+                    )
                 )
 
     def _draw_house_tile(
@@ -2396,7 +2667,10 @@ class Game:
             # Generate or load the cave map
             cave_key = (tile_col, tile_row)
             if cave_key not in self.maps:
-                env = CaveEnvironment(tile_col, tile_row, cave_type=tile_id)
+                surface_biome = getattr(current_map, "biome", BiomeType.STANDARD)
+                env = CaveEnvironment(
+                    tile_col, tile_row, cave_type=tile_id, biome=surface_biome
+                )
                 self.maps[cave_key] = env.generate()
 
             cave_map = self.maps[cave_key]
@@ -2409,7 +2683,13 @@ class Game:
 
             self._snap_camera_to_player(player)
             self.floats.append(
-                FloatingText(player.x, player.y - 30, "Entered cave!", (100, 150, 255))
+                FloatingText(
+                    player.x,
+                    player.y - 30,
+                    "Entered cave!",
+                    (100, 150, 255),
+                    player.current_map,
+                )
             )
 
     def check_cave_exits(self, player: Player, current_map: GameMap | None) -> None:
@@ -2471,7 +2751,13 @@ class Game:
 
             self._snap_camera_to_player(player)
             self.floats.append(
-                FloatingText(player.x, player.y - 30, "Exited cave!", (100, 255, 150))
+                FloatingText(
+                    player.x,
+                    player.y - 30,
+                    "Exited cave!",
+                    (100, 255, 150),
+                    player.current_map,
+                )
             )
 
     # -- update ------------------------------------------------------------
@@ -2509,6 +2795,118 @@ class Game:
             self.check_sector_transitions(self.player1)
         if not self.player2.is_dead:
             self.check_sector_transitions(self.player2)
+        # ----------------------------------------------------------------
+
+        # -- Biome entry damage timer tick --------------------------------
+        for player in (self.player1, self.player2):
+            if player.is_dead:
+                continue
+            pid = player.player_id
+            warn = self._biome_warn_timers[pid]
+            if warn is None:
+                continue
+            warn["frames"] -= dt
+            if warn["frames"] <= 0:
+                if not self._check_biome_entry_armor(player, warn["biome"]):
+                    player.take_damage(
+                        5, self.particles, self.floats, player.current_map
+                    )
+                    if player.hp <= 0 and not player.is_dead:
+                        self._start_death_challenge(player)
+                self._biome_warn_timers[pid] = None
+        # ----------------------------------------------------------------
+
+        # -- Portal lava damage -------------------------------------------
+        for player in (self.player1, self.player2):
+            if player.is_dead:
+                continue
+            pid = player.player_id
+            if player.current_map != ("portal_realm",):
+                self._lava_hurt_timers[pid] = 0
+                continue
+            cur_map = self.get_player_current_map(player)
+            if cur_map is None:
+                continue
+            pc = int(player.x) // TILE
+            pr = int(player.y) // TILE
+            if cur_map.get_tile(pr, pc) == PORTAL_LAVA and not self._has_ancient_armor(
+                player
+            ):
+                self._lava_hurt_timers[pid] -= dt
+                if self._lava_hurt_timers[pid] <= 0:
+                    self._lava_hurt_timers[pid] = 60
+                    self.floats.append(
+                        FloatingText(
+                            int(player.x),
+                            int(player.y) - 30,
+                            "Lava burns! Need Ancient armor!",
+                            (255, 120, 30),
+                            player.current_map,
+                        )
+                    )
+                    player.take_damage(
+                        8, self.particles, self.floats, player.current_map
+                    )
+                    if player.hp <= 0 and not player.is_dead:
+                        self._start_death_challenge(player)
+            else:
+                self._lava_hurt_timers[pid] = 0
+        # ----------------------------------------------------------------
+
+        # -- Biome entry damage timer tick --------------------------------
+        for player in (self.player1, self.player2):
+            if player.is_dead:
+                continue
+            pid = player.player_id
+            warn = self._biome_warn_timers[pid]
+            if warn is None:
+                continue
+            warn["frames"] -= dt
+            if warn["frames"] <= 0:
+                # Grace period expired — deal damage if still unprotected
+                if not self._check_biome_entry_armor(player, warn["biome"]):
+                    player.take_damage(
+                        5, self.particles, self.floats, player.current_map
+                    )
+                    if player.hp <= 0 and not player.is_dead:
+                        self._start_death_challenge(player)
+                self._biome_warn_timers[pid] = None
+        # ----------------------------------------------------------------
+
+        # -- Portal lava damage -------------------------------------------
+        for player in (self.player1, self.player2):
+            if player.is_dead:
+                continue
+            if player.current_map != ("portal_realm",):
+                self._lava_hurt_timers[player.player_id] = 0
+                continue
+            cur_map = self.get_player_current_map(player)
+            if cur_map is None:
+                continue
+            pc = int(player.x) // TILE
+            pr = int(player.y) // TILE
+            if cur_map.get_tile(pr, pc) == PORTAL_LAVA:
+                if not self._has_ancient_armor(player):
+                    pid = player.player_id
+                    self._lava_hurt_timers[pid] -= dt
+                    if self._lava_hurt_timers[pid] <= 0:
+                        self._lava_hurt_timers[pid] = 60
+                        self.floats.append(
+                            FloatingText(
+                                int(player.x),
+                                int(player.y) - 30,
+                                "Lava burns! Need Ancient armor!",
+                                (255, 120, 30),
+                                player.current_map,
+                            )
+                        )
+                        player.take_damage(
+                            8, self.particles, self.floats, player.current_map
+                        )
+                        if player.hp <= 0 and not player.is_dead:
+                            self._start_death_challenge(player)
+            else:
+                self._lava_hurt_timers[player.player_id] = 0
         # ----------------------------------------------------------------
 
         # -- Boat disembark detection (before movement) -------------------
@@ -2617,6 +3015,7 @@ class Game:
                         int(player.y) - 20,
                         "On the boat!",
                         (100, 200, 255),
+                        player.current_map,
                     )
                 )
         # ----------------------------------------------------------------
@@ -2634,6 +3033,7 @@ class Game:
                 target_player.inventory,
                 self.particles,
                 self.floats,
+                w.home_map,
             )
             # Award XP to the player this worker is assigned to (boosted by accessories)
             xp_mult = 1.0 + target_player.active_effects().get(
@@ -2763,6 +3163,7 @@ class Game:
                     int(spawn_y) - 40,
                     "A guardian awakens!",
                     (200, 80, 80),
+                    map_key,
                 )
             )
 
@@ -2791,6 +3192,48 @@ class Game:
                 )
                 if target_player.hp <= 0 and not target_player.is_dead:
                     self._start_death_challenge(target_player)
+
+        # Update enemies on active sector island maps
+        active_sectors = {
+            p.current_map
+            for p in (self.player1, self.player2)
+            if not p.is_dead
+            and isinstance(p.current_map, tuple)
+            and len(p.current_map) == 3
+            and p.current_map[0] == "sector"
+        }
+        for sector_key in active_sectors:
+            sector_map = self.maps.get(sector_key)
+            if sector_map is None:
+                continue
+            for enemy in getattr(sector_map, "enemies", []):
+                target_player = self._nearest_living_player(sector_key, enemy)
+                if target_player is None:
+                    continue
+                cam_x = self.cam1_x if target_player is self.player1 else self.cam2_x
+                cam_y = self.cam1_y if target_player is self.player1 else self.cam2_y
+                enemy.update(
+                    dt,
+                    target_player.x,
+                    target_player.y,
+                    cam_x,
+                    cam_y,
+                    sector_map.world,
+                    self.particles,
+                )
+                dmg = enemy.try_attack(target_player.x, target_player.y)
+                if dmg > 0:
+                    target_player.take_damage(
+                        dmg, self.particles, self.floats, target_player.current_map
+                    )
+                    if target_player.hp <= 0 and not target_player.is_dead:
+                        self._start_death_challenge(target_player)
+            if hasattr(sector_map, "enemies"):
+                dead = [e for e in sector_map.enemies if e.hp <= 0]
+                sector_map.enemies = [e for e in sector_map.enemies if e.hp > 0]
+                for dead_e in dead:
+                    if dead_e.type_key == "stone_sentinel":
+                        self._on_sentinel_defeated(sector_key)
 
     def _draw_portal_warp_viewport(
         self,
@@ -3685,6 +4128,15 @@ class Game:
             if cave_map is not None:
                 for enemy in cave_map.enemies:
                     enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+        elif (
+            isinstance(player.current_map, tuple)
+            and len(player.current_map) == 3
+            and player.current_map[0] == "sector"
+        ):
+            sector_map = self.get_player_current_map(player)
+            if sector_map is not None:
+                for enemy in getattr(sector_map, "enemies", []):
+                    enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
         # Draw projectiles on this map only
         current_map_key = player.current_map
@@ -3942,9 +4394,7 @@ class Game:
                 hint_y = screen_y + view_h - 150
                 self.screen.blit(hint, (hint_x, hint_y))
             elif tile_id == HOUSE_EXIT:
-                hint = font_tiny.render(
-                    f"[{interact_key}] Exit", True, (180, 255, 180)
-                )
+                hint = font_tiny.render(f"[{interact_key}] Exit", True, (180, 255, 180))
                 hint_x = screen_x + view_w // 2 - hint.get_width() // 2
                 hint_y = screen_y + view_h - 150
                 self.screen.blit(hint, (hint_x, hint_y))
@@ -4015,7 +4465,14 @@ class Game:
 
                 if (sx, sy) in self.visited_sectors:
                     if (sx, sy) in self.land_sectors:
-                        color = (50, 110, 50)  # has land — muted green
+                        biome = get_sector_biome(self.world_seed, sx, sy)
+                        color = {
+                            BiomeType.STANDARD: (50, 110, 50),
+                            BiomeType.TUNDRA: (120, 180, 220),
+                            BiomeType.VOLCANO: (200, 70, 20),
+                            BiomeType.ZOMBIE: (80, 95, 60),
+                            BiomeType.DESERT: (195, 170, 85),
+                        }.get(biome, (50, 110, 50))
                     else:
                         color = (35, 55, 110)  # visited ocean — dark navy
                 else:
@@ -4065,7 +4522,7 @@ class Game:
             (255, 180, 60),  # amber
         ]
         for _ in range(55):
-            p = Particle(tx, ty, random.choice(sparkle_colors))
+            p = Particle(tx, ty, random.choice(sparkle_colors), player.current_map)
             # Override default random speed with a stronger upward bias
             angle = random.uniform(-math.pi, 0)  # upper hemisphere
             speed = random.uniform(2, 6)
@@ -4076,7 +4533,7 @@ class Game:
             self.particles.append(p)
         # A few stray downward particles for the "chest lid" effect
         for _ in range(12):
-            p = Particle(tx, ty, (200, 140, 40))
+            p = Particle(tx, ty, (200, 140, 40), player.current_map)
             p.life = random.randint(10, 20)
             p.size = random.randint(3, 6)
             self.particles.append(p)
@@ -4165,9 +4622,7 @@ class Game:
         # Filter recipes by housing tier
         current_map_obj = self.get_player_current_map(player)
         housing_tier = getattr(current_map_obj, "housing_tier", 0)
-        available_recipes = [
-            r for r in RECIPES if r.get("min_tier", 0) <= housing_tier
-        ]
+        available_recipes = [r for r in RECIPES if r.get("min_tier", 0) <= housing_tier]
         tier_name = SETTLEMENT_TIER_NAMES[housing_tier]
 
         row_h = 28

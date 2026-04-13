@@ -16,6 +16,7 @@ from src.config import (
     CAVE_WALL,
     TREASURE_CHEST,
     MAP_BORDER,
+    BiomeType,
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
 from src.world.environments.base import BaseEnvironment
@@ -99,16 +100,27 @@ class CaveEnvironment(BaseEnvironment):
     TILESET = "cave"
 
     def __init__(
-        self, cave_col: int, cave_row: int, cave_type: int = CAVE_MOUNTAIN
+        self,
+        cave_col: int,
+        cave_row: int,
+        cave_type: int = CAVE_MOUNTAIN,
+        biome: BiomeType = BiomeType.STANDARD,
     ) -> None:
         self.cave_col = cave_col
         self.cave_row = cave_row
         self.cave_type = cave_type
+        self.biome = biome
 
     # -- public api --------------------------------------------------------
 
     def generate(self) -> GameMap:
         """Generate and return a fully configured cave GameMap."""
+        # Choose tileset based on the surface biome
+        if self.biome == BiomeType.STANDARD:
+            tileset = "cave"
+        else:
+            tileset = f"cave_{self.biome.value}"
+
         rng = random.Random(self.cave_col * 10_000 + self.cave_row)
 
         rows, cols = CAVE_ROWS, CAVE_COLS
@@ -212,7 +224,7 @@ class CaveEnvironment(BaseEnvironment):
         )
         cave_world[chest_row][chest_col] = TREASURE_CHEST
 
-        cave_map = GameMap(cave_world, tileset=self.TILESET)
+        cave_map = GameMap(cave_world, tileset=tileset)
         cave_map.exit_col = exit_col
         cave_map.exit_row = exit_row
         cave_map.spawn_col = spawn_col

@@ -3,7 +3,7 @@
 import random
 import math
 import pygame
-from src.config import TILE, WORLD_COLS, WORLD_ROWS
+from src.config import TILE, WORLD_COLS, WORLD_ROWS, MOUNTAIN
 from src.data import TILE_INFO, BLOCKING_TILES
 from src.effects import Particle, FloatingText
 
@@ -64,7 +64,7 @@ class Worker:
             for dc in range(-search_r, search_r + 1):
                 c, r = col + dc, row + dr
                 if 0 <= c < WORLD_COLS and 0 <= r < WORLD_ROWS:
-                    if TILE_INFO[world[r][c]]["mineable"]:
+                    if TILE_INFO[world[r][c]]["mineable"] and world[r][c] != MOUNTAIN:
                         candidates.append((abs(dc) + abs(dr), c, r))
         if candidates:
             candidates.sort()
@@ -102,6 +102,7 @@ class Worker:
         inventory: dict[str, int],
         particles: list,
         floats: list,
+        map_key: str | tuple | None = None,
     ) -> None:
         """Update worker AI and state machine."""
         from src.config import GRASS, DIRT, MOUNTAIN
@@ -151,7 +152,9 @@ class Worker:
             )
             if random.random() < 0.25:
                 particles.append(
-                    Particle(tile_cx, tile_cy, TILE_INFO[world[tr][tc]]["color"])
+                    Particle(
+                        tile_cx, tile_cy, TILE_INFO[world[tr][tc]]["color"], map_key
+                    )
                 )
             if tile_hp[tr][tc] <= 0:
                 info = TILE_INFO[world[tr][tc]]
@@ -159,13 +162,17 @@ class Worker:
                     inventory[info["drop"]] = inventory.get(info["drop"], 0) + 1
                     floats.append(
                         FloatingText(
-                            tile_cx, tile_cy, f"+1 {info['drop']}", info["drop_color"]
+                            tile_cx,
+                            tile_cy,
+                            f"+1 {info['drop']}",
+                            info["drop_color"],
+                            map_key,
                         )
                     )
                     # Award XP to the player for resources mined
                     self.xp_earned += 5
                 for _ in range(8):
-                    particles.append(Particle(tile_cx, tile_cy, info["color"]))
+                    particles.append(Particle(tile_cx, tile_cy, info["color"], map_key))
                 new_tile = DIRT if world[tr][tc] == MOUNTAIN else GRASS
                 world[tr][tc] = new_tile
                 tile_hp[tr][tc] = TILE_INFO[new_tile]["hp"]

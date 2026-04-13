@@ -55,15 +55,52 @@ PORTAL_WALL = 24  # Impassable ancient stone wall (portal realm)
 PORTAL_FLOOR = 25  # Walkable ancient stone floor (portal realm)
 
 # Housing environment tiles
-WOOD_FLOOR = 26       # Walkable plank floor inside a house
-WOOD_WALL = 27        # Solid wood wall (impassable, non-mineable)
-WORKTABLE = 28        # Crafting bench inside a house environment
-HOUSE_EXIT = 29       # Exit tile inside a housing environment (returns to overland)
-DIRT_PATH = 30        # Walkable dirt path (settlement interiors, Hamlet)
-COBBLESTONE = 31      # Walkable cobblestone path (settlement interiors, Town/Large Town)
-SETTLEMENT_HOUSE = 32 # Enterable sub-house tile within a settlement environment
-STONE_PATH = 33       # Walkable flat-stone path (settlement interiors, Village)
-ROAD = 34             # Walkable paved road (settlement interiors, City)
+WOOD_FLOOR = 26  # Walkable plank floor inside a house
+WOOD_WALL = 27  # Solid wood wall (impassable, non-mineable)
+WORKTABLE = 28  # Crafting bench inside a house environment
+HOUSE_EXIT = 29  # Exit tile inside a housing environment (returns to overland)
+DIRT_PATH = 30  # Walkable dirt path (settlement interiors, Hamlet)
+COBBLESTONE = 31  # Walkable cobblestone path (settlement interiors, Town/Large Town)
+SETTLEMENT_HOUSE = 32  # Enterable sub-house tile within a settlement environment
+STONE_PATH = 33  # Walkable flat-stone path (settlement interiors, Village)
+ROAD = 34  # Walkable paved road (settlement interiors, City)
+
+# Biome-specific tiles
+# Tundra
+SNOW = 35  # Tundra floor (replaces Grass)
+ICE_PEAK = 36  # Tundra mountain (blocking, impassable)
+FROZEN_LAKE = 37  # Tundra interior water (walkable unlike ocean)
+FROST_CRYSTAL_ORE = 38  # Tundra ore (drops Frost Crystal)
+# Volcano
+ASH_GROUND = 39  # Volcano floor (replaces Grass)
+LAVA_POOL = 40  # Volcano water body (blocking)
+MAGMA_STONE = 41  # Volcano mountain (blocking)
+MAGMA_ORE = 42  # Volcano ore (drops Obsidian)
+# Zombie/Ruins
+DEAD_GRASS = 43  # Zombie floor (replaces Grass)
+RUINS_WALL = 44  # Zombie mountain-like ruin (blocking)
+BONE_PILE = 45  # Zombie ore (drops Bones)
+GRAVE = 46  # Zombie decoration (not blocking, not mineable)
+# Desert (uses existing SAND=17 as floor)
+DESERT_CRYSTAL_ORE = 47  # Desert ore (drops Desert Crystal)
+SANDSTONE = 48  # Desert mountain (blocking)
+CACTUS_TILE = 49  # Desert tree-like (mineable, drops Wood)
+
+# Portal realm special tiles
+VOID_ORE = 50  # Portal realm ore (mineable, drops Void Stone)
+PORTAL_LAVA = 51  # Portal realm lava river (walkable, damages without Ancient armor)
+
+# Biome types for island generation
+from enum import Enum
+
+
+class BiomeType(Enum):
+    STANDARD = "standard"
+    TUNDRA = "tundra"
+    VOLCANO = "volcano"
+    ZOMBIE = "zombie"
+    DESERT = "desert"
+
 
 # Settlement tiers: minimum connected-house cluster size to reach each tier
 SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
@@ -73,6 +110,6 @@ HOUSE_BUILD_COST = 20  # Dirt required to build a house
 PIER_BUILD_COST = 5  # Wood required to build a pier
 BOAT_BUILD_COST = 1  # Wood required to build a boat (+ 1 Sail)
 SCUBA_BUILD_COST = 5  # Wood required to craft Scuba Gear at a house
-SECTOR_WIPE_DURATION = 30   # frames for the edge-crossing scroll wipe (~0.5 s at 60 fps)
+SECTOR_WIPE_DURATION = 30  # frames for the edge-crossing scroll wipe (~0.5 s at 60 fps)
 PORTAL_WARP_DURATION = 180  # frames for the portal vortex warp effect (~3 s at 60 fps)
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island

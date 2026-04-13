@@ -24,6 +24,7 @@ class ArmorMaterial(Enum):
     DIAMOND = "Diamond"
     CORAL = "Coral"
     ANCIENT_STONE = "Ancient Stone"
+    ANCIENT = "Ancient"
 
 
 class AccessorySlot(Enum):
@@ -51,6 +52,7 @@ _MATERIAL_STATS: dict[ArmorMaterial, tuple[float, int, tuple[int, int, int]]] = 
     ArmorMaterial.DIAMOND: (0.16, 40, (90, 210, 240)),
     ArmorMaterial.CORAL: (0.09, 18, (240, 120, 130)),
     ArmorMaterial.ANCIENT_STONE: (0.20, 45, (140, 90, 200)),
+    ArmorMaterial.ANCIENT: (0.25, 60, (180, 120, 255)),
 }
 
 # Slot display names
