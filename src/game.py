@@ -291,6 +291,8 @@ class Game:
         self._sign_display: dict[int, dict | None] = {1: None, 2: None}
         # Exit confirmation dialog
         self._confirm_quit: bool = False
+        # Debug: draw enemy hitboxes
+        self._debug_hitboxes: bool = False
 
         # Load saved state if a save file exists
         save_data = load_game()
@@ -470,6 +472,9 @@ class Game:
                 self.screen = pygame.display.set_mode(
                     (SCREEN_W, SCREEN_H), pygame.RESIZABLE
                 )
+        # DEBUG: F10 toggles enemy hitbox visualisation
+        elif key == pygame.K_F10:
+            self._debug_hitboxes = not self._debug_hitboxes
         # DEBUG: F8 spawns a 1×1 house and a 4×4 house cluster near player 1.
         elif key == pygame.K_F8:
             self._debug_spawn_houses(self.player1)
@@ -2951,6 +2956,39 @@ class Game:
                 )
             for enemy in scene.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+            if self._debug_hitboxes:
+                hitbox_surf = pygame.Surface(
+                    (view_w, view_h), pygame.SRCALPHA
+                )
+                for enemy in scene.enemies:
+                    if enemy.hp <= 0:
+                        continue
+                    ex = int(enemy.x - cam_x + screen_x)
+                    ey = int(enemy.y - cam_y + screen_y)
+                    # Attack range (red)
+                    pygame.draw.circle(
+                        hitbox_surf,
+                        (255, 50, 50, 80),
+                        (ex - screen_x, ey - screen_y),
+                        int(TILE * 1.2),
+                        2,
+                    )
+                    # Chase-to-attack threshold (yellow)
+                    pygame.draw.circle(
+                        hitbox_surf,
+                        (255, 255, 50, 120),
+                        (ex - screen_x, ey - screen_y),
+                        int(TILE * 0.9),
+                        2,
+                    )
+                    # Centre point (white)
+                    pygame.draw.circle(
+                        hitbox_surf,
+                        (255, 255, 255, 200),
+                        (ex - screen_x, ey - screen_y),
+                        3,
+                    )
+                self.screen.blit(hitbox_surf, (screen_x, screen_y))
             for proj in scene.projectiles:
                 proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
@@ -2958,8 +2996,9 @@ class Game:
         current_map_key = player.current_map
         for p in (self.player1, self.player2):
             if p.current_map == current_map_key:
-                # Hide player while in sky-view transition
-                if self._sky_anim[p.player_id] is not None:
+                # Hide player while ascending to sky view (not during descent back)
+                anim = self._sky_anim[p.player_id]
+                if anim is not None and anim["phase"] in ("ascend_out", "ascend_in"):
                     continue
                 p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
