@@ -20,6 +20,8 @@ class ControlScheme:
         upgrade_pick_key,
         upgrade_weapon_key,
         build_house_key,
+        toggle_auto_mine_key,
+        toggle_auto_fire_key,
         move_description="",
     ):
         """Initialize control scheme.
@@ -31,6 +33,8 @@ class ControlScheme:
             upgrade_pick_key: pygame key constant for pickaxe upgrade
             upgrade_weapon_key: pygame key constant for weapon upgrade
             build_house_key: pygame key constant for building a house
+            toggle_auto_mine_key: pygame key constant for toggling auto mine
+            toggle_auto_fire_key: pygame key constant for toggling auto fire
             move_description: String description of movement controls (e.g., "WASD", "Arrow Keys")
         """
         self.move_keys = move_keys
@@ -39,6 +43,8 @@ class ControlScheme:
         self.upgrade_pick_key = upgrade_pick_key
         self.upgrade_weapon_key = upgrade_weapon_key
         self.build_house_key = build_house_key
+        self.toggle_auto_mine_key = toggle_auto_mine_key
+        self.toggle_auto_fire_key = toggle_auto_fire_key
         self.move_description = move_description
 
     def get_controls_list(self):
@@ -66,6 +72,8 @@ CONTROL_SCHEME_PLAYER1 = ControlScheme(
     upgrade_pick_key=pygame.K_u,
     upgrade_weapon_key=pygame.K_n,
     build_house_key=pygame.K_b,
+    toggle_auto_mine_key=pygame.K_m,
+    toggle_auto_fire_key=pygame.K_g,
     move_description="WASD",
 )
 
@@ -81,6 +89,8 @@ CONTROL_SCHEME_PLAYER2 = ControlScheme(
     upgrade_pick_key=pygame.K_i,
     upgrade_weapon_key=pygame.K_o,
     build_house_key=pygame.K_v,
+    toggle_auto_mine_key=pygame.K_KP_MULTIPLY,
+    toggle_auto_fire_key=pygame.K_KP_DIVIDE,
     move_description="Arrows",
 )
 
@@ -141,6 +151,10 @@ class Player:
         self.mining_target = None
         self.mining_progress = 0.0
 
+        # Auto fire and auto mine
+        self.auto_mine = False
+        self.auto_fire = False
+
     # -- upgrades ----------------------------------------------------------
 
     def try_upgrade_pick(self):
@@ -158,6 +172,14 @@ class Player:
                 self.weapon_level += 1
                 return True
         return False
+
+    def toggle_auto_mine(self):
+        """Toggle auto mine mode."""
+        self.auto_mine = not self.auto_mine
+
+    def toggle_auto_fire(self):
+        """Toggle auto fire mode."""
+        self.auto_fire = not self.auto_fire
 
     # -- movement / collision ----------------------------------------------
 
@@ -213,14 +235,16 @@ class Player:
         from src.config import GRASS, DIRT, MOUNTAIN
 
         # Determine mining input based on control scheme
-        mining_input = keys[self.controls.mining_key] or mouse_buttons[0]
+        mining_input = (
+            keys[self.controls.mining_key] or mouse_buttons[0] or self.auto_mine
+        )
 
         target_col, target_row = None, None
         if mouse_buttons[0]:
             mx, my = pygame.mouse.get_pos()
             target_col = int((mx + cam_x) // TILE)
             target_row = int((my + cam_y) // TILE)
-        elif keys[self.controls.mining_key]:
+        elif keys[self.controls.mining_key] or self.auto_mine:
             center_col = int(self.x) // TILE
             center_row = int(self.y) // TILE
             best, best_dist = None, 999

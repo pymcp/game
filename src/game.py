@@ -148,6 +148,10 @@ class Game:
             self.player1.try_upgrade_weapon()
         elif key == self.player1.controls.build_house_key:
             self._try_build_house(self.player1)
+        elif key == self.player1.controls.toggle_auto_mine_key:
+            self.player1.toggle_auto_mine()
+        elif key == self.player1.controls.toggle_auto_fire_key:
+            self.player1.toggle_auto_fire()
         # Player 2 controls
         elif key == self.player2.controls.upgrade_pick_key:
             self.player2.try_upgrade_pick()
@@ -155,6 +159,10 @@ class Game:
             self.player2.try_upgrade_weapon()
         elif key == self.player2.controls.build_house_key:
             self._try_build_house(self.player2)
+        elif key == self.player2.controls.toggle_auto_mine_key:
+            self.player2.toggle_auto_mine()
+        elif key == self.player2.controls.toggle_auto_fire_key:
+            self.player2.toggle_auto_fire()
 
     def _try_build_house(self, player):
         """Attempt to build a house at player position."""
@@ -324,7 +332,11 @@ class Game:
         # Player 1 firing
         if self.player1.weapon_cooldown > 0:
             self.player1.weapon_cooldown -= dt
-        fire_input_p1 = keys[self.player1.controls.fire_key] or mouse_buttons[2]
+        fire_input_p1 = (
+            keys[self.player1.controls.fire_key]
+            or mouse_buttons[2]
+            or self.player1.auto_fire
+        )
         if fire_input_p1 and self.player1.weapon_cooldown <= 0:
             wpn = WEAPONS[self.player1.weapon_level]
             self.projectiles.append(
@@ -341,7 +353,7 @@ class Game:
         # Player 2 firing
         if self.player2.weapon_cooldown > 0:
             self.player2.weapon_cooldown -= dt
-        fire_input_p2 = keys[self.player2.controls.fire_key]
+        fire_input_p2 = keys[self.player2.controls.fire_key] or self.player2.auto_fire
         if fire_input_p2 and self.player2.weapon_cooldown <= 0:
             wpn = WEAPONS[self.player2.weapon_level]
             self.projectiles.append(
@@ -691,7 +703,7 @@ class Game:
         font_tiny = pygame.font.Font(None, 16)
 
         # Top HUD Panel (Stats & Inventory)
-        top_panel_h = 170
+        top_panel_h = 240
         top_panel_w = 240
         top_panel_surf = pygame.Surface((top_panel_w, top_panel_h), pygame.SRCALPHA)
         top_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
@@ -759,6 +771,24 @@ class Game:
         wpn = WEAPONS[player.weapon_level]
         wpn_text = font_tiny.render(f"Weapon: {wpn['name']}", True, (255, 150, 100))
         self.screen.blit(wpn_text, (screen_x + 18, inv_y + 82))
+
+        # Auto toggle status
+        auto_status_y = inv_y + 100
+        auto_mine_key = pygame.key.name(player.controls.toggle_auto_mine_key).upper()
+        auto_mine_status = (
+            f"Auto Mine ({auto_mine_key}): {'ON' if player.auto_mine else 'OFF'}"
+        )
+        auto_mine_color = (100, 255, 100) if player.auto_mine else (150, 150, 150)
+        auto_mine_text = font_tiny.render(auto_mine_status, True, auto_mine_color)
+        self.screen.blit(auto_mine_text, (screen_x + 18, auto_status_y))
+
+        auto_fire_key = pygame.key.name(player.controls.toggle_auto_fire_key).upper()
+        auto_fire_status = (
+            f"Auto Fire ({auto_fire_key}): {'ON' if player.auto_fire else 'OFF'}"
+        )
+        auto_fire_color = (100, 255, 100) if player.auto_fire else (150, 150, 150)
+        auto_fire_text = font_tiny.render(auto_fire_status, True, auto_fire_color)
+        self.screen.blit(auto_fire_text, (screen_x + 18, auto_status_y + 16))
 
         # Bottom HUD Panel (Controls)
         ctrl_y_start = screen_y + view_h - 100
