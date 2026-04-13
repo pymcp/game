@@ -22,6 +22,54 @@ Each enemy type is a dict with:
 
 from enum import Enum
 
+from src.config import TILE
+
+
+def _compute_hitbox_radius(draw_commands: list[tuple]) -> int:
+    """Derive a collision radius from *draw_commands*.
+
+    Finds the largest solid body shape (biggest-area circle, rect, ellipse,
+    or polygon) and uses its extent from the centre (0, 0) in the 64×64
+    procedural draw buffer, then scales by ``TILE // 32``.
+
+    Lines and tiny detail shapes are ignored so that legs and thin
+    decorations don't inflate the hitbox.
+    """
+    best_extent: float = 0.0
+    best_area: float = 0.0
+    for cmd in draw_commands:
+        shape = cmd[0]
+        args = cmd[2:]  # skip color_offset
+        if shape == "circle":
+            cx_off, cy_off, radius = args
+            area = 3.14159 * radius * radius
+            extent = max(abs(cx_off) + radius, abs(cy_off) + radius)
+        elif shape in ("rect", "ellipse"):
+            x_off, y_off, w, h = args
+            area = float(w * h)
+            extent = max(
+                abs(x_off), abs(x_off + w), abs(y_off), abs(y_off + h)
+            )
+        elif shape == "polygon":
+            points = args[0]
+            # Shoelace formula for polygon area
+            n = len(points)
+            area = abs(
+                sum(
+                    points[i][0] * points[(i + 1) % n][1]
+                    - points[(i + 1) % n][0] * points[i][1]
+                    for i in range(n)
+                )
+            ) / 2.0
+            extent = max(max(abs(px), abs(py)) for px, py in points)
+        else:
+            continue  # skip lines (limbs/decorative)
+        if area > best_area:
+            best_area = area
+            best_extent = extent
+    scale = TILE // 32
+    return max(4, int(best_extent * scale))  # minimum 4px
+
 
 class EnemyEnvironment(Enum):
     OVERLAND = "overland"
@@ -370,3 +418,7 @@ ENEMY_TYPES = {
         ],
     },
 }
+
+# Auto-derive hitbox_radius for every enemy type from its draw_commands.
+for _info in ENEMY_TYPES.values():
+    _info["hitbox_radius"] = _compute_hitbox_radius(_info["draw_commands"])

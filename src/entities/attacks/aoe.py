@@ -41,7 +41,7 @@ class AoEAttack(Attack):
             if enemy.hp <= 0 or id(enemy) in self.hit_enemies:
                 continue
             dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
-            if dist <= self._radius:
+            if dist <= self._radius + enemy.hitbox_radius:
                 targets.append(enemy)
         return targets
 

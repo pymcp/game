@@ -64,7 +64,7 @@ class Projectile:
             if enemy.hp <= 0 or id(enemy) in self.hit_enemies:
                 continue
             dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
-            if dist < self.size + 10:
+            if dist < self.size + enemy.hitbox_radius:
                 enemy.take_damage(self.damage, self.x, self.y, particles)
                 dx = enemy.x - self.x
                 dy = enemy.y - self.y

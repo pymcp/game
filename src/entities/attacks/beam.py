@@ -92,7 +92,7 @@ class BeamAttack(Attack):
                 continue
             # Perpendicular distance from beam line
             perp = abs(ex * (-self.dir_y) + ey * self.dir_x)
-            if perp <= self._width + 10:
+            if perp <= self._width + enemy.hitbox_radius:
                 targets.append(enemy)
         return targets
 

@@ -5,6 +5,10 @@ import pygame
 from src.config import TILE, SCREEN_W, SCREEN_H
 from src.effects import Particle
 from src.rendering.animator import Animator, AnimationState
+from src.world.collision import hits_blocking
+
+# Player.COLLISION_HALF — kept as a module constant to avoid circular import.
+_PLAYER_COLLISION_HALF: int = 20
 
 
 def _clamp_color(
@@ -34,6 +38,7 @@ class Enemy:
         self.draw_commands = info["draw_commands"]
         self.name = info["name"]
         self.chase_range = info["chase_range"]
+        self.hitbox_radius: int = info["hitbox_radius"]
 
         self.state = "idle"
         self.cooldown = 0.0
@@ -55,18 +60,6 @@ class Enemy:
             and cam_y - margin <= self.y <= cam_y + SCREEN_H + margin
         )
 
-    def _blocked(self, wx: float, wy: float, world: list[list[int]]) -> bool:
-        """Check if position is blocked."""
-        from src.config import WATER, MOUNTAIN, HOUSE, CAVE_WALL
-
-        col = int(wx) // TILE
-        row = int(wy) // TILE
-        world_rows = len(world)
-        world_cols = len(world[0]) if world_rows > 0 else 0
-        if col < 0 or col >= world_cols or row < 0 or row >= world_rows:
-            return True
-        return world[row][col] in (WATER, MOUNTAIN, HOUSE, CAVE_WALL)
-
     def update(
         self,
         dt: float,
@@ -85,7 +78,7 @@ class Enemy:
         if abs(self.knockback_vx) > 0.1 or abs(self.knockback_vy) > 0.1:
             nx = self.x + self.knockback_vx * dt
             ny = self.y + self.knockback_vy * dt
-            if not self._blocked(nx, ny, world):
+            if not hits_blocking(world, nx, ny, self.hitbox_radius):
                 self.x = nx
                 self.y = ny
             self.knockback_vx *= 0.8
@@ -114,9 +107,9 @@ class Enemy:
                 nx = self.x + dx * self.speed * dt
                 ny = self.y + dy * self.speed * dt
                 old_x, old_y = self.x, self.y
-                if not self._blocked(nx, self.y, world):
+                if not hits_blocking(world, nx, self.y, self.hitbox_radius):
                     self.x = nx
-                if not self._blocked(self.x, ny, world):
+                if not hits_blocking(world, self.x, ny, self.hitbox_radius):
                     self.y = ny
                 moved = self.x != old_x or self.y != old_y
                 # Update facing from dominant movement axis
@@ -125,13 +118,13 @@ class Enemy:
                 else:
                     self.facing_direction = "right" if dx > 0 else "left"
             self._is_moving = moved
-            if dist < TILE * 0.9:
+            if dist < self.hitbox_radius + _PLAYER_COLLISION_HALF:
                 self.state = "attack"
             if dist > SCREEN_W and not self._on_screen(cam_x, cam_y, margin=TILE * 4):
                 self.state = "idle"
 
         elif self.state == "attack":
-            if dist > TILE * 1.5:
+            if dist > self.hitbox_radius + _PLAYER_COLLISION_HALF + 20:
                 self.state = "chase"
 
         world_rows = len(world)
@@ -150,7 +143,7 @@ class Enemy:
         if self.hp <= 0 or self.state != "attack":
             return 0
         dist = math.hypot(px - self.x, py - self.y)
-        if dist < TILE * 1.2 and self.cooldown <= 0:
+        if dist < self.hitbox_radius + _PLAYER_COLLISION_HALF and self.cooldown <= 0:
             self.cooldown = self.attack_cd
             return self.attack
         return 0

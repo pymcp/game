@@ -2965,27 +2965,36 @@ class Game:
                         continue
                     ex = int(enemy.x - cam_x + screen_x)
                     ey = int(enemy.y - cam_y + screen_y)
-                    # Attack range (red)
+                    lx = ex - screen_x
+                    ly = ey - screen_y
+                    # Hitbox body (green filled)
                     pygame.draw.circle(
                         hitbox_surf,
-                        (255, 50, 50, 80),
-                        (ex - screen_x, ey - screen_y),
-                        int(TILE * 1.2),
+                        (50, 255, 50, 60),
+                        (lx, ly),
+                        enemy.hitbox_radius,
+                    )
+                    # Hitbox outline (green)
+                    pygame.draw.circle(
+                        hitbox_surf,
+                        (50, 255, 50, 180),
+                        (lx, ly),
+                        enemy.hitbox_radius,
                         2,
                     )
-                    # Chase-to-attack threshold (yellow)
+                    # Attack range (red outline)
                     pygame.draw.circle(
                         hitbox_surf,
-                        (255, 255, 50, 120),
-                        (ex - screen_x, ey - screen_y),
-                        int(TILE * 0.9),
+                        (255, 50, 50, 100),
+                        (lx, ly),
+                        enemy.hitbox_radius + 20,
                         2,
                     )
                     # Centre point (white)
                     pygame.draw.circle(
                         hitbox_surf,
                         (255, 255, 255, 200),
-                        (ex - screen_x, ey - screen_y),
+                        (lx, ly),
                         3,
                     )
                 self.screen.blit(hitbox_surf, (screen_x, screen_y))

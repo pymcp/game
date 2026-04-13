@@ -145,7 +145,7 @@ class Attack:
             if enemy.hp <= 0 or id(enemy) in self.hit_enemies:
                 continue
             dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
-            if dist < size + 10:
+            if dist < size + enemy.hitbox_radius:
                 targets.append(enemy)
         return targets
 

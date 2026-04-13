@@ -45,7 +45,7 @@ class MeleeArcAttack(Attack):
             dx = enemy.x - self.x
             dy = enemy.y - self.y
             dist = math.hypot(dx, dy)
-            if dist > self._radius:
+            if dist > self._radius + enemy.hitbox_radius:
                 continue
             angle_to_enemy = math.atan2(-dy, dx)
             diff = (angle_to_enemy - sweep_angle + math.pi) % (2 * math.pi) - math.pi
