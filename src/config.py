@@ -30,3 +30,6 @@ TREE = 6
 WATER = 7
 HOUSE = 8
 MOUNTAIN = 9
+CAVE_MOUNTAIN = 10  # Cave entrance that looks like mountain (adjacent to mountain)
+CAVE_HILL = 11      # Cave entrance that looks like hill (not adjacent to mountain)
+CAVE_EXIT = 12      # Exit tile inside a cave (returns player to overland)

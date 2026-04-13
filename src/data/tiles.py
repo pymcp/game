@@ -11,6 +11,9 @@ from src.config import (
     WATER,
     HOUSE,
     MOUNTAIN,
+    CAVE_MOUNTAIN,
+    CAVE_HILL,
+    CAVE_EXIT,
 )
 
 TILE_INFO = {
@@ -93,6 +96,30 @@ TILE_INFO = {
         "hp": 50,
         "drop": "Stone",
         "drop_color": (136, 140, 141),
+    },
+    CAVE_MOUNTAIN: {
+        "name": "Cave (Mountain)",
+        "color": (50, 45, 40),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    CAVE_HILL: {
+        "name": "Cave (Hill)",
+        "color": (60, 55, 50),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    CAVE_EXIT: {
+        "name": "Cave Exit",
+        "color": (80, 120, 80),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
     },
 }
 

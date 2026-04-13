@@ -155,6 +155,9 @@ class Player:
         self.auto_mine = False
         self.auto_fire = False
 
+        # Map tracking - "overland" or (cave_col, cave_row) tuple
+        self.current_map = "overland"
+
     # -- upgrades ----------------------------------------------------------
 
     def try_upgrade_pick(self):
@@ -214,17 +217,19 @@ class Player:
         new_py = self.y + dy * self.speed * dt
 
         # X axis - stop if blocked, no bouncing
-        if not out_of_bounds(new_px, self.y, h):
+        if not out_of_bounds(new_px, self.y, h, world):
             if not hits_blocking(world, new_px, self.y, h):
                 self.x = new_px
 
         # Y axis - stop if blocked, no bouncing
-        if not out_of_bounds(self.x, new_py, h):
+        if not out_of_bounds(self.x, new_py, h, world):
             if not hits_blocking(world, self.x, new_py, h):
                 self.y = new_py
 
-        self.x = max(h, min(WORLD_COLS * TILE - h, self.x))
-        self.y = max(h, min(WORLD_ROWS * TILE - h, self.y))
+        world_cols = len(world[0]) if len(world) > 0 else WORLD_COLS
+        world_rows = len(world)
+        self.x = max(h, min(world_cols * TILE - h, self.x))
+        self.y = max(h, min(world_rows * TILE - h, self.y))
 
     # -- mining ------------------------------------------------------------
 

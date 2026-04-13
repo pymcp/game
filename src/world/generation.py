@@ -15,6 +15,9 @@ from src.config import (
     GOLD_ORE,
     DIAMOND_ORE,
     MOUNTAIN,
+    CAVE_MOUNTAIN,
+    CAVE_HILL,
+    CAVE_EXIT,
 )
 from src.data import ENEMY_TYPES
 
@@ -46,6 +49,9 @@ def generate_world():
 
     # Generate rivers from mountains with lakes
     _generate_rivers_and_lakes(world)
+
+    # Generate cave entrances
+    _place_cave_entrances(world)
 
     return world
 
@@ -222,3 +228,115 @@ def spawn_enemies(world):
                     enemies.append(Enemy(cx, cy, enemy_key))
                     break
     return enemies
+
+
+def _is_adjacent_to_mountain(world, col, row):
+    """Check if a tile is adjacent to a mountain."""
+    for dr in [-1, 0, 1]:
+        for dc in [-1, 0, 1]:
+            if dr == 0 and dc == 0:
+                continue
+            adj_col, adj_row = col + dc, row + dr
+            if 0 <= adj_col < WORLD_COLS and 0 <= adj_row < WORLD_ROWS:
+                if world[adj_row][adj_col] == MOUNTAIN:
+                    return True
+    return False
+
+
+def _place_cave_entrances(world):
+    """Place cave entrances on the world map."""
+    # Place caves near and around mountains, and in some hill areas
+    cave_count = 0
+    max_caves = 15
+
+    for _ in range(100):  # Try up to 100 times
+        if cave_count >= max_caves:
+            break
+
+        col = random.randint(1, WORLD_COLS - 2)
+        row = random.randint(1, WORLD_ROWS - 2)
+
+        # Only place caves on grass or dirt
+        if world[row][col] not in (GRASS, DIRT):
+            continue
+
+        # Check if this location could be a good cave entrance
+        is_adj_mountain = _is_adjacent_to_mountain(world, col, row)
+
+        # Either place near mountains or in isolated hill areas
+        if is_adj_mountain or (
+            random.random() < 0.3
+            and world[row][col] == GRASS
+        ):
+            # Decide which cave type based on mountain proximity
+            cave_type = CAVE_MOUNTAIN if is_adj_mountain else CAVE_HILL
+            world[row][col] = cave_type
+            cave_count += 1
+
+
+def generate_cave_map(cave_col, cave_row, world_seed=None):
+    """Generate a cave map for a specific cave entrance position.
+
+    Args:
+        cave_col: Column of the cave entrance on the overland map
+        cave_row: Row of the cave entrance on the overland map
+        world_seed: Optional seed for consistent generation
+
+    Returns:
+        2D list representing the cave world
+    """
+    from src.world.map import GameMap
+
+    # Use cave position to seed the random generator for consistent caves
+    if world_seed is None:
+        world_seed = cave_col * WORLD_COLS + cave_row
+
+    # Create a copy of random state to generate cave without affecting global state
+    random_state = random.getstate()
+    random.seed(world_seed)
+
+    cave_size_rows = 30
+    cave_size_cols = 30
+    cave_world = [[GRASS for _ in range(cave_size_cols)] for _ in range(cave_size_rows)]
+
+    # Place stone and ore in the cave
+    def scatter(tile_id, count, cluster_min, cluster_max):
+        for _ in range(count):
+            cx = random.randint(0, cave_size_cols - 1)
+            cy = random.randint(0, cave_size_rows - 1)
+            size = random.randint(cluster_min, cluster_max)
+            for __ in range(size):
+                nx = cx + random.randint(-2, 2)
+                ny = cy + random.randint(-2, 2)
+                if 0 <= nx < cave_size_cols and 0 <= ny < cave_size_rows:
+                    cave_world[ny][nx] = tile_id
+
+    # Cave has more minerals, especially high-value ones
+    scatter(STONE, 40, 4, 10)
+    scatter(IRON_ORE, 20, 2, 6)
+    scatter(GOLD_ORE, 15, 1, 4)
+    scatter(DIAMOND_ORE, 10, 1, 3)
+
+    # Place exit tile near the top of the cave
+    exit_col = cave_size_cols // 2
+    exit_row = 1
+    cave_world[exit_row][exit_col] = CAVE_EXIT
+
+    # Player spawns a few tiles below the exit
+    spawn_col = cave_size_cols // 2
+    spawn_row = 4
+    cave_world[spawn_row][spawn_col] = GRASS  # Ensure spawn is walkable
+
+    # Restore random state
+    random.setstate(random_state)
+
+    # Create and return the GameMap
+    cave_map = GameMap(cave_world, tileset="cave")
+    cave_map.exit_col = exit_col
+    cave_map.exit_row = exit_row
+    cave_map.spawn_col = spawn_col
+    cave_map.spawn_row = spawn_row
+    cave_map.entrance_col = cave_col
+    cave_map.entrance_row = cave_row
+
+    return cave_map

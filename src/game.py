@@ -22,9 +22,14 @@ from src.config import (
     IRON_ORE,
     GOLD_ORE,
     DIAMOND_ORE,
+    CAVE_MOUNTAIN,
+    CAVE_HILL,
+    CAVE_EXIT,
 )
 from src.data import TILE_INFO, WEAPONS
 from src.world import generate_world, spawn_enemies, try_spend, has_adjacent_house
+from src.world.map import GameMap
+from src.world.generation import generate_cave_map
 from src.entities import Player, Projectile, Worker, Pet
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
@@ -47,12 +52,16 @@ class Game:
         self.viewport_w = VIEWPORT_W
         self.viewport_h = VIEWPORT_H
 
-        # World
-        self.world = generate_world()
-        self.tile_hp = [
-            [TILE_INFO[self.world[r][c]]["hp"] for c in range(WORLD_COLS)]
-            for r in range(WORLD_ROWS)
-        ]
+        # Map system - store all maps by key
+        # "overland" is the main map, caves are keyed by (col, row)
+        world_data = generate_world()
+        self.maps = {
+            "overland": GameMap(world_data, tileset="overland")
+        }
+        self.current_map_key = "overland"  # Track which map is being viewed (for rendering)
+
+        # Get shortcut reference to overland map
+        overland_map = self.maps["overland"]
 
         # Two Players - find grass tiles near center
         def find_grass_spawn(offset_x):
@@ -69,7 +78,7 @@ class Game:
                         col = start_col + dc
                         row = start_row + dr
                         if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
-                            if self.world[row][col] == GRASS:
+                            if overland_map.get_tile(row, col) == GRASS:
                                 return col * TILE + TILE // 2, row * TILE + TILE // 2
             # Fallback to center if no grass found
             return (WORLD_COLS // 2) * TILE + TILE // 2, (
@@ -92,10 +101,10 @@ class Game:
         self.cam2_x = self.player2.x - self.viewport_w // 2
         self.cam2_y = self.player2.y - self.viewport_h // 2
 
-        # Entities (shared between players)
+        # Entities (shared between players - only on overland map)
         self.workers = []
         self.pets = []
-        self.enemies = spawn_enemies(self.world)
+        self.enemies = spawn_enemies(overland_map.world)
         self.projectiles = []
 
         # Effects (shared)
@@ -103,6 +112,9 @@ class Game:
         self.floats = []
 
         self.running = True
+
+        # Store cave coordinates where players are for easy access
+        self.cave_coords_to_map = {}  # Maps (col, row) to cave GameMap
 
     # -- main loop ---------------------------------------------------------
 
@@ -166,20 +178,25 @@ class Game:
 
     def _try_build_house(self, player):
         """Attempt to build a house at player position."""
+        if player.current_map != "overland":
+            return  # Can only build houses on overland map
+
         build_col = int(player.x) // TILE
         build_row = int(player.y) // TILE
         if not (0 <= build_col < WORLD_COLS and 0 <= build_row < WORLD_ROWS):
             return
+
+        current_map = self.maps["overland"]
         if (
-            self.world[build_row][build_col] != GRASS
+            current_map.get_tile(build_row, build_col) != GRASS
             or player.inventory.get("Dirt", 0) < 20
         ):
             return
         if not try_spend(player.inventory, {"Dirt": 20}):
             return
 
-        self.world[build_row][build_col] = HOUSE
-        self.tile_hp[build_row][build_col] = 0
+        current_map.set_tile(build_row, build_col, HOUSE)
+        current_map.set_tile_hp(build_row, build_col, 0)
         tile_cx = build_col * TILE + TILE // 2
         tile_cy = build_row * TILE + TILE // 2
         self.floats.append(
@@ -201,27 +218,164 @@ class Game:
                 FloatingText(tile_cx, tile_cy - 20, "Worker spawned!", (100, 220, 255))
             )
 
-        if has_adjacent_house(self.world, build_col, build_row):
+        if has_adjacent_house(self.maps["overland"].world, build_col, build_row):
             self.pets.append(Pet(tile_cx, tile_cy, kind="cat"))
             self.floats.append(
                 FloatingText(tile_cx, tile_cy - 36, "Cat appeared!", (255, 165, 0))
+            )
+
+    # -- helper methods for cave system --------------------------------
+
+    def get_player_current_map(self, player):
+        """Get the GameMap object that the player is currently on."""
+        map_key = player.current_map
+        if map_key == "overland":
+            return self.maps["overland"]
+        elif isinstance(map_key, tuple):  # Cave coordinates (cave_col, cave_row)
+            return self.maps.get(map_key)
+        return None
+
+    def check_cave_transitions(self, player, current_map):
+        """Check if player stepped on a cave entrance and transition if so."""
+        if player.current_map != "overland":
+            return  # Only check for cave entry when on overland map
+
+        if current_map != self.maps["overland"]:
+            return
+
+        tile_col = int(player.x) // TILE
+        tile_row = int(player.y) // TILE
+
+        if not (0 <= tile_col < WORLD_COLS and 0 <= tile_row < WORLD_ROWS):
+            return
+
+        tile_id = current_map.get_tile(tile_row, tile_col)
+
+        # Check if standing on a cave entrance
+        if tile_id in (CAVE_MOUNTAIN, CAVE_HILL):
+            # Generate or load the cave map
+            cave_key = (tile_col, tile_row)
+            if cave_key not in self.maps:
+                # Generate new cave map
+                self.maps[cave_key] = generate_cave_map(tile_col, tile_row)
+
+            cave_map = self.maps[cave_key]
+            # Teleport player to cave spawn point (away from exit)
+            player.x = cave_map.spawn_col * TILE + TILE // 2
+            player.y = cave_map.spawn_row * TILE + TILE // 2
+            player.current_map = cave_key
+
+            # Update camera to follow player into cave
+            if player.player_id == 1:
+                self.cam1_x = player.x - self.viewport_w // 2
+                self.cam1_y = player.y - self.viewport_h // 2
+            else:
+                self.cam2_x = player.x - self.viewport_w // 2
+                self.cam2_y = player.y - self.viewport_h // 2
+
+            # Floating text notification
+            self.floats.append(
+                FloatingText(
+                    player.x, player.y - 30, "Entered cave!", (100, 150, 255)
+                )
+            )
+
+    def check_cave_exits(self, player, current_map):
+        """Check if player stepped on a cave exit and transition back to overland."""
+        if player.current_map == "overland":
+            return  # Already on overland
+
+        if current_map == self.maps["overland"]:
+            return  # Not on a cave map
+
+        # Check if player is standing on a CAVE_EXIT tile
+        if not hasattr(current_map, 'entrance_col'):
+            return
+
+        tile_col = int(player.x) // TILE
+        tile_row = int(player.y) // TILE
+
+        tile_id = current_map.get_tile(tile_row, tile_col)
+        if tile_id == CAVE_EXIT:
+            # Return to overland map near cave entrance (but NOT on the cave tile itself,
+            # otherwise check_cave_transitions will send us right back in)
+            entrance_col = current_map.entrance_col
+            entrance_row = current_map.entrance_row
+            overland = self.maps["overland"]
+
+            # Find a walkable adjacent tile that isn't a cave entrance
+            placed = False
+            for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]:
+                adj_c = entrance_col + dc
+                adj_r = entrance_row + dr
+                if 0 <= adj_c < overland.cols and 0 <= adj_r < overland.rows:
+                    adj_tile = overland.get_tile(adj_r, adj_c)
+                    if adj_tile not in (WATER, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL):
+                        player.x = adj_c * TILE + TILE // 2
+                        player.y = adj_r * TILE + TILE // 2
+                        placed = True
+                        break
+            if not placed:
+                # Fallback: place on the cave tile anyway (rare edge case)
+                player.x = entrance_col * TILE + TILE // 2
+                player.y = entrance_row * TILE + TILE // 2
+
+            player.current_map = "overland"
+
+            # Update camera to follow player out of cave
+            if player.player_id == 1:
+                self.cam1_x = player.x - self.viewport_w // 2
+                self.cam1_y = player.y - self.viewport_h // 2
+            else:
+                self.cam2_x = player.x - self.viewport_w // 2
+                self.cam2_y = player.y - self.viewport_h // 2
+
+            self.floats.append(
+                FloatingText(
+                    player.x, player.y - 30, "Exited cave!", (100, 255, 150)
+                )
             )
 
     # -- update ------------------------------------------------------------
 
     def update(self, dt):
         """Update game state (both players, shared world)."""
+        # Update viewport sizes to match actual screen, just like draw() does
+        screen_width, screen_height = self.screen.get_size()
+        self.viewport_w = screen_width // 2
+        self.viewport_h = screen_height
+        
         keys = pygame.key.get_pressed()
         mouse_buttons = pygame.mouse.get_pressed()
 
+        # Get player maps
+        map1 = self.get_player_current_map(self.player1)
+        map2 = self.get_player_current_map(self.player2)
+
+        # Check for cave transitions
+        self.check_cave_transitions(self.player1, map1)
+        self.check_cave_transitions(self.player2, map2)
+
+        # Update maps after potential transitions
+        map1 = self.get_player_current_map(self.player1)
+        map2 = self.get_player_current_map(self.player2)
+
+        # Check for cave exits
+        self.check_cave_exits(self.player1, map1)
+        self.check_cave_exits(self.player2, map2)
+
+        # Update maps again after potential exits
+        map1 = self.get_player_current_map(self.player1)
+        map2 = self.get_player_current_map(self.player2)
+
         # Player 1 movement & mining
-        self.player1.update_movement(keys, dt, self.world)
+        self.player1.update_movement(keys, dt, map1.world)
         self.player1.update_mining(
             keys,
             mouse_buttons,
             dt,
-            self.world,
-            self.tile_hp,
+            map1.world,
+            map1.tile_hp,
             self.cam1_x,
             self.cam1_y,
             self.particles,
@@ -231,13 +385,13 @@ class Game:
             self.player1.hurt_timer -= dt
 
         # Player 2 movement & mining
-        self.player2.update_movement(keys, dt, self.world)
+        self.player2.update_movement(keys, dt, map2.world)
         self.player2.update_mining(
             keys,
             mouse_buttons,
             dt,
-            self.world,
-            self.tile_hp,
+            map2.world,
+            map2.tile_hp,
             self.cam2_x,
             self.cam2_y,
             self.particles,
@@ -246,14 +400,15 @@ class Game:
         if self.player2.hurt_timer > 0:
             self.player2.hurt_timer -= dt
 
-        # Workers (each assigned to a specific player)
+        # Workers (each assigned to a specific player) - only on overland map
+        overland_map = self.maps["overland"]
         for w in self.workers:
             # Get the player this worker is assigned to
             target_player = self.player1 if w.player_id == 1 else self.player2
             w.update(
                 dt,
-                self.world,
-                self.tile_hp,
+                overland_map.world,
+                overland_map.tile_hp,
                 target_player.inventory,
                 self.particles,
                 self.floats,
@@ -262,13 +417,13 @@ class Game:
             target_player.xp += w.xp_earned
             w.xp_earned = 0
 
-        # Pets
+        # Pets (only on overland map)
         for pet in self.pets:
             # Pets follow the closest player
             dist1 = math.hypot(pet.x - self.player1.x, pet.y - self.player1.y)
             dist2 = math.hypot(pet.x - self.player2.x, pet.y - self.player2.y)
             target = self.player1 if dist1 < dist2 else self.player2
-            pet.update(dt, target.x, target.y, self.world)
+            pet.update(dt, target.x, target.y, overland_map.world)
 
         # Enemies
         self._update_enemies(dt)
@@ -290,13 +445,19 @@ class Game:
         self.cam2_x += (self.player2.x - self.viewport_w // 2 - self.cam2_x) * 0.1
         self.cam2_y += (self.player2.y - self.viewport_h // 2 - self.cam2_y) * 0.1
 
-        # Clamp cameras to world bounds
-        world_pixel_w = WORLD_COLS * TILE
-        world_pixel_h = WORLD_ROWS * TILE
-        self.cam1_x = max(0, min(self.cam1_x, world_pixel_w - self.viewport_w))
-        self.cam1_y = max(0, min(self.cam1_y, world_pixel_h - self.viewport_h))
-        self.cam2_x = max(0, min(self.cam2_x, world_pixel_w - self.viewport_w))
-        self.cam2_y = max(0, min(self.cam2_y, world_pixel_h - self.viewport_h))
+        # Clamp cameras to world bounds (each player might be on different size map)
+        map1 = self.get_player_current_map(self.player1)
+        map2 = self.get_player_current_map(self.player2)
+
+        world1_pixel_w = map1.cols * TILE if map1 else WORLD_COLS * TILE
+        world1_pixel_h = map1.rows * TILE if map1 else WORLD_ROWS * TILE
+        world2_pixel_w = map2.cols * TILE if map2 else WORLD_COLS * TILE
+        world2_pixel_h = map2.rows * TILE if map2 else WORLD_ROWS * TILE
+
+        self.cam1_x = max(0, min(self.cam1_x, world1_pixel_w - self.viewport_w))
+        self.cam1_y = max(0, min(self.cam1_y, world1_pixel_h - self.viewport_h))
+        self.cam2_x = max(0, min(self.cam2_x, world2_pixel_w - self.viewport_w))
+        self.cam2_y = max(0, min(self.cam2_y, world2_pixel_h - self.viewport_h))
 
         # Effects
         for par in self.particles:
@@ -308,22 +469,37 @@ class Game:
 
     def _update_enemies(self, dt):
         """Update all enemies and check for attacks on both players."""
+        overland_map = self.maps["overland"]
         for enemy in self.enemies:
-            # Enemies attack whichever player is closer
-            dist1 = math.hypot(self.player1.x - enemy.x, self.player1.y - enemy.y)
-            dist2 = math.hypot(self.player2.x - enemy.x, self.player2.y - enemy.y)
-            target_x, target_y = (
-                (self.player1.x, self.player1.y)
-                if dist1 < dist2
-                else (self.player2.x, self.player2.y)
-            )
-            target_player = self.player1 if dist1 < dist2 else self.player2
+            # Enemies only attack players on overland map
+            player1_on_overland = self.player1.current_map == "overland"
+            player2_on_overland = self.player2.current_map == "overland"
+
+            if not (player1_on_overland or player2_on_overland):
+                continue  # No players to attack on overland
+
+            # Enemies attack whichever player is closer (if on overland)
+            if player1_on_overland and player2_on_overland:
+                dist1 = math.hypot(self.player1.x - enemy.x, self.player1.y - enemy.y)
+                dist2 = math.hypot(self.player2.x - enemy.x, self.player2.y - enemy.y)
+                target_x, target_y = (
+                    (self.player1.x, self.player1.y)
+                    if dist1 < dist2
+                    else (self.player2.x, self.player2.y)
+                )
+                target_player = self.player1 if dist1 < dist2 else self.player2
+            elif player1_on_overland:
+                target_x, target_y = self.player1.x, self.player1.y
+                target_player = self.player1
+            else:
+                target_x, target_y = self.player2.x, self.player2.y
+                target_player = self.player2
 
             # Use average camera for enemy update (they share the world)
             avg_cam_x = (self.cam1_x + self.cam2_x) / 2
             avg_cam_y = (self.cam1_y + self.cam2_y) / 2
             enemy.update(
-                dt, target_x, target_y, avg_cam_x, avg_cam_y, self.world, self.particles
+                dt, target_x, target_y, avg_cam_x, avg_cam_y, overland_map.world, self.particles
             )
 
             dmg = enemy.try_attack(target_x, target_y)
@@ -433,9 +609,16 @@ class Game:
     ):
         """Draw a single player's viewport."""
         self.screen.set_clip(pygame.Rect(screen_x, screen_y, view_w, view_h))
-        # Draw border fill for out-of-bounds areas
-        world_pixel_w = WORLD_COLS * TILE
-        world_pixel_h = WORLD_ROWS * TILE
+
+        # Get the map the player is currently on
+        current_map = self.get_player_current_map(player)
+        if current_map is None:
+            current_map = self.maps["overland"]
+
+        world_cols = current_map.cols
+        world_rows = current_map.rows
+        world_pixel_w = world_cols * TILE
+        world_pixel_h = world_rows * TILE
 
         # Stone border colors
         border_outer = (60, 50, 40)  # Dark stone
@@ -502,17 +685,21 @@ class Game:
 
         # Draw terrain for this viewport
         start_col = max(0, int(cam_x) // TILE)
-        end_col = min(WORLD_COLS, int(cam_x + view_w) // TILE + 2)
+        end_col = min(world_cols, int(cam_x + view_w) // TILE + 2)
         start_row = max(0, int(cam_y) // TILE)
-        end_row = min(WORLD_ROWS, int(cam_y + view_h) // TILE + 2)
+        end_row = min(world_rows, int(cam_y + view_h) // TILE + 2)
 
         for r in range(start_row, end_row):
             for c in range(start_col, end_col):
-                tid = self.world[r][c]
-                info = TILE_INFO[tid]
+                tid = current_map.get_tile(r, c)
+                if tid is None:
+                    continue
+                info = TILE_INFO.get(tid, {})
+                # Use tileset-aware color
+                tile_color = current_map.get_tileset_color(tid)
                 sx = c * TILE - int(cam_x) + screen_x
                 sy = r * TILE - int(cam_y) + screen_y
-                pygame.draw.rect(self.screen, info["color"], (sx, sy, TILE, TILE))
+                pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
 
                 if tid == TREE:
                     pygame.draw.rect(
@@ -539,12 +726,12 @@ class Game:
                 elif tid == MOUNTAIN:
                     # Check if this is part of a 2x2 mountain group starting from top-left
                     is_2x2_tl = (
-                        c + 1 < WORLD_COLS
-                        and r + 1 < WORLD_ROWS
-                        and self.world[r][c] == MOUNTAIN
-                        and self.world[r][c + 1] == MOUNTAIN
-                        and self.world[r + 1][c] == MOUNTAIN
-                        and self.world[r + 1][c + 1] == MOUNTAIN
+                        c + 1 < world_cols
+                        and r + 1 < world_rows
+                        and current_map.get_tile(r, c) == MOUNTAIN
+                        and current_map.get_tile(r, c + 1) == MOUNTAIN
+                        and current_map.get_tile(r + 1, c) == MOUNTAIN
+                        and current_map.get_tile(r + 1, c + 1) == MOUNTAIN
                     )
 
                     # Check if current tile is part of a larger 2x2 block
@@ -558,14 +745,14 @@ class Game:
                             if (
                                 check_c >= 0
                                 and check_r >= 0
-                                and check_c + 1 < WORLD_COLS
-                                and check_r + 1 < WORLD_ROWS
+                                and check_c + 1 < world_cols
+                                and check_r + 1 < world_rows
                             ):
                                 if (
-                                    self.world[check_r][check_c] == MOUNTAIN
-                                    and self.world[check_r][check_c + 1] == MOUNTAIN
-                                    and self.world[check_r + 1][check_c] == MOUNTAIN
-                                    and self.world[check_r + 1][check_c + 1] == MOUNTAIN
+                                    current_map.get_tile(check_r, check_c) == MOUNTAIN
+                                    and current_map.get_tile(check_r, check_c + 1) == MOUNTAIN
+                                    and current_map.get_tile(check_r + 1, check_c) == MOUNTAIN
+                                    and current_map.get_tile(check_r + 1, check_c + 1) == MOUNTAIN
                                 ):
                                     is_part_of_2x2 = True
                                     break
@@ -678,20 +865,56 @@ class Game:
                     pygame.draw.rect(
                         self.screen, (80, 60, 40), (sx + 7, sy + 15, 5, 5), 1
                     )
+                elif tid in (CAVE_MOUNTAIN, CAVE_HILL):
+                    # Draw cave entrance
+                    # Darker base color already set by tileset color
+                    # Add cave entrance graphics
+                    cave_color = tile_color
+                    # Draw a shadowy entrance
+                    pygame.draw.rect(self.screen, cave_color, (sx + 4, sy + 8, 24, 20))
+                    # Add entrance shadow
+                    shadow = tuple(max(0, c - 30) for c in cave_color)
+                    pygame.draw.polygon(
+                        self.screen,
+                        shadow,
+                        [(sx + 8, sy + 12), (sx + 24, sy + 12), (sx + 20, sy + 20), (sx + 10, sy + 20)],
+                    )
+                    # Add some rock detail
+                    rock_color = tuple(max(0, min(255, c + 20)) for c in cave_color)
+                    pygame.draw.circle(self.screen, rock_color, (sx + 12, sy + 15), 2)
+                    pygame.draw.circle(self.screen, rock_color, (sx + 20, sy + 14), 2)
+                    pygame.draw.circle(self.screen, rock_color, (sx + 16, sy + 20), 2)
+                elif tid == CAVE_EXIT:
+                    # Draw cave exit - a glowing portal/ladder
+                    # Pulsing glow effect
+                    pulse = int(math.sin(pygame.time.get_ticks() * 0.004) * 20 + 40)
+                    glow_color = (pulse + 40, pulse + 80, pulse + 40)
+                    pygame.draw.rect(self.screen, glow_color, (sx + 4, sy + 2, 24, 28))
+                    # Ladder rungs
+                    rung_color = (120, 90, 50)
+                    for ry in range(6, 28, 6):
+                        pygame.draw.line(self.screen, rung_color, (sx + 8, sy + ry), (sx + 24, sy + ry), 2)
+                    # Vertical rails
+                    pygame.draw.line(self.screen, rung_color, (sx + 8, sy + 4), (sx + 8, sy + 28), 2)
+                    pygame.draw.line(self.screen, rung_color, (sx + 24, sy + 4), (sx + 24, sy + 28), 2)
 
         # Draw effects and objects for this viewport
         for par in self.particles:
             par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         for f in self.floats:
             f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
-        for w in self.workers:
-            w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
-        ticks = pygame.time.get_ticks()
-        for pet in self.pets:
-            pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
-        for enemy in self.enemies:
-            enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+        # Workers, pets, and enemies only exist on overland map
+        if player.current_map == "overland":
+            for w in self.workers:
+                w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+
+            ticks = pygame.time.get_ticks()
+            for pet in self.pets:
+                pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
+            for enemy in self.enemies:
+                enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+
         for proj in self.projectiles:
             proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 

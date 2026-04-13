@@ -8,13 +8,24 @@ def tile_at(world, wx, wy):
     """Get tile ID at world position, or -1 if out of bounds."""
     col = int(wx) // TILE
     row = int(wy) // TILE
-    if col < 0 or col >= WORLD_COLS or row < 0 or row >= WORLD_ROWS:
+    world_rows = len(world)
+    world_cols = len(world[0]) if world_rows > 0 else 0
+    if col < 0 or col >= world_cols or row < 0 or row >= world_rows:
         return -1
     return world[row][col]
 
 
+def pos_in_bounds_world(wx, wy, world):
+    """Check if world position is within the given world's bounds."""
+    col = int(wx) // TILE
+    row = int(wy) // TILE
+    world_rows = len(world)
+    world_cols = len(world[0]) if world_rows > 0 else 0
+    return 0 <= col < world_cols and 0 <= row < world_rows
+
+
 def pos_in_bounds(wx, wy):
-    """Check if world position is within world bounds."""
+    """Check if world position is within default world bounds (overland)."""
     col = int(wx) // TILE
     row = int(wy) // TILE
     return 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS
@@ -29,12 +40,16 @@ def hits_blocking(world, cx, cy, half):
     return False
 
 
-def out_of_bounds(cx, cy, half):
+def out_of_bounds(cx, cy, half, world=None):
     """Check if a circle would leave the world bounds."""
     for ox in (-half, half):
         for oy in (-half, half):
-            if not pos_in_bounds(cx + ox, cy + oy):
-                return True
+            if world is not None:
+                if not pos_in_bounds_world(cx + ox, cy + oy, world):
+                    return True
+            else:
+                if not pos_in_bounds(cx + ox, cy + oy):
+                    return True
     return False
 
 
