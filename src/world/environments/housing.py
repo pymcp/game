@@ -26,15 +26,15 @@ from src.world.map import GameMap
 # ---------------------------------------------------------------------------
 
 # Tier-0 (single cottage): small room inside a yard
-_COTTAGE_ROWS = 28
-_COTTAGE_COLS = 28
+_COTTAGE_ROWS = 16
+_COTTAGE_COLS = 16
 # How many tiles of exterior yard to show around the building on each side
-_COTTAGE_ROOM_OFFSET = 5
+_COTTAGE_ROOM_OFFSET = 3
 
 # Tier 1+ (settlement): map grows taller for larger settlements.
 # Index matches tier (tier-0 unused here).
-_SETTLEMENT_ROWS_BY_TIER = [28, 60, 70, 80, 105, 120]
-_SETTLEMENT_COLS = 80
+_SETTLEMENT_ROWS_BY_TIER = [16, 30, 36, 42, 54, 62]
+_SETTLEMENT_COLS = 40
 
 # How many sub-houses to place per settlement tier (index = tier, 0-based)
 # Tier 0 is cottage — no sub-houses; tier 1+ use SETTLEMENT_TIER_SIZES[tier]

@@ -12,10 +12,9 @@ from src.world.environments.utils import (
 from src.world.map import GameMap
 from src.config import SAND, CORAL, REEF, DIVE_EXIT
 
-# Sized so MAP_BORDER leaves a 36×46 walkable interior (same as the original
-# 40×50 map with its 2-tile border).
-UNDERWATER_ROWS = 56
-UNDERWATER_COLS = 66
+# Sized so MAP_BORDER leaves a 20×26 walkable interior.
+UNDERWATER_ROWS = 30
+UNDERWATER_COLS = 36
 
 
 # ---------------------------------------------------------------------------

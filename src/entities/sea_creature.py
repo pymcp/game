@@ -65,7 +65,7 @@ class SeaCreature(Creature):
         sx = int(self.x - offset_x)
         sy = int(self.y - offset_y)
         surf_w, surf_h = screen.get_size()
-        if sx < -160 or sx > surf_w + 160 or sy < -96 or sy > surf_h + 96:
+        if sx < -TILE * 5 or sx > surf_w + TILE * 5 or sy < -TILE * 3 or sy > surf_h + TILE * 3:
             return
 
         # --- Sprite path ---

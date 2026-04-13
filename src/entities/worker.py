@@ -209,7 +209,7 @@ class Worker:
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         surf_w, surf_h = surf.get_size()
-        if sx < -40 or sx > surf_w + 40 or sy < -40 or sy > surf_h + 40:
+        if sx < -TILE * 2 or sx > surf_w + TILE * 2 or sy < -TILE * 2 or sy > surf_h + TILE * 2:
             return
 
         # --- Sprite path ---
@@ -218,25 +218,33 @@ class Worker:
             if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
                 return
 
-        # --- Procedural fallback ---
+        # --- Procedural fallback (draw at 32-unit scale, scale up) ---
+        _TS: int = TILE // 32
+        buf_sz = 64
+        buf = pygame.Surface((buf_sz, buf_sz), pygame.SRCALPHA)
+        buf.fill((0, 0, 0, 0))
+        _sx, _sy = buf_sz // 2, buf_sz // 2
         s = self.size_mod
         bw, bh = int(16 * s), int(22 * s)
         pygame.draw.rect(
-            surf,
+            buf,
             self.body_color,
-            (sx - bw // 2, sy - int(10 * s), bw, bh),
+            (_sx - bw // 2, _sy - int(10 * s), bw, bh),
             border_radius=3,
         )
         head_r = int(7 * s)
-        pygame.draw.circle(surf, self.skin_color, (sx, sy - int(14 * s)), head_r)
+        pygame.draw.circle(buf, self.skin_color, (_sx, _sy - int(14 * s)), head_r)
         hat_w, hat_h = int(14 * s), int(5 * s)
         pygame.draw.rect(
-            surf, self.hat_color, (sx - hat_w // 2, sy - int(20 * s), hat_w, hat_h)
+            buf, self.hat_color, (_sx - hat_w // 2, _sy - int(20 * s), hat_w, hat_h)
         )
         pygame.draw.line(
-            surf,
+            buf,
             (160, 120, 60),
-            (sx + int(8 * s), sy - int(4 * s)),
-            (sx + int(14 * s), sy - int(12 * s)),
+            (_sx + int(8 * s), _sy - int(4 * s)),
+            (_sx + int(14 * s), _sy - int(12 * s)),
             2,
         )
+        if _TS > 1:
+            buf = pygame.transform.scale(buf, (buf_sz * _TS, buf_sz * _TS))
+        surf.blit(buf, (sx - buf.get_width() // 2, sy - buf.get_height() // 2))

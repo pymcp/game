@@ -21,7 +21,7 @@ INIT_BUFFER = 2  # slots in every direction from home sector for initial CA gene
 
 # Tile padding outside the outermost slot — mirrors MAP_BORDER from config.py so
 # the HUD never overlaps walkable tiles in the portal realm either.
-REALM_PADDING = 10
+REALM_PADDING = 5
 
 
 def carve_chamber(world: list[list[int]], slot_col: int, slot_row: int) -> None:

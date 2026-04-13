@@ -185,24 +185,31 @@ class Enemy:
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         surf_w, surf_h = surf.get_size()
-        if sx < -96 or sx > surf_w + 96 or sy < -96 or sy > surf_h + 96:
+        _margin = TILE * 2
+        if sx < -_margin or sx > surf_w + _margin or sy < -_margin or sy > surf_h + _margin:
             return
+
+        _TS: int = TILE // 32  # procedural scale factor (2 when TILE=64)
 
         # --- Sprite path ---
         self._ensure_animator()
         from src.rendering.sprite_draw import sprite_draw
         if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
             if self.hp < self.max_hp:
-                bar_w = 24
+                bar_w = 24 * _TS
                 bx = sx - bar_w // 2
-                by = sy - 51
+                by = sy - 51 * _TS
                 ratio = max(0.0, self.hp / self.max_hp)
-                pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3))
-                pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3))
+                pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3 * _TS))
+                pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3 * _TS))
             return
 
-        # --- Procedural fallback ---
+        # --- Procedural fallback (draw at 32-unit scale then scale up) ---
         base = (255, 255, 255) if self.hurt_flash > 0 else self.color
+        buf_sz = 64
+        buf = pygame.Surface((buf_sz, buf_sz), pygame.SRCALPHA)
+        buf.fill((0, 0, 0, 0))
+        bx_c, by_c = buf_sz // 2, buf_sz // 2
 
         for cmd in self.draw_commands:
             shape = cmd[0]
@@ -212,25 +219,29 @@ class Enemy:
 
             if shape == "circle":
                 cx_off, cy_off, radius = args
-                pygame.draw.circle(surf, c, (sx + cx_off, sy + cy_off), radius)
+                pygame.draw.circle(buf, c, (bx_c + cx_off, by_c + cy_off), radius)
             elif shape == "rect":
                 xo, yo, w, h = args
-                pygame.draw.rect(surf, c, (sx + xo, sy + yo, w, h))
+                pygame.draw.rect(buf, c, (bx_c + xo, by_c + yo, w, h))
             elif shape == "ellipse":
                 xo, yo, w, h = args
-                pygame.draw.ellipse(surf, c, (sx + xo, sy + yo, w, h))
+                pygame.draw.ellipse(buf, c, (bx_c + xo, by_c + yo, w, h))
             elif shape == "line":
                 x1, y1, x2, y2, width = args
-                pygame.draw.line(surf, c, (sx + x1, sy + y1), (sx + x2, sy + y2), width)
+                pygame.draw.line(buf, c, (bx_c + x1, by_c + y1), (bx_c + x2, by_c + y2), width)
             elif shape == "polygon":
                 points_off = args[0]
-                pts = [(sx + px_off, sy + py_off) for px_off, py_off in points_off]
-                pygame.draw.polygon(surf, c, pts)
+                pts = [(bx_c + px_off, by_c + py_off) for px_off, py_off in points_off]
+                pygame.draw.polygon(buf, c, pts)
+
+        if _TS > 1:
+            buf = pygame.transform.scale(buf, (buf_sz * _TS, buf_sz * _TS))
+        surf.blit(buf, (sx - buf.get_width() // 2, sy - buf.get_height() // 2))
 
         if self.hp < self.max_hp:
-            bar_w = 20
+            bar_w = 20 * _TS
             bx = sx - bar_w // 2
-            by = sy - 16
+            by = sy - 16 * _TS
             ratio = max(0, self.hp / self.max_hp)
-            pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3))
-            pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3))
+            pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3 * _TS))
+            pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3 * _TS))

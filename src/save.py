@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 9
+SAVE_VERSION = 10
 
 
 # ---------------------------------------------------------------------------

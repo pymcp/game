@@ -129,7 +129,7 @@ CONTROL_SCHEME_PLAYER2 = ControlScheme(
 class Player:
     """The player character."""
 
-    COLLISION_HALF = 10
+    COLLISION_HALF = 20
 
     def __init__(
         self,
@@ -586,7 +586,13 @@ class Player:
         )
 
         if self.on_boat:
-            self._draw_on_boat(surf, psx, psy, body_color)
+            _TS = TILE // 32
+            buf_w, buf_h = 100, 120
+            buf = pygame.Surface((buf_w, buf_h), pygame.SRCALPHA)
+            buf.fill((0, 0, 0, 0))
+            self._draw_on_boat(buf, buf_w // 2, buf_h // 2, body_color)
+            scaled = pygame.transform.scale(buf, (buf_w * _TS, buf_h * _TS))
+            surf.blit(scaled, (psx - scaled.get_width() // 2, psy - scaled.get_height() // 2))
             return
         if self.on_mount:
             return  # the mounted creature renders the rider figure
@@ -597,8 +603,14 @@ class Player:
             self._draw_sprite(surf, cam_x, cam_y, body_color)
             return
 
-        # --- Procedural fallback ---
-        self._draw_normal(surf, psx, psy, body_color)
+        # --- Procedural fallback (draw at half-scale, blit scaled up) ---
+        _TS = TILE // 32  # scale factor (2 when TILE=64)
+        buf_w, buf_h = 80, 80
+        buf = pygame.Surface((buf_w, buf_h), pygame.SRCALPHA)
+        buf.fill((0, 0, 0, 0))
+        self._draw_normal(buf, buf_w // 2, buf_h // 2, body_color)
+        scaled = pygame.transform.scale(buf, (buf_w * _TS, buf_h * _TS))
+        surf.blit(scaled, (psx - scaled.get_width() // 2, psy - scaled.get_height() // 2))
 
     def _draw_sprite(
         self,

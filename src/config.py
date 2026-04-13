@@ -2,7 +2,7 @@
 
 # Display
 SCREEN_W, SCREEN_H = 1920, 1080
-TILE = 32
+TILE = 64
 FPS = 60
 
 # Split-screen for 2 players (each gets half the width)
@@ -10,15 +10,15 @@ VIEWPORT_W = SCREEN_W // 2
 VIEWPORT_H = SCREEN_H
 
 # World size in tiles
-WORLD_COLS = 80
-WORLD_ROWS = 60
+WORLD_COLS = 60
+WORLD_ROWS = 45
 
 # Minimum solid-wall border for enclosed maps (cave, underwater, portal realm).
 # Ensures the first walkable tile is always beyond the HUD panels:
-#   Left/Top HUD panel: ~248px wide, ~293px tall  → 10 tiles (10×32=320) clears both.
-#   Right minimap:       114px                    → 4 tiles minimum; 10 keeps symmetry.
-#   Bottom HUD:          138px                    → 5 tiles minimum; 10 keeps symmetry.
-MAP_BORDER = 10
+#   Left/Top HUD panel: ~248px wide, ~293px tall  → 5 tiles (5×64=320) clears both.
+#   Right minimap:       114px                    → 2 tiles minimum; 5 keeps symmetry.
+#   Bottom HUD:          138px                    → 3 tiles minimum; 5 keeps symmetry.
+MAP_BORDER = 5
 
 # Colors
 BG = (30, 30, 46)

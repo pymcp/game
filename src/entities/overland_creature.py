@@ -67,7 +67,7 @@ class OverlandCreature(Creature):
         sx = int(self.x - offset_x)
         sy = int(self.y - offset_y)
         surf_w, surf_h = screen.get_size()
-        if sx < -128 or sx > surf_w + 128 or sy < -128 or sy > surf_h + 128:
+        if sx < -TILE * 4 or sx > surf_w + TILE * 4 or sy < -TILE * 4 or sy > surf_h + TILE * 4:
             return
 
         # --- Sprite path ---

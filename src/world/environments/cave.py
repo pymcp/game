@@ -39,10 +39,9 @@ _HILL_CAVE_ENEMIES = [
     if EnemyEnvironment.CAVE_HILL in v.get("environments", [])
 ]
 
-# Size chosen so the 10-tile MAP_BORDER leaves a 46×46 walkable interior
-# (matches the original 50×50 map's 46×46 interior with its old 2-tile border).
-CAVE_ROWS = 66
-CAVE_COLS = 66
+# Size chosen so the 5-tile MAP_BORDER leaves a 26×26 walkable interior.
+CAVE_ROWS = 36
+CAVE_COLS = 36
 
 
 # ---------------------------------------------------------------------------
