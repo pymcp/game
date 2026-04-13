@@ -5,17 +5,21 @@
   ],
   "cols": 4,
   "tiles": {
-    "coral": {
+    "magma_ore": {
       "start_row": 0,
       "fps": 0.0
     },
-    "reef": {
+    "desert_crystal_ore": {
       "start_row": 16,
       "fps": 0.0
     },
-    "dive_exit": {
+    "void_ore": {
       "start_row": 32,
-      "fps": 1.5
+      "fps": 0.0
+    },
+    "magma_stone": {
+      "start_row": 48,
+      "fps": 0.0
     }
   }
 }

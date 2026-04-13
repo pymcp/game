@@ -5,17 +5,21 @@
   ],
   "cols": 4,
   "tiles": {
-    "coral": {
+    "wood_wall": {
       "start_row": 0,
       "fps": 0.0
     },
-    "reef": {
+    "worktable": {
       "start_row": 16,
       "fps": 0.0
     },
-    "dive_exit": {
+    "house_exit": {
       "start_row": 32,
-      "fps": 1.5
+      "fps": 0.0
+    },
+    "settlement_house": {
+      "start_row": 48,
+      "fps": 0.0
     }
   }
 }

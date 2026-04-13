@@ -5,17 +5,21 @@
   ],
   "cols": 4,
   "tiles": {
-    "coral": {
+    "iron_ore": {
       "start_row": 0,
       "fps": 0.0
     },
-    "reef": {
+    "gold_ore": {
       "start_row": 16,
       "fps": 0.0
     },
-    "dive_exit": {
+    "diamond_ore": {
       "start_row": 32,
-      "fps": 1.5
+      "fps": 0.0
+    },
+    "frost_crystal_ore": {
+      "start_row": 48,
+      "fps": 0.0
     }
   }
 }

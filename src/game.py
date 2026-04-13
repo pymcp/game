@@ -2840,7 +2840,21 @@ class Game:
                 if tile_name is not None:
                     adj = _compute_adj(current_map, r, c, tid)
                     fps = _tile_reg.get_fps(tile_name)
-                    fidx = int(ticks * fps / 1000.0) % 4 if fps > 0 else 0
+                    if fps > 0:
+                        fidx = int(ticks * fps / 1000.0) % 4
+                    else:
+                        tile_info = TILE_INFO.get(tid)
+                        if (
+                            tile_info
+                            and tile_info.get("mineable")
+                            and tile_info["hp"] > 0
+                        ):
+                            cur_hp = current_map.tile_hp[r][c]
+                            max_hp = tile_info["hp"]
+                            damage_pct = 1.0 - cur_hp / max_hp
+                            fidx = min(3, int(damage_pct * 4))
+                        else:
+                            fidx = 0
                     frame = _tile_reg.get_frame(tile_name, adj, fidx, _tileset)
                     if frame is not None:
                         self.screen.blit(frame, (sx, sy))

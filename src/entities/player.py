@@ -459,8 +459,12 @@ class Player:
             center_col = int(self.x) // TILE
             center_row = int(self.y) // TILE
             # Prioritize the tile in the player's facing direction
-            face_dc = 1 if self.facing_dx > 0.1 else (-1 if self.facing_dx < -0.1 else 0)
-            face_dr = 1 if self.facing_dy > 0.1 else (-1 if self.facing_dy < -0.1 else 0)
+            face_dc = (
+                1 if self.facing_dx > 0.1 else (-1 if self.facing_dx < -0.1 else 0)
+            )
+            face_dr = (
+                1 if self.facing_dy > 0.1 else (-1 if self.facing_dy < -0.1 else 0)
+            )
             fc, fr = center_col + face_dc, center_row + face_dr
             if (
                 0 <= fc < world_cols
@@ -495,11 +499,11 @@ class Player:
                         self.mining_target = (target_col, target_row)
                         self.mining_progress = 0
                     pick = PICKAXES[self.pick_level]
-                    self.mining_progress += pick["power"] * dt * 0.15
+                    damage_this_frame = pick["power"] * dt * 0.15
+                    self.mining_progress += damage_this_frame
                     tile_hp[target_row][target_col] = max(
                         0,
-                        TILE_INFO[world[target_row][target_col]]["hp"]
-                        - self.mining_progress,
+                        tile_hp[target_row][target_col] - damage_this_frame,
                     )
 
                     if random.random() < 0.4:

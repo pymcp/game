@@ -169,14 +169,17 @@ TILE_NAMES: dict[int, str] = {
 }
 
 # Terrain group definitions: atlas_name → list of tile IDs
+# Each group must stay ≤ 7 tiles (7 * 16 rows * 64px = 7168px < 8000px limit)
 TERRAIN_GROUPS: dict[str, list[int]] = {
-    "terrain_basic": [
+    "terrain_basic_a": [
         GRASS,
         DIRT,
         STONE,
         SAND,
         SNOW,
         ASH_GROUND,
+    ],
+    "terrain_basic_b": [
         DEAD_GRASS,
         DIRT_PATH,
         COBBLESTONE,
@@ -185,11 +188,13 @@ TERRAIN_GROUPS: dict[str, list[int]] = {
         SANDSTONE,
     ],
     "terrain_nature": [TREE, WATER, MOUNTAIN, CACTUS_TILE],
-    "terrain_ore": [
+    "terrain_ore_a": [
         IRON_ORE,
         GOLD_ORE,
         DIAMOND_ORE,
         FROST_CRYSTAL_ORE,
+    ],
+    "terrain_ore_b": [
         MAGMA_ORE,
         DESERT_CRYSTAL_ORE,
         VOID_ORE,
@@ -205,12 +210,14 @@ TERRAIN_GROUPS: dict[str, list[int]] = {
         PORTAL_LAVA,
         ANCIENT_STONE,
     ],
-    "terrain_settlement": [
+    "terrain_settlement_a": [
         HOUSE,
         PIER,
         BOAT,
         TREASURE_CHEST,
         WOOD_FLOOR,
+    ],
+    "terrain_settlement_b": [
         WOOD_WALL,
         WORKTABLE,
         HOUSE_EXIT,
@@ -227,6 +234,7 @@ TERRAIN_GROUPS: dict[str, list[int]] = {
 }
 
 # FPS per tile (0 = static).  Tiles not listed default to 0.
+# Mineable tiles MUST be 0 so that frame columns represent damage states.
 TILE_FPS: dict[int, float] = {
     WATER: 3.0,
     LAVA_POOL: 2.0,
@@ -234,7 +242,6 @@ TILE_FPS: dict[int, float] = {
     PORTAL_ACTIVE: 2.0,
     CAVE_EXIT: 1.5,
     DIVE_EXIT: 1.5,
-    CORAL: 1.0,
     FROZEN_LAKE: 0.5,
 }
 
@@ -313,55 +320,155 @@ def _noise_texture(
 # ---------------------------------------------------------------------------
 # Per-tile-type rendering functions
 # ---------------------------------------------------------------------------
-# Each function signature: (surf, adj, frame, rng) → None
+# Each function signature: (surf, tid, adj, frame, rng) → None
 # surf: 64×64 SRCALPHA surface (already filled with base color)
 # adj: 4-bit adjacency mask
-# frame: animation frame index (0-3)
+# frame: For animated tiles, animation frame index (0-3).
+#        For mineable static tiles, damage level (0=full HP … 3=nearly broken).
 # rng: seeded Random for deterministic noise
+
+
+def _draw_damage_cracks(
+    surf: pygame.Surface,
+    damage: int,
+    rng: random.Random,
+    color: tuple[int, int, int] | None = None,
+) -> None:
+    """Draw progressive crack/chip overlays based on *damage* (0-3)."""
+    if damage <= 0:
+        return
+    dark = _darken(color, 50) if color else (40, 35, 30)
+    c = CELL
+    # Number and length of cracks scale with damage
+    num_cracks = damage * 2 + 1
+    max_len = 8 + damage * 5
+    for _ in range(num_cracks):
+        x1 = rng.randint(6, c - 6)
+        y1 = rng.randint(6, c - 6)
+        x2 = x1 + rng.randint(-max_len, max_len)
+        y2 = y1 + rng.randint(-max_len, max_len)
+        pygame.draw.line(surf, dark, (x1, y1), (x2, y2), 1)
+    # Chip marks at higher damage
+    if damage >= 2:
+        for _ in range(damage):
+            cx = rng.randint(8, c - 8)
+            cy = rng.randint(8, c - 8)
+            sz = rng.randint(2, 3 + damage)
+            pygame.draw.rect(surf, dark, (cx, cy, sz, sz))
+
+
+def _draw_rubble(
+    surf: pygame.Surface,
+    damage: int,
+    rng: random.Random,
+    color: tuple[int, int, int],
+) -> None:
+    """Draw small rubble pieces at the base, scaling with *damage*."""
+    if damage <= 0:
+        return
+    c = CELL
+    rubble_c = _darken(color, 15)
+    num = damage * 2
+    for _ in range(num):
+        rx = rng.randint(4, c - 8)
+        ry = rng.randint(c - 14, c - 4)
+        rw = rng.randint(3, 5 + damage)
+        rh = rng.randint(2, 4)
+        pygame.draw.rect(surf, rubble_c, (rx, ry, rw, rh))
 
 
 def _draw_flat(
     surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
 ) -> None:
-    """Generic flat terrain tile (grass, dirt, sand, etc.) with texture."""
+    """Generic flat terrain tile (grass, dirt, sand, etc.) with texture.
+    For mineable flat tiles, *frame* encodes damage (0-3)."""
     color = _base_color(tid)
+    is_mineable = TILE_INFO.get(tid, {}).get("mineable", False)
+    damage = frame if is_mineable else 0
     _noise_texture(surf, color, rng, density=0.06)
+    if damage >= 1:
+        # Divots — small dark spots
+        num_divots = damage * 3
+        dark = _darken(color, 35)
+        for _ in range(num_divots):
+            dx = rng.randint(6, CELL - 6)
+            dy = rng.randint(6, CELL - 6)
+            sz = rng.randint(2, 3 + damage)
+            pygame.draw.rect(surf, dark, (dx, dy, sz, sz))
+    _draw_damage_cracks(surf, damage, rng, color)
     _edge_borders(surf, color, adj, width=2)
 
 
 def _draw_tree(
     surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
 ) -> None:
-    """Tree tile: trunk + canopy; adjacency-interior shows dense canopy."""
+    """Tree tile with damage-based depletion (frame 0-3 = damage level)."""
     color = _base_color(tid)
     canopy_green = (30, 130, 30)
     trunk_brown = (100, 70, 30)
     c = CELL
     h = c // 2  # 32
+    damage = frame  # 0=full, 3=nearly gone
 
     if adj == 0xF:
-        # Interior: dense canopy covers entire tile
-        pygame.draw.rect(surf, canopy_green, (0, 0, c, c))
-        _noise_texture(surf, canopy_green, rng, density=0.1, var=20)
+        # Interior: dense canopy — thins with damage
+        density_frac = 1.0 - damage * 0.25
+        canopy_rect = int(c * density_frac)
+        offset = (c - canopy_rect) // 2
+        pygame.draw.rect(surf, canopy_green, (offset, offset, canopy_rect, canopy_rect))
+        _noise_texture(surf, canopy_green, rng, density=0.1 * density_frac, var=20)
+        if damage >= 2:
+            # Show trunk patches through thinned canopy
+            for _ in range(damage * 2):
+                bx = rng.randint(offset + 2, offset + canopy_rect - 6)
+                by = rng.randint(offset + 2, offset + canopy_rect - 6)
+                pygame.draw.rect(surf, trunk_brown, (bx, by, 4, 4))
     else:
-        # Trunk
-        tw, th = 8, 20
+        # Trunk — gets cracked with damage
+        tw = 8
+        th = 20 + damage * 3  # trunk shows more as canopy shrinks
         tx = (c - tw) // 2
         ty = c - th - 4
         pygame.draw.rect(surf, trunk_brown, (tx, ty, tw, th))
-        # Canopy circle
-        cr = 20 + (frame % 2)  # subtle sway
+        if damage >= 2:
+            # Trunk cracks
+            crack = _darken(trunk_brown, 40)
+            pygame.draw.line(surf, crack, (tx + 2, ty + 4), (tx + 5, ty + th - 4), 1)
+        if damage >= 3:
+            pygame.draw.line(
+                surf, _darken(trunk_brown, 50), (tx + 4, ty), (tx + 1, ty + th), 1
+            )
+
+        # Canopy circle — shrinks with damage
+        cr = max(6, 20 - damage * 5)
         pygame.draw.circle(surf, canopy_green, (h, h - 4), cr)
-        _noise_texture(surf, canopy_green, rng, density=0.04, var=15)
-        # Adjacency: extend canopy toward connected edges
+        _noise_texture(
+            surf, canopy_green, rng, density=max(0.01, 0.04 - damage * 0.01), var=15
+        )
+
+        # Bare spots in canopy at higher damage
+        if damage >= 1:
+            for _ in range(damage * 2):
+                sx = h + rng.randint(-cr + 2, cr - 2)
+                sy = h - 4 + rng.randint(-cr + 2, cr - 2)
+                pygame.draw.rect(surf, color, (sx, sy, 3, 3))
+
+        # Adjacency: extend canopy toward connected edges (shrinks with damage)
+        ext = max(2, 10 - damage * 3)
+        arm = max(8, 28 - damage * 7)
         if adj & 0b1000:  # north
-            pygame.draw.rect(surf, canopy_green, (h - 14, 0, 28, 10))
+            pygame.draw.rect(surf, canopy_green, (h - arm // 2, 0, arm, ext))
         if adj & 0b0100:  # east
-            pygame.draw.rect(surf, canopy_green, (c - 10, h - 14, 10, 28))
+            pygame.draw.rect(surf, canopy_green, (c - ext, h - arm // 2, ext, arm))
         if adj & 0b0010:  # south
-            pygame.draw.rect(surf, canopy_green, (h - 14, c - 10, 28, 10))
+            pygame.draw.rect(surf, canopy_green, (h - arm // 2, c - ext, arm, ext))
         if adj & 0b0001:  # west
-            pygame.draw.rect(surf, canopy_green, (0, h - 14, 10, 28))
+            pygame.draw.rect(surf, canopy_green, (0, h - arm // 2, ext, arm))
+
+    # Fallen leaves/bark at high damage
+    if damage >= 2:
+        _draw_rubble(surf, damage, rng, canopy_green)
+
     _edge_borders(surf, color, adj, width=2)
 
 
@@ -394,47 +501,91 @@ def _draw_water(
 def _draw_mountain(
     surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
 ) -> None:
-    """Mountain tile: isolated = single peak, interior = ridge texture."""
+    """Mountain tile with damage-based depletion (frame 0-3 = damage level)."""
     color = _base_color(tid)
     c = CELL
     h = c // 2
+    damage = frame  # 0=full, 3=nearly gone
 
     if adj == 0xF:
-        # Interior: rocky ridge texture
+        # Interior: rocky ridge texture — degrades with damage
         ridge = _lighten(color, 15)
         _noise_texture(surf, color, rng, density=0.12, var=20)
-        # Subtle horizontal ridge lines
-        for ry in range(10, c, 14):
+        spacing = 14 + damage * 4  # ridges space out as rock crumbles
+        for ry in range(10, c, spacing):
             pygame.draw.line(surf, ridge, (4, ry), (c - 4, ry), 1)
+        _draw_damage_cracks(surf, damage, rng, color)
+        _draw_rubble(surf, damage, rng, color)
     else:
-        # Draw a peak triangle
+        # Draw a peak triangle — shrinks with damage
+        peak_height = max(20, c - 8 - damage * 12)
+        peak_y = c - peak_height
+        inset = 8 + damage * 4  # base narrows with damage
         pygame.draw.polygon(
-            surf, _lighten(color, 20), [(8, c - 4), (h, 4), (c - 8, c - 4)]
+            surf,
+            _lighten(color, 20),
+            [(inset, c - 4), (h, peak_y), (c - inset, c - 4)],
         )
-        # Snow cap
-        pygame.draw.polygon(surf, (230, 230, 240), [(h - 8, 16), (h, 4), (h + 8, 16)])
-        # Ridge crack details
-        pygame.draw.line(surf, _darken(color, 20), (h - 6, 28), (h - 2, 18), 1)
-        pygame.draw.line(surf, _darken(color, 20), (h + 6, 30), (h + 8, 20), 1)
+        # Snow cap — smaller/gone with damage
+        if damage < 3:
+            cap_w = max(2, 8 - damage * 3)
+            cap_h = max(2, 12 - damage * 4)
+            pygame.draw.polygon(
+                surf,
+                (230, 230, 240),
+                [(h - cap_w, peak_y + cap_h), (h, peak_y), (h + cap_w, peak_y + cap_h)],
+            )
+        # Crack details — more with damage
+        num_cracks = 2 + damage * 2
+        dark = _darken(color, 20 + damage * 10)
+        for _ in range(num_cracks):
+            x1 = rng.randint(inset + 2, c - inset - 2)
+            y1 = rng.randint(peak_y + 4, c - 8)
+            x2 = x1 + rng.randint(-8, 8)
+            y2 = y1 + rng.randint(-10, 4)
+            pygame.draw.line(surf, dark, (x1, y1), (x2, y2), 1)
+
+        # Rubble at base for higher damage
+        _draw_rubble(surf, damage, rng, color)
+
     _edge_borders(surf, color, adj, width=2)
 
 
 def _draw_ore(
     surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
 ) -> None:
-    """Ore tile: host rock with bright ore vein dots; denser when grouped."""
-    info = TILE_INFO.get(tid, {})
+    """Ore tile with damage-based depletion (frame 0-3 = damage level).
+    Ore veins shrink and cracks grow as damage increases."""
     color = _base_color(tid)
     bright = _lighten(color, 80)
     c = CELL
+    damage = frame  # 0=full, 3=nearly gone
+
     _noise_texture(surf, color, rng, density=0.06, var=10)
-    # Ore sparkle dots — more when surrounded
-    num_dots = 4 + bin(adj).count("1") * 2
+
+    # Ore sparkle dots — fewer with damage
+    base_dots = 4 + bin(adj).count("1") * 2
+    num_dots = max(1, base_dots - damage * 3)
+    dot_size_max = max(2, 4 - damage)
     for _ in range(num_dots):
         ox = rng.randint(6, c - 6)
         oy = rng.randint(6, c - 6)
-        sz = rng.randint(2, 4)
+        sz = rng.randint(2, dot_size_max)
         pygame.draw.rect(surf, bright, (ox, oy, sz, sz))
+
+    # Cracks and chips at damage > 0
+    _draw_damage_cracks(surf, damage, rng, color)
+
+    # At high damage, show depleted patches (host rock showing through)
+    if damage >= 2:
+        host_rock = _darken(color, 25)
+        for _ in range(damage * 2):
+            px = rng.randint(6, c - 10)
+            py = rng.randint(6, c - 10)
+            pw = rng.randint(4, 6 + damage)
+            ph = rng.randint(3, 5 + damage)
+            pygame.draw.rect(surf, host_rock, (px, py, pw, ph))
+
     _edge_borders(surf, color, adj, width=2)
 
 
@@ -545,23 +696,51 @@ def _draw_treasure(
 def _draw_coral(
     surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
 ) -> None:
-    """Coral formation with branching arms."""
+    """Coral with damage-based depletion (frame 0-3 = damage level).
+    Polyps recede, branches thin, bleaching increases."""
     info = TILE_INFO.get(tid, {})
     color = info.get("color", (240, 80, 130))
     bright = _lighten(color, 60)
     c = CELL
     h = c // 2
-    sway = int(math.sin(frame * 1.2) * 2)
-    # Central stalk
-    pygame.draw.line(surf, color, (h, c - 8), (h + sway, h - 4), 4)
-    # Left branch
-    pygame.draw.line(surf, color, (h + sway, h + 4), (h - 16 + sway, h - 12), 4)
-    pygame.draw.circle(surf, bright, (h - 16 + sway, h - 13), 6)
-    # Right branch
-    pygame.draw.line(surf, color, (h + sway, h), (h + 16 + sway, h - 16), 4)
-    pygame.draw.circle(surf, bright, (h + 16 + sway, h - 17), 6)
-    # Top
-    pygame.draw.circle(surf, bright, (h + sway, h - 6), 6)
+    damage = frame  # 0=full, 3=nearly gone
+
+    # Bleach color blends in with damage
+    bleach = (200, 190, 180)
+
+    # Draw colour gets washed out with damage
+    r_ = color[0] + (bleach[0] - color[0]) * damage // 4
+    g_ = color[1] + (bleach[1] - color[1]) * damage // 4
+    b_ = color[2] + (bleach[2] - color[2]) * damage // 4
+    draw_color = (r_, g_, b_)
+    bright_d = _lighten(draw_color, 40)
+
+    # Central stalk — thins with damage
+    stalk_w = max(1, 4 - damage)
+    pygame.draw.line(surf, draw_color, (h, c - 8), (h, h - 4), stalk_w)
+
+    # Branches — fewer with damage
+    if damage < 3:
+        # Left branch
+        pygame.draw.line(surf, draw_color, (h, h + 4), (h - 16, h - 12), stalk_w)
+        if damage < 2:
+            pygame.draw.circle(surf, bright_d, (h - 16, h - 13), max(2, 6 - damage * 2))
+    if damage < 2:
+        # Right branch
+        pygame.draw.line(surf, draw_color, (h, h), (h + 16, h - 16), stalk_w)
+        pygame.draw.circle(surf, bright_d, (h + 16, h - 17), max(2, 6 - damage * 2))
+
+    # Top polyp — shrinks then gone
+    if damage < 3:
+        pygame.draw.circle(surf, bright_d, (h, h - 6), max(2, 6 - damage * 2))
+
+    # Rubble/fragments at high damage
+    if damage >= 2:
+        frag_c = _darken(color, 20)
+        for _ in range(damage * 2):
+            fx = rng.randint(h - 18, h + 18)
+            fy = rng.randint(c - 14, c - 4)
+            pygame.draw.rect(surf, frag_c, (fx, fy, 3, 2))
 
 
 def _draw_dive_exit(
@@ -706,23 +885,55 @@ def _draw_house(
 def _draw_cactus(
     surf: pygame.Surface, tid: int, adj: int, frame: int, rng: random.Random
 ) -> None:
-    """Cactus tile: single cactus or denser when grouped."""
+    """Cactus tile with damage-based depletion (frame 0-3 = damage level)."""
     color = _base_color(tid)
     c = CELL
     h = c // 2
     cactus_g = (45, 150, 80)
     dark_g = (35, 120, 60)
+    damage = frame  # 0=full, 3=nearly gone
+
     if adj == 0xF:
-        # Dense cactus patch
-        for cx, cy in [(16, 16), (44, 20), (28, 44), (48, 48)]:
-            pygame.draw.rect(surf, cactus_g, (cx - 4, cy, 8, 20))
-            pygame.draw.rect(surf, dark_g, (cx - 8, cy + 6, 6, 4))
-            pygame.draw.rect(surf, dark_g, (cx + 4, cy + 4, 6, 4))
+        # Dense cactus patch — fewer cacti with damage
+        positions = [(16, 16), (44, 20), (28, 44), (48, 48)]
+        draw_count = max(1, len(positions) - damage)
+        for cx, cy in positions[:draw_count]:
+            trunk_h = max(8, 20 - damage * 4)
+            pygame.draw.rect(surf, cactus_g, (cx - 4, cy, 8, trunk_h))
+            if damage < 2:
+                pygame.draw.rect(surf, dark_g, (cx - 8, cy + 6, 6, 4))
+                pygame.draw.rect(surf, dark_g, (cx + 4, cy + 4, 6, 4))
+        if damage >= 2:
+            # Fallen segments
+            for _ in range(damage):
+                fx = rng.randint(8, c - 12)
+                fy = rng.randint(c - 16, c - 6)
+                pygame.draw.rect(surf, dark_g, (fx, fy, 6, 3))
     else:
-        # Single cactus
-        pygame.draw.rect(surf, cactus_g, (h - 4, 12, 8, 40))
-        pygame.draw.rect(surf, dark_g, (h - 12, 22, 8, 6))
-        pygame.draw.rect(surf, dark_g, (h + 4, 18, 8, 6))
+        # Single cactus — deteriorates
+        trunk_h = max(10, 40 - damage * 10)
+        trunk_y = c - trunk_h - 4
+        tilt = damage * 2  # leans more when damaged
+        pygame.draw.rect(surf, cactus_g, (h - 4 + tilt, trunk_y, 8, trunk_h))
+
+        # Arms — droop and disappear with damage
+        if damage < 3:
+            arm_y_l = trunk_y + 10 + damage * 3  # droops
+            arm_y_r = trunk_y + 6 + damage * 2
+            pygame.draw.rect(
+                surf, dark_g, (h - 12 + tilt, arm_y_l, 8, max(2, 6 - damage))
+            )
+            if damage < 2:
+                pygame.draw.rect(surf, dark_g, (h + 4 + tilt, arm_y_r, 8, 6))
+
+        # Damage marks
+        if damage >= 1:
+            scar = _darken(cactus_g, 30)
+            for _ in range(damage * 2):
+                sx = rng.randint(h - 3 + tilt, h + 3 + tilt)
+                sy = rng.randint(trunk_y + 2, trunk_y + trunk_h - 2)
+                pygame.draw.rect(surf, scar, (sx, sy, 2, 2))
+
     _edge_borders(surf, color, adj, width=2)
 
 

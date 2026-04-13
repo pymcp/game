@@ -28,30 +28,6 @@
     "ash_ground": {
       "start_row": 80,
       "fps": 0.0
-    },
-    "dead_grass": {
-      "start_row": 96,
-      "fps": 0.0
-    },
-    "dirt_path": {
-      "start_row": 112,
-      "fps": 0.0
-    },
-    "cobblestone": {
-      "start_row": 128,
-      "fps": 0.0
-    },
-    "stone_path": {
-      "start_row": 144,
-      "fps": 0.0
-    },
-    "road": {
-      "start_row": 160,
-      "fps": 0.0
-    },
-    "sandstone": {
-      "start_row": 176,
-      "fps": 0.0
     }
   }
 }

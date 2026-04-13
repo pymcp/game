@@ -5,3 +5,5 @@
 * Use black for code formatting
 * You use pytest for unit tests. Make sure to create and/or update unit tests as you go.
 * Prefer classes and objects. Avoid god classes
+* Sprite sheets CANNOT exceed 8000 pixels
+* If you're updating anything relating to sprites, make sure the corresponding Gemini GEM instruction file is also updated and let me know that it has been updated.
