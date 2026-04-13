@@ -24,17 +24,32 @@ from src.data import ENEMY_TYPES
 
 def generate_world():
     """Return a 2-D list of tile-type IDs using simple noise-like placement."""
-    world = [[GRASS for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+    # Start entirely as ocean; the island mask determines land vs water
+    world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+
+    land_mask = _generate_island_mask(WORLD_ROWS, WORLD_COLS)
+
+    # Stamp grass on all land tiles
+    for r in range(WORLD_ROWS):
+        for c in range(WORLD_COLS):
+            if land_mask[r][c]:
+                world[r][c] = GRASS
 
     def scatter(tile_id, count, cluster_min, cluster_max):
         for _ in range(count):
             cx = random.randint(0, WORLD_COLS - 1)
             cy = random.randint(0, WORLD_ROWS - 1)
+            if not land_mask[cy][cx]:
+                continue
             size = random.randint(cluster_min, cluster_max)
             for __ in range(size):
                 nx = cx + random.randint(-2, 2)
                 ny = cy + random.randint(-2, 2)
-                if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
+                if (
+                    0 <= nx < WORLD_COLS
+                    and 0 <= ny < WORLD_ROWS
+                    and land_mask[ny][nx]
+                ):
                     world[ny][nx] = tile_id
 
     scatter(DIRT, 60, 4, 12)
@@ -45,7 +60,7 @@ def generate_world():
     scatter(DIAMOND_ORE, 8, 1, 3)
 
     # Mountains: place with higher clustering to create ranges
-    _generate_mountain_ranges(world)
+    _generate_mountain_ranges(world, land_mask)
 
     # Generate rivers from mountains with lakes
     _generate_rivers_and_lakes(world)
@@ -56,12 +71,55 @@ def generate_world():
     return world
 
 
-def _generate_mountain_ranges(world):
+def _generate_island_mask(rows, cols):
+    """Generate a boolean mask (True = land) using a warped radial falloff.
+
+    Multiple octaves of sine-wave noise deform the coastline into an organic
+    island shape that changes every run.
+    """
+    cx = cols / 2.0
+    cy = rows / 2.0
+
+    # Each octave gets a random phase so no two islands look alike
+    num_octaves = 8
+    phases = [random.uniform(0, 2 * math.pi) for _ in range(num_octaves)]
+    # Low frequencies create big bays/peninsulas; high frequencies add fine detail
+    freqs = [1.5, 2.5, 3.7, 5.3, 7.0, 11.0, 15.0, 21.0]
+    amps = [0.20, 0.13, 0.09, 0.06, 0.04, 0.03, 0.02, 0.01]
+
+    # How large the island is as a fraction of the half-extents (0=centre, 1=edge)
+    island_radius = random.uniform(0.58, 0.72)
+
+    mask = [[False] * cols for _ in range(rows)]
+    for r in range(rows):
+        for c in range(cols):
+            # Normalise to [-1, 1] per axis so the island fits the world aspect ratio
+            nx = (c - cx) / (cols / 2.0)
+            ny = (r - cy) / (rows / 2.0)
+
+            dist = math.sqrt(nx * nx + ny * ny)
+            angle = math.atan2(ny, nx)
+
+            # Noise is scaled by dist so it fades to zero at the centre,
+            # guaranteeing land there while still producing a jagged coastline
+            noise = dist * sum(
+                amp * math.sin(freq * angle + phase)
+                for freq, amp, phase in zip(freqs, amps, phases)
+            )
+
+            mask[r][c] = dist < island_radius + noise
+
+    return mask
+
+
+def _generate_mountain_ranges(world, land_mask=None):
     """Generate mountains in interconnected ranges for better landscape."""
     # First, place initial mountain clusters
     for _ in range(40):  # More initial clusters than before (was 30)
         cx = random.randint(0, WORLD_COLS - 1)
         cy = random.randint(0, WORLD_ROWS - 1)
+        if land_mask is not None and not land_mask[cy][cx]:
+            continue
         size = random.randint(8, 24)  # Larger clusters (was 6-18)
 
         # Place initial cluster
@@ -69,7 +127,8 @@ def _generate_mountain_ranges(world):
             nx = cx + random.randint(-3, 3)
             ny = cy + random.randint(-3, 3)
             if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
-                world[ny][nx] = MOUNTAIN
+                if land_mask is None or land_mask[ny][nx]:
+                    world[ny][nx] = MOUNTAIN
 
     # Second pass: expand and connect mountains (create ranges)
     # For each existing mountain, have a chance to place adjacent mountains
