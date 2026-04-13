@@ -3,6 +3,8 @@
 import math
 import pygame
 
+from src.effects.particle import Particle
+
 
 class Projectile:
     """A projectile fired in a direction. Configured by a WEAPONS entry."""

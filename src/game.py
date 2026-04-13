@@ -58,7 +58,7 @@ class Game:
             """Find a grass tile near center offset by offset_x."""
             start_col = (WORLD_COLS // 2) + (offset_x // TILE)
             start_row = WORLD_ROWS // 2
-            
+
             # Search in expanding square around target position
             for search_dist in range(10):
                 for dc in range(-search_dist, search_dist + 1):
@@ -71,11 +71,13 @@ class Game:
                             if self.world[row][col] == GRASS:
                                 return col * TILE + TILE // 2, row * TILE + TILE // 2
             # Fallback to center if no grass found
-            return (WORLD_COLS // 2) * TILE + TILE // 2, (WORLD_ROWS // 2) * TILE + TILE // 2
-        
+            return (WORLD_COLS // 2) * TILE + TILE // 2, (
+                WORLD_ROWS // 2
+            ) * TILE + TILE // 2
+
         start_x1, start_y1 = find_grass_spawn(-TILE)
         start_x2, start_y2 = find_grass_spawn(TILE)
-        
+
         self.player1 = Player(start_x1, start_y1, player_id=1)
         self.player2 = Player(start_x2, start_y2, player_id=2)
 
