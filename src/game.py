@@ -286,6 +286,8 @@ class Game:
         self._sector_thumbnail_cache: dict[tuple, pygame.Surface] = {}
         # Per-player sign text popup: {text: str, timer: float (seconds)}
         self._sign_display: dict[int, dict | None] = {1: None, 2: None}
+        # Exit confirmation dialog
+        self._confirm_quit: bool = False
         # Set of (sx, sy) coords revealed by the sky view (visible on minimap even if unvisited)
         self.sky_revealed_sectors: set = set()
 
@@ -737,9 +739,18 @@ class Game:
         """Handle input events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.running = False
+                if self._confirm_quit:
+                    self.running = False
+                else:
+                    self._confirm_quit = True
             elif event.type == pygame.KEYDOWN:
-                self._handle_keydown(event.key)
+                if self._confirm_quit:
+                    if event.key in (pygame.K_y, pygame.K_RETURN):
+                        self.running = False
+                    elif event.key in (pygame.K_n, pygame.K_ESCAPE):
+                        self._confirm_quit = False
+                else:
+                    self._handle_keydown(event.key)
             elif event.type == pygame.VIDEORESIZE:
                 self.screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
 
@@ -804,7 +815,7 @@ class Game:
             return
 
         if key == pygame.K_ESCAPE:
-            self.running = False
+            self._confirm_quit = True
         elif key == pygame.K_F11:
             self.is_fullscreen = not self.is_fullscreen
             if self.is_fullscreen:
@@ -3806,6 +3817,20 @@ class Game:
             (self.viewport_w, screen_height),
             2,
         )
+
+        # Exit confirmation overlay
+        if self._confirm_quit:
+            overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            self.screen.blit(overlay, (0, 0))
+            big_font = pygame.font.SysFont(None, 48)
+            small_font = pygame.font.SysFont(None, 32)
+            prompt = big_font.render("Are you sure you want to exit?", True, (255, 255, 255))
+            hint = small_font.render("Y / Enter = Quit      N / Esc = Cancel", True, (200, 200, 200))
+            cx = screen_width // 2
+            cy = screen_height // 2
+            self.screen.blit(prompt, (cx - prompt.get_width() // 2, cy - 30))
+            self.screen.blit(hint, (cx - hint.get_width() // 2, cy + 20))
 
         pygame.display.flip()
 
