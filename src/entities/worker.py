@@ -6,6 +6,7 @@ import pygame
 from src.config import TILE, WORLD_COLS, WORLD_ROWS, MOUNTAIN
 from src.data import TILE_INFO, BLOCKING_TILES
 from src.effects import Particle, FloatingText
+from src.rendering.animator import Animator, AnimationState
 
 
 class Worker:
@@ -41,6 +42,17 @@ class Worker:
         self.wander_timer = random.uniform(30, 120)
         self.dest_x = self.x
         self.dest_y = self.y
+
+        self._animator: Animator | None = None
+        self._animator_checked: bool = False
+
+    def _ensure_animator(self) -> None:
+        """Lazy-load animator from SpriteRegistry on first use."""
+        if self._animator_checked:
+            return
+        self._animator_checked = True
+        from src.rendering.registry import SpriteRegistry
+        self._animator = SpriteRegistry.get_instance().make_animator("worker")
 
     def _pick_wander_dest(self) -> None:
         """Pick a new random wander destination."""
@@ -181,6 +193,13 @@ class Worker:
         self.x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x))
         self.y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y))
 
+        # Advance animator
+        self._ensure_animator()
+        if self._animator is not None:
+            anim_state = AnimationState.WALK if self.state == "wander" else AnimationState.IDLE
+            self._animator.set_state(anim_state)
+            self._animator.update(dt)
+
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw worker sprite."""
         sx = int(self.x - cam_x)
@@ -188,6 +207,16 @@ class Worker:
         surf_w, surf_h = surf.get_size()
         if sx < -40 or sx > surf_w + 40 or sy < -40 or sy > surf_h + 40:
             return
+
+        # --- Sprite path ---
+        if self._animator is not None:
+            frame = self._animator.current_frame()
+            if frame is not None:
+                fw, fh = frame.get_size()
+                surf.blit(frame, (sx - fw // 2, sy - fh // 2))
+                return
+
+        # --- Procedural fallback ---
         s = self.size_mod
         bw, bh = int(16 * s), int(22 * s)
         pygame.draw.rect(

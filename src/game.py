@@ -122,6 +122,12 @@ class Game:
         self.is_fullscreen = False
         self.font = pygame.font.SysFont("monospace", 16)
 
+        # Load sprite sheets; entities fall back to procedural draw if absent.
+        import os as _os
+        from src.rendering.registry import SpriteRegistry
+        _sprites_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "assets", "sprites")
+        SpriteRegistry.get_instance().load_all(_sprites_dir)
+
         # UI fonts — cached once to avoid re-creating every frame
         self.font_ui_sm = pygame.font.Font(None, 22)
         self.font_ui_xs = pygame.font.Font(None, 16)

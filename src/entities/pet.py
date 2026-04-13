@@ -5,6 +5,7 @@ import math
 import pygame
 from src.config import TILE, WORLD_COLS, WORLD_ROWS
 from src.data import BLOCKING_TILES
+from src.rendering.animator import Animator, AnimationState
 
 # Pet color palettes
 CAT_COLORS = [
@@ -60,6 +61,17 @@ class Pet:
         self.follow_offset_x = random.uniform(-20, 20)
         self.follow_offset_y = random.uniform(10, 30)
 
+        self._animator: Animator | None = None
+        self._animator_checked: bool = False
+
+    def _ensure_animator(self) -> None:
+        """Lazy-load animator from SpriteRegistry on first use."""
+        if self._animator_checked:
+            return
+        self._animator_checked = True
+        from src.rendering.registry import SpriteRegistry
+        self._animator = SpriteRegistry.get_instance().make_animator(self.kind)
+
     def update(
         self, dt: float, target_x: float, target_y: float, world: list[list[int]]
     ) -> None:
@@ -95,6 +107,19 @@ class Pet:
         surf_w, surf_h = surf.get_size()
         if sx < -40 or sx > surf_w + 40 or sy < -40 or sy > surf_h + 40:
             return
+
+        # --- Sprite path ---
+        self._ensure_animator()
+        if self._animator is not None:
+            self._animator.set_state(AnimationState.IDLE)
+            self._animator.update(1.0)
+            frame = self._animator.current_frame()
+            if frame is not None:
+                fw, fh = frame.get_size()
+                surf.blit(frame, (sx - fw // 2, sy - fh // 2))
+                return
+
+        # --- Procedural fallback ---
         s = self.size
 
         if self.kind == "cat":

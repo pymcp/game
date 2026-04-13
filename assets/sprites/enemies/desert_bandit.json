@@ -1,0 +1,23 @@
+{
+  "frame_size": [
+    64,
+    64
+  ],
+  "states": {
+    "idle": {
+      "row": 0,
+      "frames": 1,
+      "fps": 1
+    },
+    "walk": {
+      "row": 1,
+      "frames": 1,
+      "fps": 1
+    },
+    "hurt": {
+      "row": 2,
+      "frames": 1,
+      "fps": 1
+    }
+  }
+}

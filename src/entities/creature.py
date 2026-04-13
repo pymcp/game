@@ -9,6 +9,7 @@ import pygame
 
 from src.config import TILE
 from src.data import BLOCKING_TILES
+from src.rendering.animator import Animator, AnimationState
 
 
 class Creature:
@@ -45,6 +46,29 @@ class Creature:
         # Mount state — rider_id is always None when loaded from save (transient)
         self.rider_id: int | None = None
 
+        # Sprite animator — lazily initialised from SpriteRegistry on first use.
+        self._animator: Animator | None = None
+        self._animator_checked: bool = False
+
+        # Set each update tick; lets draw() animate correctly whether free or ridden.
+        self._is_moving: bool = False
+
+    # ------------------------------------------------------------------
+    # Sprite animator helpers
+    # ------------------------------------------------------------------
+
+    def _ensure_animator(self, sprite_id: str) -> None:
+        """Lazy-load animator from SpriteRegistry the first time it is needed.
+
+        Args:
+            sprite_id: Key used to look up the sprite sheet (typically ``self.kind``).
+        """
+        if self._animator_checked:
+            return
+        self._animator_checked = True
+        from src.rendering.registry import SpriteRegistry
+        self._animator = SpriteRegistry.get_instance().make_animator(sprite_id)
+
     # ------------------------------------------------------------------
     # Update
     # ------------------------------------------------------------------
@@ -64,8 +88,10 @@ class Creature:
 
         if dist < 4:
             self.wander_timer = 0.0
+            self._is_moving = False
             return
 
+        self._is_moving = True
         step = self.speed * dt
         nx = self.x + (dx / dist) * step
         ny = self.y + (dy / dist) * step
@@ -94,6 +120,7 @@ class Creature:
             world: The tile grid for collision checking.
         """
         if dx == 0 and dy == 0:
+            self._is_moving = False
             return
 
         rows = len(world)
@@ -116,6 +143,7 @@ class Creature:
         if 0 <= nc < cols and 0 <= nr < rows and world[nr][nc] not in BLOCKING_TILES:
             self.x = nx
             self.y = ny
+            self._is_moving = True
 
     # ------------------------------------------------------------------
     # Draw  (abstract — subclasses must override)

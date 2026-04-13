@@ -4,6 +4,7 @@ import math
 import pygame
 from src.config import TILE, SCREEN_W, SCREEN_H
 from src.effects import Particle
+from src.rendering.animator import Animator, AnimationState
 
 
 def _clamp_color(
@@ -39,6 +40,10 @@ class Enemy:
         self.hurt_flash = 0
         self.knockback_vx = 0.0
         self.knockback_vy = 0.0
+
+        # Sprite animator — lazily initialised from SpriteRegistry on first use.
+        self._animator: Animator | None = None
+        self._animator_checked: bool = False
 
     def _on_screen(self, cam_x: float, cam_y: float, margin: int = 0) -> bool:
         """Check if enemy is on screen."""
@@ -121,6 +126,16 @@ class Enemy:
         world_cols = len(world[0]) if world_rows > 0 else 1
         self.x = max(TILE, min((world_cols - 1) * TILE, self.x))
         self.y = max(TILE, min((world_rows - 1) * TILE, self.y))
+        # Update animator state
+        self._ensure_animator()
+        if self._animator is not None:
+            if self.hurt_flash > 0:
+                self._animator.set_state(AnimationState.HURT)
+            elif self.state in ("chase", "attack"):
+                self._animator.set_state(AnimationState.WALK)
+            else:
+                self._animator.set_state(AnimationState.IDLE)
+            self._animator.update(dt)
 
     def try_attack(self, px: float, py: float) -> int:
         """Try to attack player. Returns damage if successful, 0 otherwise."""
@@ -146,17 +161,41 @@ class Enemy:
         for _ in range(6):
             particles.append(Particle(self.x, self.y, self.color))
 
+    def _ensure_animator(self) -> None:
+        """Lazy-load animator from SpriteRegistry the first time it is needed."""
+        if self._animator_checked:
+            return
+        self._animator_checked = True
+        from src.rendering.registry import SpriteRegistry
+        self._animator = SpriteRegistry.get_instance().make_animator(self.type_key)
+
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
-        """Draw enemy using vector draw commands."""
+        """Draw enemy — sprite blit when available, procedural fallback otherwise."""
         if self.hp <= 0:
             return
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
-        # Use surface dimensions instead of hardcoded SCREEN_W/SCREEN_H for split-screen support
         surf_w, surf_h = surf.get_size()
-        if sx < -40 or sx > surf_w + 40 or sy < -40 or sy > surf_h + 40:
+        if sx < -64 or sx > surf_w + 64 or sy < -64 or sy > surf_h + 64:
             return
 
+        # --- Sprite path ---
+        self._ensure_animator()
+        if self._animator is not None:
+            frame = self._animator.current_frame()
+            if frame is not None:
+                fw, fh = frame.get_size()
+                surf.blit(frame, (sx - fw // 2, sy - fh // 2))
+                if self.hp < self.max_hp:
+                    bar_w = 20
+                    bx = sx - bar_w // 2
+                    by = sy - fh // 2 - 5
+                    ratio = max(0.0, self.hp / self.max_hp)
+                    pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3))
+                    pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3))
+                return
+
+        # --- Procedural fallback ---
         base = (255, 255, 255) if self.hurt_flash > 0 else self.color
 
         for cmd in self.draw_commands:

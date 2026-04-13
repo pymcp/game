@@ -59,10 +59,39 @@ class SeaCreature(Creature):
         ticks: int,
         rider_color: tuple[int, int, int] | None = None,
     ) -> None:
-        """Draw the sea creature at its world position adjusted by camera offset."""
+        """Draw the sea creature — sprite blit when available, procedural fallback."""
+        from src.rendering.animator import AnimationState
+
         sx = int(self.x - offset_x)
         sy = int(self.y - offset_y)
-        r = int(TILE * self.size)
+        surf_w, surf_h = screen.get_size()
+        if sx < -160 or sx > surf_w + 160 or sy < -96 or sy > surf_h + 96:
+            return
+
+        # --- Sprite path ---
+        self._ensure_animator(self.kind)
+        if self._animator is not None:
+            if self.rider_id is not None:
+                self._animator.set_state(AnimationState.MOUNTED)
+            else:
+                self._animator.set_state(AnimationState.SWIM)
+            self._animator.update(1.0)  # ~60fps tick; good enough for sprite animation
+            frame = self._animator.current_frame()
+            if frame is not None:
+                fw, fh = frame.get_size()
+                screen.blit(frame, (sx - fw // 2, sy - fh // 2))
+                # Rider overlay drawn procedurally on top of the base sprite
+                if rider_color is not None and self.kind == "dolphin":
+                    r = int(__import__("src.config", fromlist=["TILE"]).TILE * self.size)
+                    flip = 1 if self.facing_right else -1
+                    seat_x = sx + flip * (r // 4)
+                    seat_y = sy - r // 2 - 2
+                    pygame.draw.rect(screen, rider_color, (seat_x - 4, seat_y - 9, 8, 9))
+                    pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 12), 5)
+                return
+
+        # --- Procedural fallback ---
+        r = int(__import__("src.config", fromlist=["TILE"]).TILE * self.size)
         c = self.body_color
         bright = tuple(min(255, ch + 60) for ch in c)
 

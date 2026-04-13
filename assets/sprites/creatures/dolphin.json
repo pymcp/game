@@ -1,0 +1,13 @@
+{
+  "frame_size": [
+    160,
+    96
+  ],
+  "states": {
+    "swim": {
+      "row": 0,
+      "frames": 8,
+      "fps": 8
+    }
+  }
+}

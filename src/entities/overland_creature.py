@@ -12,7 +12,7 @@ from src.entities.creature import Creature
 
 # Base speeds (world-units per second)
 _SPEEDS: dict[str, float] = {
-    "horse": 4.5,
+    "horse": 1.125,
 }
 
 # Visual sizes (multiplier of TILE)
@@ -61,9 +61,41 @@ class OverlandCreature(Creature):
         ticks: int,
         rider_color: tuple[int, int, int] | None = None,
     ) -> None:
-        """Draw the land creature at its world position adjusted by camera offset."""
+        """Draw the land creature — sprite blit when available, procedural fallback."""
+        from src.rendering.animator import AnimationState
+
         sx = int(self.x - offset_x)
         sy = int(self.y - offset_y)
+        surf_w, surf_h = screen.get_size()
+        if sx < -128 or sx > surf_w + 128 or sy < -128 or sy > surf_h + 128:
+            return
+
+        # --- Sprite path ---
+        self._ensure_animator(self.kind)
+        if self._animator is not None:
+            self._animator.set_state(
+                AnimationState.WALK if self._is_moving else AnimationState.IDLE
+            )
+            self._animator.update(1.0)
+            frame = self._animator.current_frame()
+            if frame is not None:
+                if not self.facing_right:
+                    frame = pygame.transform.flip(frame, True, False)
+                fw, fh = frame.get_size()
+                screen.blit(frame, (sx - fw // 2, sy - fh // 2))
+                # Rider overlay drawn procedurally on top
+                if rider_color is not None:
+                    r = int(TILE * self.size)
+                    body_h = r
+                    seat_x = sx
+                    seat_y = sy - body_h // 2 - 2
+                    pygame.draw.rect(screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10))
+                    pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 14), 5)
+                    for side in (-1, 1):
+                        pygame.draw.rect(screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8))
+                return
+
+        # --- Procedural fallback ---
         r = int(TILE * self.size)
         c = self.body_color
 
