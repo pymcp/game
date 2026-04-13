@@ -17,6 +17,7 @@ from src.world.generation import (
     spawn_enemies,
 )
 from src.world.environments import OverlandEnvironment, CaveEnvironment
+from src.world.scene import MapScene
 
 __all__ = [
     "tile_at",
@@ -33,4 +34,5 @@ __all__ = [
     "spawn_enemies",
     "OverlandEnvironment",
     "CaveEnvironment",
+    "MapScene",
 ]

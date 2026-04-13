@@ -5,6 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 from src.world.map import GameMap
+from src.world.scene import MapScene
 from src.config import BiomeType
 from src.entities.player import (
     Player,
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 7
+SAVE_VERSION = 8
 
 
 # ---------------------------------------------------------------------------
@@ -114,33 +115,50 @@ _MAP_EXTRA_ATTRS = (
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
 
-def _serialize_map(game_map: GameMap) -> dict:
-    """Serialize a GameMap to a JSON-serializable dict."""
+def _serialize_map(game_map: "GameMap | MapScene") -> dict:
+    """Serialize a GameMap (or MapScene proxy) to a JSON-serializable dict."""
+    # If we got a MapScene, extract the underlying raw GameMap for tile data,
+    # and collect entities from the scene-level lists.
+    if isinstance(game_map, MapScene):
+        raw: GameMap = object.__getattribute__(game_map, "map")
+        scene_enemies = game_map.enemies
+        scene_workers = game_map.workers
+        scene_pets = game_map.pets
+        scene_creatures = game_map.creatures
+    else:
+        raw = game_map
+        scene_enemies = getattr(game_map, "enemies", [])
+        scene_workers = []
+        scene_pets = []
+        scene_creatures = []
     # town_clusters uses (row, col) tuple keys — encode as "row:col" strings
-    tc = {f"{r}:{c}": v for (r, c), v in game_map.town_clusters.items()}
-    enemies = [_serialize_enemy(e) for e in game_map.enemies]
+    tc = {f"{r}:{c}": v for (r, c), v in raw.town_clusters.items()}
+    enemies = [_serialize_enemy(e) for e in scene_enemies]
     data = {
-        "world": game_map.world,
-        "tileset": game_map.tileset,
-        "biome": game_map.biome.value,
-        "tile_hp": game_map.tile_hp,
+        "world": raw.world,
+        "tileset": raw.tileset,
+        "biome": raw.biome.value,
+        "tile_hp": raw.tile_hp,
         "town_clusters": tc,
         "enemies": enemies,
+        "workers": [_serialize_worker(w) for w in scene_workers],
+        "pets": [_serialize_pet(p) for p in scene_pets],
+        "creatures": [_serialize_creature(c) for c in scene_creatures],
     }
     # Persist map-specific attributes when present
     for attr in _MAP_EXTRA_ATTRS:
-        if hasattr(game_map, attr):
-            data[attr] = getattr(game_map, attr)
-    if hasattr(game_map, "origin_map"):
-        data["origin_map"] = _key_to_str(game_map.origin_map)
-    if hasattr(game_map, "sub_house_positions"):
+        if hasattr(raw, attr):
+            data[attr] = getattr(raw, attr)
+    if hasattr(raw, "origin_map"):
+        data["origin_map"] = _key_to_str(raw.origin_map)
+    if hasattr(raw, "sub_house_positions"):
         data["sub_house_positions"] = [
-            list(entry) for entry in game_map.sub_house_positions
+            list(entry) for entry in raw.sub_house_positions
         ]
-    if hasattr(game_map, "portal_exits"):
+    if hasattr(raw, "portal_exits"):
         data["portal_exits"] = {
             f"{c}:{r}": (_key_to_str(v) if v is not None else None)
-            for (c, r), v in game_map.portal_exits.items()
+            for (c, r), v in raw.portal_exits.items()
         }
     return data
 
@@ -246,8 +264,8 @@ def _serialize_creature(c: Creature) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _deserialize_map(data: dict) -> GameMap:
-    """Reconstruct a GameMap from saved dict."""
+def _deserialize_map(data: dict) -> MapScene:
+    """Reconstruct a MapScene (wrapping a GameMap) from a saved dict."""
     game_map = GameMap(data["world"], tileset=data["tileset"])
     game_map.biome = BiomeType(data.get("biome", BiomeType.STANDARD.value))
     game_map.tile_hp = data["tile_hp"]
@@ -255,6 +273,7 @@ def _deserialize_map(data: dict) -> GameMap:
         (int(k.split(":")[0]), int(k.split(":")[1])): v
         for k, v in data["town_clusters"].items()
     }
+    # Temporarily set enemies on the raw map so MapScene.__init__ can transfer them.
     game_map.enemies = [_deserialize_enemy(e) for e in data.get("enemies", [])]
     # Restore map-specific attributes when present
     for attr in _MAP_EXTRA_ATTRS:
@@ -270,7 +289,6 @@ def _deserialize_map(data: dict) -> GameMap:
                     (int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3]))
                 )
             else:
-                # Backward compat: old saves stored only (col, row); default interior 3×3
                 positions.append((int(entry[0]), int(entry[1]), 3, 3))
         game_map.sub_house_positions = positions
     if "portal_exits" in data:
@@ -280,7 +298,14 @@ def _deserialize_map(data: dict) -> GameMap:
             game_map.portal_exits[(int(col), int(row))] = (
                 _str_to_key(v) if v is not None else None
             )
-    return game_map
+    # Wrap in a MapScene (enemies are transferred during __init__)
+    scene = MapScene(game_map)
+    # Restore per-scene entities
+    scene.workers = [_deserialize_worker(w) for w in data.get("workers", [])]
+    scene.pets = [_deserialize_pet(p) for p in data.get("pets", [])]
+    if "creatures" in data:
+        scene.creatures = [_deserialize_creature(c) for c in data["creatures"]]
+    return scene
 
 
 def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
@@ -419,18 +444,20 @@ def save_game(game: "Game") -> None:
             continue
         maps_data[_key_to_str(key)] = _serialize_map(game_map)
 
+    # Serialize entity archive (evicted sector entities)
+    entity_archive: dict = {}
+    for arc_key, arc_data in game._entity_archive.items():
+        entity_archive[_key_to_str(arc_key)] = arc_data
+
     save_data = {
         "version": SAVE_VERSION,
         "world_seed": game.world_seed,
         "maps": maps_data,
-        "enemies": [_serialize_enemy(e) for e in game.enemies],
+        "entity_archive": entity_archive,
         "players": [
             _serialize_player(game.player1),
             _serialize_player(game.player2),
         ],
-        "workers": [_serialize_worker(w) for w in game.workers],
-        "pets": [_serialize_pet(p) for p in game.pets],
-        "creatures": [_serialize_creature(c) for c in game.creatures],
         "visited_sectors": [list(s) for s in game.visited_sectors],
         "land_sectors": [list(s) for s in game.land_sectors],
         "portal_quests": {
@@ -461,7 +488,7 @@ def apply_save(game: "Game", data: dict) -> None:
     """Overwrite game state with the saved data dict."""
     game.world_seed = data["world_seed"]
 
-    # Rebuild maps
+    # Rebuild maps as MapScene instances (entities are inline per-map in v8)
     game.maps = {}
     for key_str, map_data in data["maps"].items():
         key = _str_to_key(key_str)
@@ -470,25 +497,15 @@ def apply_save(game: "Game", data: dict) -> None:
     # Re-create the sector (0,0) alias
     game.maps[("sector", 0, 0)] = game.maps["overland"]
 
-    # Overland enemies
-    game.enemies = [_deserialize_enemy(e) for e in data["enemies"]]
+    # Restore entity archive (evicted sector entities)
+    game._entity_archive = {}
+    for arc_key_str, arc_data in data.get("entity_archive", {}).items():
+        game._entity_archive[_str_to_key(arc_key_str)] = arc_data
 
     # Players
     p1_data, p2_data = data["players"][0], data["players"][1]
     game.player1 = _deserialize_player(p1_data, CONTROL_SCHEME_PLAYER1)
     game.player2 = _deserialize_player(p2_data, CONTROL_SCHEME_PLAYER2)
-
-    # Workers and pets
-    game.workers = [_deserialize_worker(w) for w in data["workers"]]
-    game.pets = [_deserialize_pet(p) for p in data["pets"]]
-    # Creatures — load from the v7+ "creatures" key; fall back to the old
-    # "sea_creatures" key from saves written before version 7.
-    if "creatures" in data:
-        game.creatures = [_deserialize_creature(c) for c in data["creatures"]]
-    else:
-        game.creatures = [
-            _deserialize_sea_creature(sc) for sc in data.get("sea_creatures", [])
-        ]
 
     # Visited sectors
     game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}

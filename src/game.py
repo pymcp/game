@@ -76,6 +76,7 @@ from src.world import (
     compute_town_clusters,
 )
 from src.world.map import GameMap
+from src.world.scene import MapScene
 from src.world.environments import (
     CaveEnvironment,
     UnderwaterEnvironment,
@@ -87,6 +88,27 @@ from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature, Cr
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.save import save_game, load_game, apply_save
+
+
+class _EffectRouter:
+    """Fake list whose `append`/`extend` route items to the correct MapScene.
+
+    This lets the 60+ `self.floats.append(...)` and `self.particles.append(...)`
+    call-sites remain unchanged while the effects are co-located with their map.
+    The router holds a reference to a routing function supplied by the Game instance.
+    """
+
+    __slots__ = ("_route",)
+
+    def __init__(self, route_fn) -> None:
+        self._route = route_fn
+
+    def append(self, item) -> None:
+        self._route(item)
+
+    def extend(self, items) -> None:
+        for item in items:
+            self._route(item)
 
 
 class Game:
@@ -114,10 +136,17 @@ class Game:
         # Map system - store all maps by key
         # "overland" is the main map, caves are keyed by (col, row)
         world_data = generate_world()
-        self.maps = {"overland": GameMap(world_data, tileset="overland")}
+        overland_gmap = GameMap(world_data, tileset="overland")
+        # Seed enemies before wrapping so MapScene transfers them immediately.
+        overland_gmap.enemies = spawn_enemies(overland_gmap.world)
+        overland_scene = MapScene(overland_gmap)
+        # Spawn land creatures on the home island into the overland scene.
+        home_env = OverlandEnvironment(map_key="overland")
+        overland_scene.creatures.extend(home_env.spawn_creatures(overland_gmap))
+        self.maps: dict[str | tuple, MapScene] = {"overland": overland_scene}
 
-        # Get shortcut reference to overland map
-        overland_map = self.maps["overland"]
+        # Convenience local alias (tile access still works via MapScene proxy).
+        overland_map = overland_scene
 
         # Two Players - find grass tiles near center
         def find_grass_spawn(offset_x):
@@ -157,20 +186,13 @@ class Game:
         self.cam2_x = self.player2.x - self.viewport_w // 2
         self.cam2_y = self.player2.y - self.viewport_h // 2
 
-        # Entities (shared between players - only on overland map)
-        self.workers = []
-        self.pets = []
-        self.creatures: list[Creature] = []
-        self.enemies = spawn_enemies(overland_map.world)
-        self.projectiles = []
+        # Entity archive: evicted sector entities saved by map key for restoration.
+        self._entity_archive: dict[str | tuple, dict] = {}
 
-        # Spawn land creatures on the home island
-        home_env = OverlandEnvironment(map_key="overland")
-        self.creatures.extend(home_env.spawn_creatures(overland_map))
-
-        # Effects (shared)
-        self.particles = []
-        self.floats = []
+        # Effect routers: self.floats.append(f) and self.particles.append(p) route
+        # to the appropriate MapScene so all 60+ call-sites need not change.
+        self.floats: _EffectRouter = _EffectRouter(self._add_float)
+        self.particles: _EffectRouter = _EffectRouter(self._add_particle)
 
         self.running = True
 
@@ -451,6 +473,42 @@ class Game:
                 )
             return True
         return False
+
+    # -- map / scene helpers -----------------------------------------------
+
+    def get_scene(self, key: "str | tuple") -> "MapScene | None":
+        """Return the MapScene for *key*, or None if not loaded."""
+        scene = self.maps.get(key)
+        if isinstance(scene, MapScene):
+            return scene
+        return None
+
+    def get_map(self, key: "str | tuple") -> "GameMap | None":
+        """Return the raw GameMap for *key*, or None if not loaded."""
+        scene = self.maps.get(key)
+        if isinstance(scene, MapScene):
+            return object.__getattribute__(scene, "map")
+        if isinstance(scene, GameMap):
+            return scene
+        return None
+
+    def _add_float(self, f: "FloatingText") -> None:
+        """Route a FloatingText to the correct scene's floats list."""
+        key = f.map_key
+        scene = self.maps.get(key)
+        if scene is None:
+            scene = self.maps.get("overland")
+        if scene is not None:
+            scene.floats.append(f)
+
+    def _add_particle(self, p: "Particle") -> None:
+        """Route a Particle to the correct scene's particles list."""
+        key = p.map_key
+        scene = self.maps.get(key)
+        if scene is None:
+            scene = self.maps.get("overland")
+        if scene is not None:
+            scene.particles.append(p)
 
     # -- main loop ---------------------------------------------------------
 
@@ -777,8 +835,10 @@ class Game:
             )
 
         home = player.current_map
+        home_scene = self.maps.get(home)
         if random.random() < 0.25:
-            self.pets.append(Pet(tile_cx, tile_cy, kind="dog", home_map=home))
+            if home_scene is not None:
+                home_scene.pets.append(Pet(tile_cx, tile_cy, kind="dog", home_map=home))
             self.floats.append(
                 FloatingText(
                     tile_cx,
@@ -789,11 +849,12 @@ class Game:
                 )
             )
         else:
-            workers_on_map = sum(1 for w in self.workers if w.home_map == home)
+            workers_on_map = len(home_scene.workers) if home_scene is not None else 0
             if workers_on_map < 5:
-                self.workers.append(
-                    Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
-                )
+                if home_scene is not None:
+                    home_scene.workers.append(
+                        Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
+                    )
                 self.floats.append(
                     FloatingText(
                         tile_cx,
@@ -815,7 +876,8 @@ class Game:
                 )
 
         if has_adjacent_house(current_map.world, build_col, build_row):
-            self.pets.append(Pet(tile_cx, tile_cy, kind="cat", home_map=home))
+            if home_scene is not None:
+                home_scene.pets.append(Pet(tile_cx, tile_cy, kind="cat", home_map=home))
             self.floats.append(
                 FloatingText(
                     tile_cx,
@@ -922,7 +984,7 @@ class Game:
                     env = CaveEnvironment(
                         p_col, p_row, cave_type=tile_id, biome=surface_biome
                     )
-                    self.maps[cave_key] = env.generate()
+                    self.maps[cave_key] = MapScene(env.generate())
                 cave_map = self.maps[cave_key]
                 cave_map.origin_map = player.current_map
                 player.x = cave_map.spawn_col * TILE + TILE // 2
@@ -1059,9 +1121,8 @@ class Game:
             return
         # Check for a nearby unmounted creature on the same map
         mount_range = TILE * 1.5
-        for c in self.creatures:
-            if c.home_map != player.current_map:
-                continue
+        player_scene = self.maps.get(player.current_map)
+        for c in (player_scene.creatures if player_scene is not None else []):
             if c.rider_id is not None:
                 continue
             dist = math.hypot(c.x - player.x, c.y - player.y)
@@ -1190,10 +1251,10 @@ class Game:
             env = UnderwaterEnvironment(dive_col, dive_row)
             underwater_map = env.generate()
             underwater_map.origin_map = player.current_map
-            self.maps[dive_key] = underwater_map
-            # Spawn sea creatures and register them
-            creatures = env.spawn_creatures(underwater_map)
-            self.creatures.extend(creatures)
+            dive_scene = MapScene(underwater_map)
+            self.maps[dive_key] = dive_scene
+            # Spawn sea creatures into this scene
+            dive_scene.creatures.extend(env.spawn_creatures(underwater_map))
         else:
             underwater_map = self.maps[dive_key]
             underwater_map.origin_map = player.current_map
@@ -1558,7 +1619,7 @@ class Game:
             house_map.entrance_col = entry_col
             house_map.entrance_row = entry_row
             house_map.origin_map = player.current_map
-            self.maps[house_key] = house_map
+            self.maps[house_key] = MapScene(house_map)
         else:
             house_map = self.maps[house_key]
             # Always refresh origin_map so re-entering from a different sector works
@@ -1633,7 +1694,7 @@ class Game:
             sub_map.entrance_col = sh_col
             sub_map.entrance_row = sh_row
             sub_map.origin_map = parent_key
-            self.maps[sub_key] = sub_map
+            self.maps[sub_key] = MapScene(sub_map)
         else:
             sub_map = self.maps[sub_key]
             sub_map.origin_map = parent_key
@@ -1721,7 +1782,7 @@ class Game:
 
         if "portal_realm" not in self.maps:
             env = PortalRealmEnvironment()
-            self.maps["portal_realm"] = env.generate()
+            self.maps["portal_realm"] = MapScene(env.generate())
             # Backfill portals for every already-restored island
             for mk, quest in self.portal_quests.items():
                 if quest.get("restored"):
@@ -2189,7 +2250,7 @@ class Game:
             return (key[1], key[2])
         return None  # cave, housing, or unknown
 
-    def _get_or_generate_sector(self, sx: int, sy: int) -> GameMap:
+    def _get_or_generate_sector(self, sx: int, sy: int) -> "MapScene":
         """Return (or lazily generate) the GameMap for sector (sx, sy)."""
         if sx == 0 and sy == 0:
             return self.maps["overland"]
@@ -2201,7 +2262,8 @@ class Game:
             sector_map = GameMap(world_data, tileset="overland")
             sector_map.biome = biome
             sector_map.enemies = spawn_enemies(world_data, biome)
-            self.maps[key] = sector_map
+            sector_scene = MapScene(sector_map)
+            self.maps[key] = sector_scene
             # Record if this sector has a full island (not just atolls)
             if has_island:
                 self.land_sectors.add((sx, sy))
@@ -2211,7 +2273,14 @@ class Game:
                 # Spawn land creatures (horses) on standard-biome islands only
                 if biome == BiomeType.STANDARD:
                     land_env = OverlandEnvironment(map_key=key)
-                    self.creatures.extend(land_env.spawn_creatures(sector_map))
+                    sector_scene.creatures.extend(land_env.spawn_creatures(sector_map))
+            # Restore any archived entities from before eviction
+            archived = self._entity_archive.pop(key, None)
+            if archived:
+                from src.save import _deserialize_worker, _deserialize_pet, _deserialize_creature
+                sector_scene.workers.extend(_deserialize_worker(w) for w in archived.get("workers", []))
+                sector_scene.pets.extend(_deserialize_pet(p) for p in archived.get("pets", []))
+                sector_scene.creatures.extend(_deserialize_creature(c) for c in archived.get("creatures", []))
         return self.maps[key]
 
     def _evict_distant_sectors(self) -> None:
@@ -2233,6 +2302,15 @@ class Game:
                     if (key[1], key[2]) not in sectors_in_use:
                         to_evict.append(key)
         for key in to_evict:
+            scene = self.maps.get(key)
+            if isinstance(scene, MapScene):
+                # Archive entities before eviction so they survive sector reload
+                from src.save import _serialize_worker, _serialize_pet, _serialize_creature
+                self._entity_archive[key] = {
+                    "workers": [_serialize_worker(w) for w in scene.workers],
+                    "pets": [_serialize_pet(p) for p in scene.pets],
+                    "creatures": [_serialize_creature(c) for c in scene.creatures],
+                }
             del self.maps[key]
 
     def _check_biome_entry_armor(self, player: Player, biome: BiomeType) -> bool:
@@ -2432,10 +2510,11 @@ class Game:
                 player.inventory[res] = player.inventory.get(res, 0) + qty
 
             home = player.current_map
+            home_scene_s = self.maps.get(home)
             for _ in range(bonus_workers):
-                workers_on_map = sum(1 for w in self.workers if w.home_map == home)
-                if workers_on_map < 5:
-                    self.workers.append(
+                workers_on_map = len(home_scene_s.workers) if home_scene_s is not None else 0
+                if workers_on_map < 5 and home_scene_s is not None:
+                    home_scene_s.workers.append(
                         Worker(
                             tile_cx, tile_cy, player_id=player.player_id, home_map=home
                         )
@@ -2736,7 +2815,7 @@ class Game:
                 env = CaveEnvironment(
                     tile_col, tile_row, cave_type=tile_id, biome=surface_biome
                 )
-                self.maps[cave_key] = env.generate()
+                self.maps[cave_key] = MapScene(env.generate())
 
             cave_map = self.maps[cave_key]
             # Record the origin map so the exit knows where to return
@@ -3107,60 +3186,50 @@ class Game:
                 )
         # ----------------------------------------------------------------
 
-        # Workers (each assigned to a specific player, operating on their home island)
-        for w in self.workers:
-            worker_map = self.maps.get(w.home_map)
-            if worker_map is None:
-                continue
-            target_player = self.player1 if w.player_id == 1 else self.player2
-            w.update(
-                dt,
-                worker_map.world,
-                worker_map.tile_hp,
-                target_player.inventory,
-                self.particles,
-                self.floats,
-                w.home_map,
-            )
-            # Award XP to the player this worker is assigned to (boosted by accessories)
-            xp_mult = 1.0 + target_player.active_effects().get(
-                AccessoryEffect.XP_BOOST, 0.0
-            )
-            target_player.xp += int(w.xp_earned * xp_mult)
-            w.xp_earned = 0
+        # Workers, pets, creatures — all iterate per-scene so entities are always
+        # in the context of the map they live on.
+        for scene in self.maps.values():
+            for w in scene.workers:
+                target_player = self.player1 if w.player_id == 1 else self.player2
+                w.update(
+                    dt,
+                    scene.world,
+                    scene.tile_hp,
+                    target_player.inventory,
+                    scene.particles,
+                    scene.floats,
+                    w.home_map,
+                )
+                xp_mult = 1.0 + target_player.active_effects().get(
+                    AccessoryEffect.XP_BOOST, 0.0
+                )
+                target_player.xp += int(w.xp_earned * xp_mult)
+                w.xp_earned = 0
 
-        # Pets follow players only when on the same island
-        for pet in self.pets:
-            pet_map = self.maps.get(pet.home_map)
-            if pet_map is None:
-                continue
-            # Only consider players that are currently on this pet's home island
-            p1_here = self.player1.current_map == pet.home_map
-            p2_here = self.player2.current_map == pet.home_map
-            if not p1_here and not p2_here:
-                continue
-            if p1_here and p2_here:
-                dist1 = math.hypot(pet.x - self.player1.x, pet.y - self.player1.y)
-                dist2 = math.hypot(pet.x - self.player2.x, pet.y - self.player2.y)
-                target = self.player1 if dist1 < dist2 else self.player2
-            elif p1_here:
-                target = self.player1
-            else:
-                target = self.player2
-            pet.update(dt, target.x, target.y, pet_map.world)
+        for scene in self.maps.values():
+            for pet in scene.pets:
+                p1_here = self.player1.current_map == pet.home_map
+                p2_here = self.player2.current_map == pet.home_map
+                if not p1_here and not p2_here:
+                    continue
+                if p1_here and p2_here:
+                    dist1 = math.hypot(pet.x - self.player1.x, pet.y - self.player1.y)
+                    dist2 = math.hypot(pet.x - self.player2.x, pet.y - self.player2.y)
+                    target = self.player1 if dist1 < dist2 else self.player2
+                elif p1_here:
+                    target = self.player1
+                else:
+                    target = self.player2
+                pet.update(dt, target.x, target.y, scene.world)
 
-        # Creatures — wander their home map when not being ridden
-        for sc in self.creatures:
-            if sc.rider_id is not None:
-                continue  # ridden creatures are driven by player input instead
-            sc_map = self.maps.get(sc.home_map)
-            if sc_map is None:
-                continue
-            sc.update(dt, sc_map.world)
+        for scene in self.maps.values():
+            for sc in scene.creatures:
+                if sc.rider_id is not None:
+                    continue  # ridden creatures are driven by player input instead
+                sc.update(dt, scene.world)
 
         # Enemies
         self._update_enemies(dt)
-        self._update_cave_enemies(dt)
         self._spawn_portal_guardians()
 
         # Weapon firing (for both players)
@@ -3168,19 +3237,12 @@ class Game:
 
         # Projectiles & XP (for both players)
         self._update_projectiles(dt)
-        self.player1.check_level_up(
-            self.particles, self.floats, self.player1.current_map
-        )
-        self.player2.check_level_up(
-            self.particles, self.floats, self.player2.current_map
-        )
-
-        # Cull dead enemies; check sentinel defeat for combat portal quests
-        dead_overland = [e for e in self.enemies if e.hp <= 0]
-        self.enemies = [e for e in self.enemies if e.hp > 0]
-        for dead in dead_overland:
-            if dead.type_key == "stone_sentinel":
-                self._on_sentinel_defeated("overland")
+        scene1 = self.maps.get(self.player1.current_map)
+        if scene1 is not None:
+            self.player1.check_level_up(scene1.particles, scene1.floats, self.player1.current_map)
+        scene2 = self.maps.get(self.player2.current_map)
+        if scene2 is not None:
+            self.player2.check_level_up(scene2.particles, scene2.floats, self.player2.current_map)
 
         # Cameras
         self.cam1_x += (self.player1.x - self.viewport_w // 2 - self.cam1_x) * 0.1
@@ -3202,13 +3264,14 @@ class Game:
         self.cam2_x = max(0, min(self.cam2_x, world2_pixel_w - self.viewport_w))
         self.cam2_y = max(0, min(self.cam2_y, world2_pixel_h - self.viewport_h))
 
-        # Effects
-        for par in self.particles:
-            par.update()
-        self.particles = [par for par in self.particles if par.life > 0]
-        for f in self.floats:
-            f.update()
-        self.floats = [f for f in self.floats if f.life > 0]
+        # Effects — update and cull per-scene
+        for scene in self.maps.values():
+            for par in scene.particles:
+                par.update()
+            scene.particles = [par for par in scene.particles if par.life > 0]
+            for f in scene.floats:
+                f.update()
+            scene.floats = [f for f in scene.floats if f.life > 0]
 
         # Tick treasure reveals
         for rev in self.treasure_reveals:
@@ -3241,10 +3304,7 @@ class Game:
             spawn_x = float(pcol * TILE + TILE // 2 + TILE * 2)
             spawn_y = float(prow * TILE + TILE // 2)
             sentinel = Enemy(spawn_x, spawn_y, "stone_sentinel")
-            if map_key == "overland":
-                self.enemies.append(sentinel)
-            else:
-                game_map.enemies.append(sentinel)
+            game_map.enemies.append(sentinel)
             quest["guardian_spawned"] = True
             self.floats.append(
                 FloatingText(
@@ -3257,46 +3317,18 @@ class Game:
             )
 
     def _update_enemies(self, dt: float) -> None:
-        """Update all enemies and check for attacks on both players."""
-        overland_map = self.maps["overland"]
-        for enemy in self.enemies:
-            target_player = self._nearest_living_player("overland", enemy)
-            if target_player is None:
-                continue
-            cam_x = self.cam1_x if target_player is self.player1 else self.cam2_x
-            cam_y = self.cam1_y if target_player is self.player1 else self.cam2_y
-            enemy.update(
-                dt,
-                target_player.x,
-                target_player.y,
-                cam_x,
-                cam_y,
-                overland_map.world,
-                self.particles,
-            )
-            dmg = enemy.try_attack(target_player.x, target_player.y)
-            if dmg > 0:
-                target_player.take_damage(
-                    dmg, self.particles, self.floats, target_player.current_map
-                )
-                if target_player.hp <= 0 and not target_player.is_dead:
-                    self._start_death_challenge(target_player)
-
-        # Update enemies on active sector island maps
-        active_sectors = {
+        """Update enemies on all maps that have at least one active player."""
+        active_maps: set[str | tuple] = {
             p.current_map
             for p in (self.player1, self.player2)
             if not p.is_dead
-            and isinstance(p.current_map, tuple)
-            and len(p.current_map) == 3
-            and p.current_map[0] == "sector"
         }
-        for sector_key in active_sectors:
-            sector_map = self.maps.get(sector_key)
-            if sector_map is None:
+        for map_key in active_maps:
+            scene = self.maps.get(map_key)
+            if scene is None:
                 continue
-            for enemy in getattr(sector_map, "enemies", []):
-                target_player = self._nearest_living_player(sector_key, enemy)
+            for enemy in scene.enemies:
+                target_player = self._nearest_living_player(map_key, enemy)
                 if target_player is None:
                     continue
                 cam_x = self.cam1_x if target_player is self.player1 else self.cam2_x
@@ -3307,22 +3339,21 @@ class Game:
                     target_player.y,
                     cam_x,
                     cam_y,
-                    sector_map.world,
-                    self.particles,
+                    scene.world,
+                    scene.particles,
                 )
                 dmg = enemy.try_attack(target_player.x, target_player.y)
                 if dmg > 0:
                     target_player.take_damage(
-                        dmg, self.particles, self.floats, target_player.current_map
+                        dmg, scene.particles, scene.floats, target_player.current_map
                     )
                     if target_player.hp <= 0 and not target_player.is_dead:
                         self._start_death_challenge(target_player)
-            if hasattr(sector_map, "enemies"):
-                dead = [e for e in sector_map.enemies if e.hp <= 0]
-                sector_map.enemies = [e for e in sector_map.enemies if e.hp > 0]
-                for dead_e in dead:
-                    if dead_e.type_key == "stone_sentinel":
-                        self._on_sentinel_defeated(sector_key)
+            dead = [e for e in scene.enemies if e.hp <= 0]
+            scene.enemies = [e for e in scene.enemies if e.hp > 0]
+            for dead_e in dead:
+                if dead_e.type_key == "stone_sentinel":
+                    self._on_sentinel_defeated(map_key)
 
     def _draw_portal_warp_viewport(
         self,
@@ -3437,47 +3468,6 @@ class Game:
         flash.fill((220, 240, 255, alpha))
         self.screen.blit(flash, (screen_x, screen_y))
 
-    def _update_cave_enemies(self, dt: float) -> None:
-        """Update enemies inside caves that currently contain at least one player."""
-        active_caves = {
-            p.current_map
-            for p in (self.player1, self.player2)
-            if not p.is_dead and isinstance(p.current_map, tuple)
-        }
-        for cave_key in active_caves:
-            cave_map = self.maps.get(cave_key)
-            if cave_map is None:
-                continue
-
-            for enemy in cave_map.enemies:
-                target_player = self._nearest_living_player(cave_key, enemy)
-                if target_player is None:
-                    continue
-                cam_x = self.cam1_x if target_player is self.player1 else self.cam2_x
-                cam_y = self.cam1_y if target_player is self.player1 else self.cam2_y
-                enemy.update(
-                    dt,
-                    target_player.x,
-                    target_player.y,
-                    cam_x,
-                    cam_y,
-                    cave_map.world,
-                    self.particles,
-                )
-                dmg = enemy.try_attack(target_player.x, target_player.y)
-                if dmg > 0:
-                    target_player.take_damage(
-                        dmg, self.particles, self.floats, target_player.current_map
-                    )
-                    if target_player.hp <= 0 and not target_player.is_dead:
-                        self._start_death_challenge(target_player)
-
-            dead_cave = [e for e in cave_map.enemies if e.hp <= 0]
-            cave_map.enemies = [e for e in cave_map.enemies if e.hp > 0]
-            for dead in dead_cave:
-                if dead.type_key == "stone_sentinel":
-                    self._on_sentinel_defeated(cave_key)
-
     def _update_combat(
         self,
         keys: pygame.key.ScancodeWrapper,
@@ -3500,17 +3490,18 @@ class Game:
                     AccessoryEffect.DAMAGE_BOOST, 0.0
                 )
                 wpn_p1 = {**wpn, "damage": int(wpn["damage"] * dmg_mult1)}
-                self.projectiles.append(
-                    Projectile(
-                        self.player1.x,
-                        self.player1.y,
-                        self.player1.facing_dx,
-                        self.player1.facing_dy,
-                        wpn_p1,
-                        player_id=1,
-                        map_key=self.player1.current_map,
-                    )
+                proj = Projectile(
+                    self.player1.x,
+                    self.player1.y,
+                    self.player1.facing_dx,
+                    self.player1.facing_dy,
+                    wpn_p1,
+                    player_id=1,
+                    map_key=self.player1.current_map,
                 )
+                p1_scene = self.maps.get(self.player1.current_map)
+                if p1_scene is not None:
+                    p1_scene.projectiles.append(proj)
                 self.player1.weapon_cooldown = wpn["cooldown"]
 
         # Player 2 firing (skipped while dead)
@@ -3526,42 +3517,39 @@ class Game:
                     AccessoryEffect.DAMAGE_BOOST, 0.0
                 )
                 wpn_p2 = {**wpn, "damage": int(wpn["damage"] * dmg_mult2)}
-                self.projectiles.append(
-                    Projectile(
-                        self.player2.x,
-                        self.player2.y,
-                        self.player2.facing_dx,
-                        self.player2.facing_dy,
-                        wpn_p2,
-                        player_id=2,
-                        map_key=self.player2.current_map,
-                    )
+                proj = Projectile(
+                    self.player2.x,
+                    self.player2.y,
+                    self.player2.facing_dx,
+                    self.player2.facing_dy,
+                    wpn_p2,
+                    player_id=2,
+                    map_key=self.player2.current_map,
                 )
+                p2_scene = self.maps.get(self.player2.current_map)
+                if p2_scene is not None:
+                    p2_scene.projectiles.append(proj)
                 self.player2.weapon_cooldown = wpn["cooldown"]
 
     def _update_projectiles(self, dt: float) -> None:
-        """Update all projectiles and check for hits against enemies on the same map."""
-        for proj in self.projectiles:
-            proj.update(dt)
-            if proj.alive:
-                if proj.map_key == "overland":
-                    proj.check_hits(self.enemies, self.particles, self.floats)
-                elif isinstance(proj.map_key, tuple):
-                    cave_map = self.maps.get(proj.map_key)
-                    if cave_map:
-                        proj.check_hits(cave_map.enemies, self.particles, self.floats)
-            if proj.player_id == 1:
-                xp_mult1 = 1.0 + self.player1.active_effects().get(
-                    AccessoryEffect.XP_BOOST, 0.0
-                )
-                self.player1.xp += int(proj.xp_earned * xp_mult1)
-            elif proj.player_id == 2:
-                xp_mult2 = 1.0 + self.player2.active_effects().get(
-                    AccessoryEffect.XP_BOOST, 0.0
-                )
-                self.player2.xp += int(proj.xp_earned * xp_mult2)
-            proj.xp_earned = 0
-        self.projectiles = [proj for proj in self.projectiles if proj.alive]
+        """Update all projectiles per-scene and check for hits."""
+        for scene in self.maps.values():
+            for proj in scene.projectiles:
+                proj.update(dt)
+                if proj.alive:
+                    proj.check_hits(scene.enemies, scene.particles, scene.floats)
+                if proj.player_id == 1:
+                    xp_mult1 = 1.0 + self.player1.active_effects().get(
+                        AccessoryEffect.XP_BOOST, 0.0
+                    )
+                    self.player1.xp += int(proj.xp_earned * xp_mult1)
+                elif proj.player_id == 2:
+                    xp_mult2 = 1.0 + self.player2.active_effects().get(
+                        AccessoryEffect.XP_BOOST, 0.0
+                    )
+                    self.player2.xp += int(proj.xp_earned * xp_mult2)
+                proj.xp_earned = 0
+            scene.projectiles = [proj for proj in scene.projectiles if proj.alive]
 
     # -- drawing -----------------------------------------------------------
 
@@ -4184,61 +4172,30 @@ class Game:
                     pygame.draw.line(
                         self.screen, etch_c, (sx + 8, sy + 16), (sx + 24, sy + 16), 1
                     )
-        for par in self.particles:
-            if par.map_key is None or par.map_key == player.current_map:
+        # Draw all entities that belong to this scene
+        scene = self.maps.get(player.current_map)
+        if scene is not None:
+            for par in scene.particles:
                 par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        for f in self.floats:
-            if f.map_key is None or f.map_key == player.current_map:
+            for f in scene.floats:
                 f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
-
-        # Workers and pets: only visible on their home island
-        if player.current_map == "overland" or (
-            isinstance(player.current_map, tuple) and len(player.current_map) == 3
-        ):
-            for w in self.workers:
-                if w.home_map == player.current_map:
-                    w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-            for pet in self.pets:
-                if pet.home_map == player.current_map:
-                    pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
-
-        # Creatures — only draw those in the player's current map
-        for sc in self.creatures:
-            if sc.home_map != player.current_map:
-                continue
-            rider_color: tuple[int, int, int] | None = None
-            if sc.rider_id is not None:
-                rider = self.player1 if sc.rider_id == 1 else self.player2
-                rider_color = rider.color
-            sc.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks, rider_color)
-
-        # Overland enemies only on the main island; cave enemies on their specific cave
-        if player.current_map == "overland":
-            for enemy in self.enemies:
+            for w in scene.workers:
+                w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+            for pet in scene.pets:
+                pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
+            for sc in scene.creatures:
+                rider_color: tuple[int, int, int] | None = None
+                if sc.rider_id is not None:
+                    rider = self.player1 if sc.rider_id == 1 else self.player2
+                    rider_color = rider.color
+                sc.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks, rider_color)
+            for enemy in scene.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        elif isinstance(player.current_map, tuple) and len(player.current_map) == 2:
-            # Draw enemies belonging to the cave the player is currently in
-            cave_map = self.get_player_current_map(player)
-            if cave_map is not None:
-                for enemy in cave_map.enemies:
-                    enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        elif (
-            isinstance(player.current_map, tuple)
-            and len(player.current_map) == 3
-            and player.current_map[0] == "sector"
-        ):
-            sector_map = self.get_player_current_map(player)
-            if sector_map is not None:
-                for enemy in getattr(sector_map, "enemies", []):
-                    enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-
-        # Draw projectiles on this map only
-        current_map_key = player.current_map
-        for proj in self.projectiles:
-            if proj.map_key == current_map_key:
+            for proj in scene.projectiles:
                 proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
         # Draw players that share this map
+        current_map_key = player.current_map
         for p in (self.player1, self.player2):
             if p.current_map == current_map_key:
                 p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
@@ -4376,12 +4333,18 @@ class Game:
         # Workers / pets
         parts = []
         workers_here = [
-            w for w in self.workers if getattr(w, "player_id", None) == player.player_id
+            w
+            for sc in self.maps.values()
+            for w in sc.workers
+            if getattr(w, "player_id", None) == player.player_id
         ]
         if workers_here:
             parts.append(f"Workers: {len(workers_here)}")
         pets_here = [
-            p for p in self.pets if getattr(p, "player_id", None) == player.player_id
+            p
+            for sc in self.maps.values()
+            for p in sc.pets
+            if getattr(p, "player_id", None) == player.player_id
         ]
         num_cats = sum(1 for p in pets_here if p.kind == "cat")
         num_dogs = sum(1 for p in pets_here if p.kind == "dog")
