@@ -35,6 +35,10 @@ from src.config import (
     ANCIENT_STONE,
     PORTAL_WALL,
     PORTAL_FLOOR,
+    WOOD_FLOOR,
+    WORKTABLE,
+    HOUSE_EXIT,
+    SETTLEMENT_HOUSE,
     SCUBA_BUILD_COST,
     SETTLEMENT_TIER_SIZES,
     SETTLEMENT_TIER_NAMES,
@@ -72,6 +76,7 @@ from src.world.environments import (
     CaveEnvironment,
     UnderwaterEnvironment,
     PortalRealmEnvironment,
+    HousingEnvironment,
 )
 from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
@@ -247,6 +252,17 @@ class Game:
 
     def _respawn_player(self, player: Player) -> None:
         """Teleport a respawning player to a safe grass tile near the world centre."""
+        # If this player has exited a portal before, respawn there instead
+        if (
+            player.last_portal_exit_map is not None
+            and player.last_portal_exit_x is not None
+            and player.last_portal_exit_map in self.maps
+        ):
+            player.current_map = player.last_portal_exit_map
+            player.x = player.last_portal_exit_x
+            player.y = player.last_portal_exit_y
+            self._snap_camera_to_player(player)
+            return
         player.current_map = "overland"
         overland = self.maps["overland"]
         for search_dist in range(1, 30):
@@ -550,7 +566,16 @@ class Game:
             if self.craft_menus[pid] is None:
                 continue
             cursor = self.craft_menus[pid]
-            total_entries = len(RECIPES) + 1  # recipes + "Close"
+            # Filter recipes to those available at the current housing tier
+            current_map_obj = self.get_player_current_map(player)
+            housing_tier = getattr(current_map_obj, "housing_tier", 0)
+            available_recipes = [
+                r for r in RECIPES if r.get("min_tier", 0) <= housing_tier
+            ]
+            total_entries = len(available_recipes) + 1  # recipes + "Close"
+            # Clamp cursor in case the available list shrank
+            cursor = min(cursor, total_entries - 1)
+            self.craft_menus[pid] = cursor
             up_key = player.controls.move_keys["up"]
             down_key = player.controls.move_keys["down"]
             if key == up_key:
@@ -560,8 +585,8 @@ class Game:
                 self.craft_menus[pid] = (cursor + 1) % total_entries
                 craft_consumed = True
             elif key == player.controls.interact_key:
-                if cursor < len(RECIPES):
-                    recipe = RECIPES[cursor]
+                if cursor < len(available_recipes):
+                    recipe = available_recipes[cursor]
                     tx = int(player.x)
                     ty = int(player.y) - 20
                     if try_spend(player.inventory, recipe["cost"]):
@@ -606,6 +631,9 @@ class Game:
                 self.screen = pygame.display.set_mode(
                     (SCREEN_W, SCREEN_H), pygame.RESIZABLE
                 )
+        # DEBUG: F8 spawns a 1×1 house and a 4×4 house cluster near player 1.
+        elif key == pygame.K_F8:
+            self._debug_spawn_houses(self.player1)
         # DEBUG: F9 instantly restores the portal on whichever island player 1 is on
         # and fills both players' inventories with all equippable items + materials.
         elif key == pygame.K_F9:
@@ -753,7 +781,10 @@ class Game:
         """Context-sensitive interact key handler.
 
         Priority:
-          0. On a surface map adjacent to a HOUSE → craft Scuba Gear (5 Wood).
+          0. Standing ON a HOUSE tile on a surface map → enter the housing environment.
+          0.5. Inside a housing env adjacent to WORKTABLE → open craft menu.
+          0.6. Inside a housing env standing on SETTLEMENT_HOUSE → enter sub-house.
+          0.7. Inside a housing env standing on HOUSE_EXIT → exit housing env.
           1. If standing on a cave entrance → enter the cave.
           2. If in a cave and standing on a CAVE_EXIT tile → exit the cave.
           2.5. If in an underwater map and standing on DIVE_EXIT → surface.
@@ -769,12 +800,32 @@ class Game:
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
 
-        # 0. Open crafting menu at a house (surface maps only)
-        if current_map_obj.tileset == "overland":
+        # 0. Enter housing environment — stand ON a HOUSE tile on any surface map
+        if (
+            current_map_obj.tileset == "overland"
+            and current_map_obj.get_tile(p_row, p_col) == HOUSE
+        ):
+            self._enter_housing(player, p_col, p_row)
+            return
+
+        # 0.5 / 0.6 / 0.7  — interactions inside a housing environment
+        if self._is_in_housing_env(player):
+            tile_id = current_map_obj.get_tile(p_row, p_col)
+
+            # 0.7. Exit housing env
+            if tile_id == HOUSE_EXIT:
+                self._exit_housing(player)
+                return
+
+            # 0.6. Enter a sub-house (SETTLEMENT_HOUSE tile)
+            if tile_id == SETTLEMENT_HOUSE:
+                self._enter_sub_house(player, p_col, p_row)
+                return
+
+            # 0.5. Craft at worktable — standing on or adjacent to WORKTABLE
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == HOUSE:
-                    self.craft_menus[player.player_id] = 0
+                if current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE:
+                    self.craft_menus[pid] = 0
                     return
 
         # 1. Cave entry — standing on a cave entrance tile on a surface map
@@ -1271,6 +1322,159 @@ class Game:
         # Spawn a chest in the same slot, offset from the portal tile
         self._add_realm_chest_near(realm_map, portal_col, portal_row)
 
+    # ------------------------------------------------------------------
+    # Housing environment transitions
+    # ------------------------------------------------------------------
+
+    def _is_in_housing_env(self, player: Player) -> bool:
+        """Return True when the player is inside any housing environment."""
+        key = player.current_map
+        return (
+            isinstance(key, tuple)
+            and len(key) >= 3
+            and key[0] in ("house", "house_sub")
+        )
+
+    def _enter_housing(self, player: Player, entry_col: int, entry_row: int) -> None:
+        """Generate (or retrieve) the housing env for the given HOUSE tile and enter it."""
+        house_key = ("house", entry_col, entry_row)
+        if house_key not in self.maps:
+            current_map_obj = self.get_player_current_map(player)
+            cluster_size = (
+                current_map_obj.town_clusters.get((entry_row, entry_col), 1)
+                if current_map_obj is not None
+                else 1
+            )
+            tier, tier_name = self._get_settlement_tier(cluster_size)
+            exterior_tile = self._sample_exterior_tile(current_map_obj, entry_col, entry_row)
+            env = HousingEnvironment(entry_col, entry_row, tier, exterior_tile=exterior_tile)
+            house_map = env.generate()
+            house_map.housing_tier = tier
+            house_map.entrance_col = entry_col
+            house_map.entrance_row = entry_row
+            house_map.origin_map = player.current_map
+            self.maps[house_key] = house_map
+        else:
+            house_map = self.maps[house_key]
+            # Always refresh origin_map so re-entering from a different sector works
+            house_map.origin_map = player.current_map
+
+        tier_name = SETTLEMENT_TIER_NAMES[getattr(house_map, "housing_tier", 0)]
+        player.x = house_map.spawn_col * TILE + TILE // 2
+        player.y = house_map.spawn_row * TILE + TILE // 2
+        player.current_map = house_key
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(
+                player.x, player.y - 30, f"Entered {tier_name}!", (255, 200, 120)
+            )
+        )
+
+    @staticmethod
+    def _sample_exterior_tile(game_map: "GameMap | None", col: int, row: int) -> int:
+        """Sample the overland tiles around (col, row) to pick a housing exterior tile.
+
+        Considers GRASS, DIRT, and TREE tiles in a 5×5 window and returns the
+        most common one.  Falls back to GRASS if nothing suitable is found.
+        """
+        if game_map is None:
+            return GRASS
+        _CANDIDATES = {GRASS, DIRT, TREE}
+        counts: dict[int, int] = {}
+        for dr in range(-2, 3):
+            for dc in range(-2, 3):
+                if dr == 0 and dc == 0:
+                    continue
+                r, c = row + dr, col + dc
+                if 0 <= r < game_map.rows and 0 <= c < game_map.cols:
+                    t = game_map.get_tile(r, c)
+                    if t in _CANDIDATES:
+                        counts[t] = counts.get(t, 0) + 1
+        return max(counts, key=lambda k: counts[k]) if counts else GRASS
+
+    def _enter_sub_house(
+        self, player: Player, sh_col: int, sh_row: int
+    ) -> None:
+        """Enter one of the SETTLEMENT_HOUSE tiles within a settlement environment."""
+        parent_key = player.current_map
+        # Look up this sub-house in the parent map's sub_house_positions list.
+        # Entries are (col, row, interior_w, interior_h); old saves may be (col, row).
+        parent_map = self.get_player_current_map(player)
+        positions: list[tuple] = getattr(parent_map, "sub_house_positions", [])
+        sub_idx = next(
+            (i for i, e in enumerate(positions) if e[0] == sh_col and e[1] == sh_row),
+            sh_col * 1000 + sh_row,  # fallback unique id if not found
+        )
+        entry = positions[sub_idx] if isinstance(sub_idx, int) and sub_idx < len(positions) else None
+        iw = int(entry[2]) if entry is not None and len(entry) >= 4 else 3
+        ih = int(entry[3]) if entry is not None and len(entry) >= 4 else 3
+
+        sub_key: tuple = ("house_sub", sh_col, sh_row, sub_idx)
+        if sub_key not in self.maps:
+            # Generate a variable-sized interior matching the exterior footprint
+            sub_seed_col = sh_col + (sub_idx if isinstance(sub_idx, int) else 0) * 37
+            sub_seed_row = sh_row + (sub_idx if isinstance(sub_idx, int) else 0) * 53
+            env = HousingEnvironment(sub_seed_col, sub_seed_row, tier=0, sub_w=iw, sub_h=ih)
+            sub_map = env.generate()
+            sub_map.housing_tier = 0
+            sub_map.entrance_col = sh_col
+            sub_map.entrance_row = sh_row
+            sub_map.origin_map = parent_key
+            self.maps[sub_key] = sub_map
+        else:
+            sub_map = self.maps[sub_key]
+            sub_map.origin_map = parent_key
+
+        player.x = sub_map.spawn_col * TILE + TILE // 2
+        player.y = sub_map.spawn_row * TILE + TILE // 2
+        player.current_map = sub_key
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(player.x, player.y - 30, "Entered house!", (255, 200, 120))
+        )
+
+    def _exit_housing(self, player: Player) -> None:
+        """Exit the current housing environment and return to origin map."""
+        current_map_obj = self.get_player_current_map(player)
+        if current_map_obj is None:
+            return
+
+        origin_key = getattr(current_map_obj, "origin_map", "overland")
+        origin_map = self.maps.get(origin_key)
+        if origin_map is None:
+            origin_key = "overland"
+            origin_map = self.maps["overland"]
+
+        entrance_col = getattr(current_map_obj, "entrance_col", 0)
+        entrance_row = getattr(current_map_obj, "entrance_row", 0)
+
+        # If returning to another housing env, land on the SETTLEMENT_HOUSE tile
+        if isinstance(origin_key, tuple) and origin_key[0] in ("house", "house_sub"):
+            player.x = entrance_col * TILE + TILE // 2
+            player.y = entrance_row * TILE + TILE // 2
+        else:
+            # Returning to overland/sector — find a walkable tile near the entrance
+            placed = False
+            for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]:
+                adj_c = entrance_col + dc
+                adj_r = entrance_row + dr
+                if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
+                    adj_tile = origin_map.get_tile(adj_r, adj_c)
+                    if adj_tile not in (WATER, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL):
+                        player.x = adj_c * TILE + TILE // 2
+                        player.y = adj_r * TILE + TILE // 2
+                        placed = True
+                        break
+            if not placed:
+                player.x = entrance_col * TILE + TILE // 2
+                player.y = entrance_row * TILE + TILE // 2
+
+        player.current_map = origin_key
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(player.x, player.y - 30, "Exited house!", (200, 255, 200))
+        )
+
     def _enter_portal_realm(self, player: Player) -> None:
         """Teleport the player into the portal realm, spawning at their origin portal."""
         origin_key = player.current_map
@@ -1380,6 +1584,10 @@ class Game:
 
         player.current_map = dest_key
         player.portal_origin_map = None
+        # Record this exit as the respawn anchor
+        player.last_portal_exit_map = dest_key
+        player.last_portal_exit_x = player.x
+        player.last_portal_exit_y = player.y
         self._snap_camera_to_player(player)
         self.portal_warp[player.player_id] = {"progress": 0.0}
         self.floats.append(
@@ -1387,6 +1595,130 @@ class Game:
                 int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220)
             )
         )
+
+    def _debug_spawn_houses(self, player: Player) -> None:
+        """DEBUG (F8): Spawn one cluster for each housing tier near player 1.
+
+        Tiers and cluster sizes (tiles wide × tall):
+          Cottage    (1):  1×1
+          Hamlet     (2):  1×2
+          Village    (4):  2×2
+          Town       (9):  3×3
+          Large Town (16): 4×4
+          City       (25): 5×5
+
+        Only works on overland maps.  Mineable tiles inside chosen regions
+        are cleared to GRASS first.  Impassable non-mineable tiles (water,
+        mountain) still block placement.
+        """
+        current_map = self.maps.get(player.current_map)
+        if current_map is None or current_map.tileset != "overland":
+            self.floats.append(
+                FloatingText(
+                    int(player.x),
+                    int(player.y) - 30,
+                    "[DEBUG] Must be on overland!",
+                    (255, 100, 100),
+                )
+            )
+            return
+
+        origin_col = int(player.x) // TILE
+        origin_row = int(player.y) // TILE
+
+        def _tile_clearable(tile_id: int) -> bool:
+            if tile_id == GRASS:
+                return True
+            return bool(TILE_INFO.get(tile_id, {}).get("mineable", False))
+
+        def _find_clearable_region(
+            need_cols: int, need_rows: int, skip: set[tuple[int, int]]
+        ) -> tuple[int, int] | None:
+            for radius in range(2, 60):
+                for dr in range(-radius, radius + 1):
+                    for dc in range(-radius, radius + 1):
+                        if abs(dr) != radius and abs(dc) != radius:
+                            continue
+                        top_r = origin_row + dr
+                        left_c = origin_col + dc
+                        fits = True
+                        for rr in range(top_r, top_r + need_rows):
+                            for cc in range(left_c, left_c + need_cols):
+                                if not (
+                                    0 <= rr < current_map.rows
+                                    and 0 <= cc < current_map.cols
+                                ):
+                                    fits = False
+                                    break
+                                if (cc, rr) in skip:
+                                    fits = False
+                                    break
+                                if not _tile_clearable(current_map.get_tile(rr, cc)):
+                                    fits = False
+                                    break
+                            if not fits:
+                                break
+                        if fits:
+                            return (left_c, top_r)
+            return None
+
+        def _clear_and_place(left_c: int, top_r: int, w: int, h: int) -> None:
+            for rr in range(top_r, top_r + h):
+                for cc in range(left_c, left_c + w):
+                    current_map.set_tile(rr, cc, GRASS)
+                    current_map.set_tile_hp(rr, cc, 0)
+            for rr in range(top_r, top_r + h):
+                for cc in range(left_c, left_c + w):
+                    current_map.set_tile(rr, cc, HOUSE)
+                    current_map.set_tile_hp(rr, cc, 0)
+
+        # Cluster dimensions for each tier (w × h, all connected = correct tier)
+        # SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
+        clusters: list[tuple[int, int, str]] = [
+            (1, 1, "Cottage"),
+            (2, 1, "Hamlet"),
+            (2, 2, "Village"),
+            (3, 3, "Town"),
+            (4, 4, "Large Town"),
+            (5, 5, "City"),
+        ]
+
+        # Track all placed+buffer tiles to keep clusters separated by 1 tile gap
+        occupied: set[tuple[int, int]] = set()
+        placed_count = 0
+
+        for w, h, name in clusters:
+            pos = _find_clearable_region(w, h, occupied)
+            if pos is None:
+                self.floats.append(
+                    FloatingText(
+                        int(player.x),
+                        int(player.y) - 30,
+                        f"[DEBUG] No room for {name}!",
+                        (255, 180, 100),
+                    )
+                )
+                continue
+
+            left_c, top_r = pos
+            _clear_and_place(left_c, top_r, w, h)
+            self._update_town_clusters(left_c, top_r, player, current_map)
+            placed_count += 1
+
+            # Mark the region + 1-tile border as occupied for the next search
+            for rr in range(top_r - 1, top_r + h + 1):
+                for cc in range(left_c - 1, left_c + w + 1):
+                    occupied.add((cc, rr))
+
+        if placed_count:
+            self.floats.append(
+                FloatingText(
+                    int(player.x),
+                    int(player.y) - 52,
+                    f"[DEBUG] {placed_count}/6 tier clusters spawned!",
+                    (255, 200, 100),
+                )
+            )
 
     def _debug_give_all_items(self) -> None:
         """DEBUG (F9): Give both players all equippable items and key materials."""
@@ -1589,14 +1921,14 @@ class Game:
 
         Overland/"overland" maps map to sector (0, 0).
         Sector maps keyed as ("sector", sx, sy) return (sx, sy).
-        Cave maps return None (no sector transitions underground).
+        Cave and housing maps return None (no sector transitions underground/indoors).
         """
         key = player.current_map
         if key == "overland" or key == ("sector", 0, 0):
             return (0, 0)
         if isinstance(key, tuple) and len(key) == 3 and key[0] == "sector":
             return (key[1], key[2])
-        return None  # cave or unknown
+        return None  # cave, housing, or unknown
 
     def _get_or_generate_sector(self, sx: int, sy: int) -> GameMap:
         """Return (or lazily generate) the GameMap for sector (sx, sy)."""
@@ -2229,6 +2561,7 @@ class Game:
                 self.cam1_y,
                 self.particles,
                 self.floats,
+                self.player1.current_map,
             )
         if not self.player1.is_dead:
             if self.player1.hurt_timer > 0:
@@ -2257,6 +2590,7 @@ class Game:
                 self.cam2_y,
                 self.particles,
                 self.floats,
+                self.player2.current_map,
             )
         if not self.player2.is_dead:
             if self.player2.hurt_timer > 0:
@@ -3319,7 +3653,8 @@ class Game:
                         self.screen, etch_c, (sx + 8, sy + 16), (sx + 24, sy + 16), 1
                     )
         for par in self.particles:
-            par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+            if par.map_key is None or par.map_key == player.current_map:
+                par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         for f in self.floats:
             if f.map_key is None or f.map_key == player.current_map:
                 f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
@@ -3589,6 +3924,42 @@ class Game:
                 hint_x = screen_x + view_w // 2 - hint.get_width() // 2
                 hint_y = screen_y + view_h - 150
                 self.screen.blit(hint, (hint_x, hint_y))
+            # Housing environment hints
+            elif tile_id == HOUSE and current_map_obj.tileset == "overland":
+                cluster_size = current_map_obj.town_clusters.get((p_row, p_col), 1)
+                tier_idx, tier_name = self._get_settlement_tier(cluster_size)
+                hint = font_tiny.render(
+                    f"[{interact_key}] Enter {tier_name}", True, (255, 210, 130)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
+            elif tile_id == SETTLEMENT_HOUSE:
+                hint = font_tiny.render(
+                    f"[{interact_key}] Enter house", True, (255, 210, 130)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
+            elif tile_id == HOUSE_EXIT:
+                hint = font_tiny.render(
+                    f"[{interact_key}] Exit", True, (180, 255, 180)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
+            elif tile_id == WORKTABLE or any(
+                current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE
+                for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            ):
+                # Only show craft hint if we're in a housing env (not overland HOUSE tile)
+                if self._is_in_housing_env(player):
+                    hint = font_tiny.render(
+                        f"[{interact_key}] Craft", True, (130, 220, 255)
+                    )
+                    hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                    hint_y = screen_y + view_h - 150
+                    self.screen.blit(hint, (hint_x, hint_y))
 
         # Sector minimap (top-right corner)
         self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
@@ -3791,8 +4162,16 @@ class Game:
         font_sm = self.font_ui_sm
         font_xs = self.font_ui_xs
 
+        # Filter recipes by housing tier
+        current_map_obj = self.get_player_current_map(player)
+        housing_tier = getattr(current_map_obj, "housing_tier", 0)
+        available_recipes = [
+            r for r in RECIPES if r.get("min_tier", 0) <= housing_tier
+        ]
+        tier_name = SETTLEMENT_TIER_NAMES[housing_tier]
+
         row_h = 28
-        total_entries = len(RECIPES) + 1  # recipes + Close
+        total_entries = len(available_recipes) + 1  # recipes + Close
         panel_w = 280
         panel_h = 50 + total_entries * row_h + 14
 
@@ -3806,7 +4185,9 @@ class Game:
         pygame.draw.rect(self.screen, (150, 150, 200), (px, py, panel_w, panel_h), 2)
 
         # Title
-        title = font_sm.render("Crafting  (E craft · Esc close)", True, (200, 200, 255))
+        title = font_sm.render(
+            f"Crafting [{tier_name}]  (E craft · Esc close)", True, (200, 200, 255)
+        )
         self.screen.blit(title, (px + 10, py + 10))
         pygame.draw.line(
             self.screen,
@@ -3817,7 +4198,7 @@ class Game:
         )
 
         # Recipe rows
-        for idx, recipe in enumerate(RECIPES):
+        for idx, recipe in enumerate(available_recipes):
             ry = py + 40 + idx * row_h
             if idx == cursor:
                 pygame.draw.rect(
@@ -3837,7 +4218,7 @@ class Game:
                 cx += cost_surf.get_width() + 8
 
         # Close row
-        close_idx = len(RECIPES)
+        close_idx = len(available_recipes)
         ry = py + 40 + close_idx * row_h
         if close_idx == cursor:
             pygame.draw.rect(

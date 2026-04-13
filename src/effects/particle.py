@@ -8,9 +8,15 @@ import pygame
 class Particle:
     """A physics-based particle with gravity and decay."""
 
-    __slots__ = ("x", "y", "vx", "vy", "life", "color", "size")
+    __slots__ = ("x", "y", "vx", "vy", "life", "color", "size", "map_key")
 
-    def __init__(self, x: float, y: float, color: tuple[int, int, int]) -> None:
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        color: tuple[int, int, int],
+        map_key: str | tuple | None = None,
+    ) -> None:
         angle = random.uniform(0, 2 * math.pi)
         speed = random.uniform(1, 3)
         self.x = x
@@ -20,6 +26,7 @@ class Particle:
         self.life = random.randint(15, 30)
         self.color = color
         self.size = random.randint(2, 4)
+        self.map_key = map_key
 
     def update(self) -> None:
         """Update position with gravity."""

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 2
+SAVE_VERSION = 4
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +39,10 @@ def _key_to_str(key: str | tuple) -> str:
             return f"underwater:{key[1]}:{key[2]}"
         if len(key) == 2:
             return f"cave:{key[0]}:{key[1]}"
+        if len(key) == 3 and key[0] == "house":
+            return f"house:{key[1]}:{key[2]}"
+        if len(key) == 4 and key[0] == "house_sub":
+            return f"house_sub:{key[1]}:{key[2]}:{key[3]}"
     return str(key)
 
 
@@ -55,6 +59,12 @@ def _str_to_key(s: str) -> str | tuple:
     if s.startswith("cave:"):
         _, col, row = s.split(":")
         return (int(col), int(row))
+    if s.startswith("house:"):
+        _, col, row = s.split(":")
+        return ("house", int(col), int(row))
+    if s.startswith("house_sub:"):
+        parts = s.split(":")
+        return ("house_sub", int(parts[1]), int(parts[2]), int(parts[3]))
     return s
 
 
@@ -94,6 +104,9 @@ _MAP_EXTRA_ATTRS = (
     "slot_padding",
     "slot_cols",
     "slot_rows",
+    "housing_tier",
+    "worktable_col",
+    "worktable_row",
 )
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
@@ -116,6 +129,10 @@ def _serialize_map(game_map: GameMap) -> dict:
             data[attr] = getattr(game_map, attr)
     if hasattr(game_map, "origin_map"):
         data["origin_map"] = _key_to_str(game_map.origin_map)
+    if hasattr(game_map, "sub_house_positions"):
+        data["sub_house_positions"] = [
+            list(entry) for entry in game_map.sub_house_positions
+        ]
     if hasattr(game_map, "portal_exits"):
         data["portal_exits"] = {
             f"{c}:{r}": (_key_to_str(v) if v is not None else None)
@@ -151,6 +168,13 @@ def _serialize_player(player: Player) -> dict:
             if player.portal_origin_map is not None
             else None
         ),
+        "last_portal_exit_map": (
+            _key_to_str(player.last_portal_exit_map)
+            if player.last_portal_exit_map is not None
+            else None
+        ),
+        "last_portal_exit_x": player.last_portal_exit_x,
+        "last_portal_exit_y": player.last_portal_exit_y,
         "is_dead": player.is_dead,
         "equipment": player.equipment,
         "durability": player.durability,
@@ -229,6 +253,15 @@ def _deserialize_map(data: dict) -> GameMap:
             setattr(game_map, attr, data[attr])
     if "origin_map" in data:
         game_map.origin_map = _str_to_key(data["origin_map"])
+    if "sub_house_positions" in data:
+        positions = []
+        for entry in data["sub_house_positions"]:
+            if len(entry) >= 4:
+                positions.append((int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3])))
+            else:
+                # Backward compat: old saves stored only (col, row); default interior 3×3
+                positions.append((int(entry[0]), int(entry[1]), 3, 3))
+        game_map.sub_house_positions = positions
     if "portal_exits" in data:
         game_map.portal_exits = {}
         for k, v in data["portal_exits"].items():
@@ -265,6 +298,12 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     player.portal_origin_map = (
         _str_to_key(raw_origin) if raw_origin is not None else None
     )
+    raw_last_exit = data.get("last_portal_exit_map")
+    player.last_portal_exit_map = (
+        _str_to_key(raw_last_exit) if raw_last_exit is not None else None
+    )
+    player.last_portal_exit_x = data.get("last_portal_exit_x")
+    player.last_portal_exit_y = data.get("last_portal_exit_y")
     # Equipment and durability (backward-compatible: empty if absent)
     from src.data.armor import ARMOR_SLOT_ORDER
 

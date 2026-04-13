@@ -54,6 +54,17 @@ ANCIENT_STONE = 23  # Ritual altar stone used in portal quests
 PORTAL_WALL = 24  # Impassable ancient stone wall (portal realm)
 PORTAL_FLOOR = 25  # Walkable ancient stone floor (portal realm)
 
+# Housing environment tiles
+WOOD_FLOOR = 26       # Walkable plank floor inside a house
+WOOD_WALL = 27        # Solid wood wall (impassable, non-mineable)
+WORKTABLE = 28        # Crafting bench inside a house environment
+HOUSE_EXIT = 29       # Exit tile inside a housing environment (returns to overland)
+DIRT_PATH = 30        # Walkable dirt path (settlement interiors, Hamlet)
+COBBLESTONE = 31      # Walkable cobblestone path (settlement interiors, Town/Large Town)
+SETTLEMENT_HOUSE = 32 # Enterable sub-house tile within a settlement environment
+STONE_PATH = 33       # Walkable flat-stone path (settlement interiors, Village)
+ROAD = 34             # Walkable paved road (settlement interiors, City)
+
 # Settlement tiers: minimum connected-house cluster size to reach each tier
 SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
 SETTLEMENT_TIER_NAMES = ["Cottage", "Hamlet", "Village", "Town", "Large Town", "City"]
@@ -62,6 +73,6 @@ HOUSE_BUILD_COST = 20  # Dirt required to build a house
 PIER_BUILD_COST = 5  # Wood required to build a pier
 BOAT_BUILD_COST = 1  # Wood required to build a boat (+ 1 Sail)
 SCUBA_BUILD_COST = 5  # Wood required to craft Scuba Gear at a house
-SECTOR_WIPE_DURATION = 0.5  # Seconds for the edge-crossing scroll wipe
-PORTAL_WARP_DURATION = 2.5  # Seconds for the portal vortex warp effect
+SECTOR_WIPE_DURATION = 30   # frames for the edge-crossing scroll wipe (~0.5 s at 60 fps)
+PORTAL_WARP_DURATION = 180  # frames for the portal vortex warp effect (~3 s at 60 fps)
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island

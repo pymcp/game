@@ -211,6 +211,11 @@ class Player:
         # Portal tracking — the map key the player came from when entering portal realm
         self.portal_origin_map: str | tuple | None = None
 
+        # Respawn anchor — set when the player exits a portal so death respawns them here
+        self.last_portal_exit_map: str | tuple | None = None
+        self.last_portal_exit_x: float | None = None
+        self.last_portal_exit_y: float | None = None
+
     # -- properties --------------------------------------------------------
 
     @property
@@ -385,6 +390,7 @@ class Player:
         cam_y: float,
         particles: list,
         floats: list,
+        map_key: str | tuple | None = None,
     ) -> None:
         """Handle mining input and tile breaking."""
 
@@ -438,7 +444,7 @@ class Player:
 
                     if random.random() < 0.4:
                         pcol = TILE_INFO[world[target_row][target_col]]["color"]
-                        particles.append(Particle(tile_cx, tile_cy, pcol))
+                        particles.append(Particle(tile_cx, tile_cy, pcol, map_key))
 
                     if tile_hp[target_row][target_col] <= 0:
                         info = TILE_INFO[world[target_row][target_col]]
@@ -452,10 +458,11 @@ class Player:
                                     tile_cy,
                                     f"+1 {info['drop']}",
                                     info["drop_color"],
+                                    map_key,
                                 )
                             )
                         for _ in range(12):
-                            particles.append(Particle(tile_cx, tile_cy, info["color"]))
+                            particles.append(Particle(tile_cx, tile_cy, info["color"], map_key))
                         new_tile = (
                             DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
                         )

@@ -4,10 +4,12 @@ from src.world.environments.overland import OverlandEnvironment
 from src.world.environments.cave import CaveEnvironment
 from src.world.environments.underwater import UnderwaterEnvironment
 from src.world.environments.portal_realm import PortalRealmEnvironment
+from src.world.environments.housing import HousingEnvironment
 
 __all__ = [
     "OverlandEnvironment",
     "CaveEnvironment",
     "UnderwaterEnvironment",
     "PortalRealmEnvironment",
+    "HousingEnvironment",
 ]
