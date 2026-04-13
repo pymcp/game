@@ -37,15 +37,15 @@ CAVE_WALL = 13  # Solid cave wall tile (impassable, non-mineable)
 PIER = 14  # Dock tile extending into ocean (walkable)
 BOAT = 15  # Boat tile moored next to pier (board by walking on)
 TREASURE_CHEST = 16  # Chest tile on land containing loot
-SAND = 17           # Underwater sand floor tile (walkable)
-CORAL = 18          # Mineable coral formation (drops "Coral")
-REEF = 19           # Solid reef wall (impassable, non-mineable)
-DIVE_EXIT = 20      # Exit tile in underwater map (returns player to surface)
-PORTAL_RUINS = 21   # Crumbling ancient portal (unrestored)
+SAND = 17  # Underwater sand floor tile (walkable)
+CORAL = 18  # Mineable coral formation (drops "Coral")
+REEF = 19  # Solid reef wall (impassable, non-mineable)
+DIVE_EXIT = 20  # Exit tile in underwater map (returns player to surface)
+PORTAL_RUINS = 21  # Crumbling ancient portal (unrestored)
 PORTAL_ACTIVE = 22  # Restored ancient portal (enterable)
 ANCIENT_STONE = 23  # Ritual altar stone used in portal quests
-PORTAL_WALL = 24    # Impassable ancient stone wall (portal realm)
-PORTAL_FLOOR = 25   # Walkable ancient stone floor (portal realm)
+PORTAL_WALL = 24  # Impassable ancient stone wall (portal realm)
+PORTAL_FLOOR = 25  # Walkable ancient stone floor (portal realm)
 
 # Settlement tiers: minimum connected-house cluster size to reach each tier
 SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]

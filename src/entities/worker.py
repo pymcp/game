@@ -11,7 +11,9 @@ from src.effects import Particle, FloatingText
 class Worker:
     """An AI-controlled character that wanders and mines for the player."""
 
-    def __init__(self, x: float, y: float, player_id: int = 1, home_map: str | tuple = "overland") -> None:
+    def __init__(
+        self, x: float, y: float, player_id: int = 1, home_map: str | tuple = "overland"
+    ) -> None:
         self.x = float(x)
         self.y = float(y)
         self.speed = random.uniform(1.4, 2.2)

@@ -49,15 +49,11 @@ class SeaCreature:
         if kind == "dolphin":
             base = (60, 130, 200)
         elif kind == "fish":
-            base = (
-                random.choice(
-                    [(240, 150, 30), (80, 200, 80), (180, 60, 200), (60, 200, 200)]
-                )
+            base = random.choice(
+                [(240, 150, 30), (80, 200, 80), (180, 60, 200), (60, 200, 200)]
             )
         else:  # jellyfish
-            base = random.choice(
-                [(220, 80, 200), (180, 80, 255), (80, 200, 240)]
-            )
+            base = random.choice([(220, 80, 200), (180, 80, 255), (80, 200, 240)])
 
         self.body_color: tuple[int, int, int] = base
         self.facing_right: bool = random.choice([True, False])
@@ -144,7 +140,11 @@ class SeaCreature:
         pygame.draw.polygon(
             screen,
             bright,
-            [(sx, sy - r // 2), (sx + flip * r // 2, sy - r), (sx + flip * r // 3, sy - r // 2)],
+            [
+                (sx, sy - r // 2),
+                (sx + flip * r // 2, sy - r),
+                (sx + flip * r // 3, sy - r // 2),
+            ],
         )
         # Tail fin
         tail_x = sx - flip * r
@@ -211,7 +211,9 @@ class SeaCreature:
             angle = (i / 4) * math.pi  # spread across bottom
             tx = sx + int(math.cos(math.pi + angle) * r * 0.7)
             wave = int(math.sin(ticks * 0.005 + i * 1.3) * 3)
-            pygame.draw.line(screen, tentacle_color, (tx, sy), (tx + wave, sy + r * 2), 1)
+            pygame.draw.line(
+                screen, tentacle_color, (tx, sy), (tx + wave, sy + r * 2), 1
+            )
 
     # ------------------------------------------------------------------
     # Helpers

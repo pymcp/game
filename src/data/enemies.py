@@ -30,6 +30,12 @@ class EnemyEnvironment(Enum):
     PORTAL_GUARDIAN = "portal_guardian"
 
 
+class PortalQuestType(Enum):
+    RITUAL = "ritual"
+    GATHER = "gather"
+    COMBAT = "combat"
+
+
 ENEMY_TYPES = {
     "slime": {
         "environments": [EnemyEnvironment.OVERLAND],

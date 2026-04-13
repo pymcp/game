@@ -74,10 +74,7 @@ def _connect_regions(
         return region
 
     all_floor = {
-        (c, r)
-        for r in range(rows)
-        for c in range(cols)
-        if world[r][c] in passable
+        (c, r) for r in range(rows) for c in range(cols) if world[r][c] in passable
     }
 
     if not all_floor or (spawn_col, spawn_row) not in all_floor:
@@ -138,7 +135,11 @@ class PortalRealmEnvironment(BaseEnvironment):
                     if abs(dc) != dist and abs(dr) != dist:
                         continue
                     c, r = cx + dc, cy + dr
-                    if 0 <= c < REALM_COLS and 0 <= r < REALM_ROWS and world[r][c] == PORTAL_FLOOR:
+                    if (
+                        0 <= c < REALM_COLS
+                        and 0 <= r < REALM_ROWS
+                        and world[r][c] == PORTAL_FLOOR
+                    ):
                         spawn_col, spawn_row = c, r
                         break
                 else:

@@ -74,10 +74,7 @@ def _ensure_all_regions_connected(
         return region
 
     all_floor = {
-        (c, r)
-        for r in range(rows)
-        for c in range(cols)
-        if world[r][c] in passable
+        (c, r) for r in range(rows) for c in range(cols) if world[r][c] in passable
     }
 
     if (spawn_col, spawn_row) not in all_floor:
@@ -179,10 +176,7 @@ class UnderwaterEnvironment(BaseEnvironment):
 
         # Collect sand tiles for scattering
         sand_tiles = [
-            (c, r)
-            for r in range(rows)
-            for c in range(cols)
-            if world[r][c] == SAND
+            (c, r) for r in range(rows) for c in range(cols) if world[r][c] == SAND
         ]
 
         # Scatter coral clusters
@@ -194,11 +188,7 @@ class UnderwaterEnvironment(BaseEnvironment):
                 for _ in range(rng.randint(cluster_min, cluster_max)):
                     nx = cx + rng.randint(-2, 2)
                     ny = cy + rng.randint(-2, 2)
-                    if (
-                        0 <= nx < cols
-                        and 0 <= ny < rows
-                        and world[ny][nx] == SAND
-                    ):
+                    if 0 <= nx < cols and 0 <= ny < rows and world[ny][nx] == SAND:
                         world[ny][nx] = CORAL
 
         scatter_coral(count=8, cluster_min=3, cluster_max=8)

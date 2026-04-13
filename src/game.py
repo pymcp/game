@@ -43,7 +43,15 @@ from src.config import (
     BOAT_BUILD_COST,
     SECTOR_WIPE_DURATION,
 )
-from src.data import TILE_INFO, WEAPONS, PICKAXES, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, RECIPES
+from src.data import (
+    TILE_INFO,
+    WEAPONS,
+    PICKAXES,
+    UPGRADE_COSTS,
+    WEAPON_UNLOCK_COSTS,
+    RECIPES,
+    PortalQuestType,
+)
 from src.world import (
     generate_world,
     generate_ocean_sector,
@@ -53,7 +61,11 @@ from src.world import (
     compute_town_clusters,
 )
 from src.world.map import GameMap
-from src.world.environments import CaveEnvironment, UnderwaterEnvironment, PortalRealmEnvironment
+from src.world.environments import (
+    CaveEnvironment,
+    UnderwaterEnvironment,
+    PortalRealmEnvironment,
+)
 from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
@@ -148,7 +160,7 @@ class Game:
         self.craft_menus: dict[int, int | None] = {1: None, 2: None}
 
         # Portal quest state: map_key → quest dict
-        # {"type": "ritual"|"gather"|"combat", "restored": bool, ...type-specific keys}
+        # {"type": PortalQuestType, "restored": bool, ...type-specific keys}
         self.portal_quests: dict[str | tuple, dict] = {}
 
         # Treasure reveal state: [{"player_id": int, "items": dict, "timer": float}]
@@ -251,31 +263,35 @@ class Game:
         """
         seed = hash((self.world_seed, str(map_key))) & 0xFFFF_FFFF
         rng = random.Random(seed)
-        quest_type = rng.choice(["ritual", "gather", "combat"])
+        quest_type = rng.choice(list(PortalQuestType))
 
-        if quest_type == "ritual":
+        if quest_type == PortalQuestType.RITUAL:
             quest: dict = {
-                "type": "ritual",
+                "type": PortalQuestType.RITUAL,
                 "restored": False,
                 "stones_total": 4,
                 "stones_activated": 0,
             }
-        elif quest_type == "gather":
+        elif quest_type == PortalQuestType.GATHER:
             # Scale cost by island distance from (0, 0)
-            if isinstance(map_key, tuple) and len(map_key) == 3 and map_key[0] == "sector":
+            if (
+                isinstance(map_key, tuple)
+                and len(map_key) == 3
+                and map_key[0] == "sector"
+            ):
                 dist = abs(map_key[1]) + abs(map_key[2])
             else:
                 dist = 0
             gold_needed = max(5, 5 + dist)
             diamond_needed = max(2, dist)
             quest = {
-                "type": "gather",
+                "type": PortalQuestType.GATHER,
                 "restored": False,
                 "required": {"Gold": gold_needed, "Diamond": diamond_needed},
             }
         else:  # combat
             quest = {
-                "type": "combat",
+                "type": PortalQuestType.COMBAT,
                 "restored": False,
                 "guardian_defeated": False,
                 "guardian_spawned": False,
@@ -330,7 +346,7 @@ class Game:
         game_map.portal_row = portal_row
 
         # Ritual: scatter ANCIENT_STONE tiles around the island
-        if quest["type"] == "ritual":
+        if quest["type"] == PortalQuestType.RITUAL:
             stone_candidates = [
                 (c, r)
                 for r in range(rows)
@@ -351,7 +367,7 @@ class Game:
             game_map.ritual_stone_positions = positions
 
         # Combat: flag that the sentinel has not yet been spawned
-        if quest["type"] == "combat":
+        if quest["type"] == PortalQuestType.COMBAT:
             game_map.portal_guardian_spawned = quest.get("guardian_spawned", False)
 
     def _check_portal_restored(self, map_key: str | tuple) -> bool:
@@ -366,18 +382,20 @@ class Game:
             return True
 
         complete = False
-        if quest["type"] == "ritual":
+        if quest["type"] == PortalQuestType.RITUAL:
             complete = quest["stones_activated"] >= quest["stones_total"]
-        elif quest["type"] == "gather":
+        elif quest["type"] == PortalQuestType.GATHER:
             complete = True  # gather completion is checked at delivery time
-        elif quest["type"] == "combat":
+        elif quest["type"] == PortalQuestType.COMBAT:
             complete = quest.get("guardian_defeated", False)
 
         if complete:
             quest["restored"] = True
             game_map = self.maps.get(map_key)
             if game_map is not None and hasattr(game_map, "portal_col"):
-                game_map.set_tile(game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE)
+                game_map.set_tile(
+                    game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE
+                )
             return True
         return False
 
@@ -480,7 +498,9 @@ class Game:
                             player.inventory.get(result["item"], 0) + result["qty"]
                         )
                         self.floats.append(
-                            FloatingText(tx, ty, f"{result['item']} crafted!", (60, 200, 255))
+                            FloatingText(
+                                tx, ty, f"{result['item']} crafted!", (60, 200, 255)
+                            )
                         )
                         for _ in range(8):
                             self.particles.append(Particle(tx, ty, (40, 160, 220)))
@@ -512,6 +532,9 @@ class Game:
                 self.screen = pygame.display.set_mode(
                     (SCREEN_W, SCREEN_H), pygame.RESIZABLE
                 )
+        # DEBUG: F9 instantly restores the portal on whichever island player 1 is on
+        elif key == pygame.K_F9:
+            self._debug_restore_portal(self.player1)
         # Player 1 controls (blocked while dead)
         elif not self.player1.is_dead and key == self.player1.controls.upgrade_pick_key:
             self.player1.try_upgrade_pick()
@@ -672,7 +695,6 @@ class Game:
 
         # 1. Cave entry — standing on a cave entrance tile on a surface map
         if current_map_obj.tileset == "overland" and not (
-
             isinstance(player.current_map, tuple) and len(player.current_map) == 2
         ):
             tile_id = current_map_obj.get_tile(p_row, p_col)
@@ -887,7 +909,9 @@ class Game:
             FloatingText(player.x, player.y - 30, "Diving!", (60, 200, 255))
         )
         for _ in range(12):
-            self.particles.append(Particle(int(player.x), int(player.y), (40, 160, 220)))
+            self.particles.append(
+                Particle(int(player.x), int(player.y), (40, 160, 220))
+            )
 
     def _try_activate_ritual_stone(
         self,
@@ -899,10 +923,16 @@ class Game:
         """Handle a player interacting with an ANCIENT_STONE ritual tile."""
         map_key = player.current_map
         quest = self.portal_quests.get(map_key)
-        if quest is None or quest["type"] != "ritual" or quest["restored"]:
+        if (
+            quest is None
+            or quest["type"] != PortalQuestType.RITUAL
+            or quest["restored"]
+        ):
             return
 
-        positions: list[tuple[int, int]] = getattr(game_map, "ritual_stone_positions", [])
+        positions: list[tuple[int, int]] = getattr(
+            game_map, "ritual_stone_positions", []
+        )
         if not positions:
             return
 
@@ -937,26 +967,33 @@ class Game:
         ty = int(player.y) - 36
 
         if quest is None:
-            self.floats.append(FloatingText(tx, ty, "Ancient portal...", (180, 160, 200)))
+            self.floats.append(
+                FloatingText(tx, ty, "Ancient portal...", (180, 160, 200))
+            )
             return
 
         if quest["restored"]:
-            self.floats.append(FloatingText(tx, ty, "Portal is active!", (160, 60, 220)))
+            self.floats.append(
+                FloatingText(tx, ty, "Portal is active!", (160, 60, 220))
+            )
             return
 
-        if quest["type"] == "ritual":
+        if quest["type"] == PortalQuestType.RITUAL:
             done = quest["stones_activated"]
             total = quest["stones_total"]
             self.floats.append(
                 FloatingText(tx, ty, f"Ritual: {done}/{total} stones", (200, 180, 50))
             )
 
-        elif quest["type"] == "gather":
+        elif quest["type"] == PortalQuestType.GATHER:
             required = quest["required"]
             # Try to spend items if the player has enough
-            can_afford = all(player.inventory.get(k, 0) >= v for k, v in required.items())
+            can_afford = all(
+                player.inventory.get(k, 0) >= v for k, v in required.items()
+            )
             if can_afford:
                 from src.world import try_spend as _try_spend
+
                 if _try_spend(player.inventory, required):
                     if self._check_portal_restored(map_key):
                         self._announce_portal_restored(player)
@@ -966,7 +1003,7 @@ class Game:
                     FloatingText(tx, ty, f"Need: {parts}", (255, 160, 80))
                 )
 
-        elif quest["type"] == "combat":
+        elif quest["type"] == PortalQuestType.COMBAT:
             if quest.get("guardian_defeated"):
                 if self._check_portal_restored(map_key):
                     self._announce_portal_restored(player)
@@ -978,10 +1015,14 @@ class Game:
     def _announce_portal_restored(self, player: Player) -> None:
         """Show a restoration announcement floating text."""
         self.floats.append(
-            FloatingText(int(player.x), int(player.y) - 50, "Portal restored!", (160, 60, 220))
+            FloatingText(
+                int(player.x), int(player.y) - 50, "Portal restored!", (160, 60, 220)
+            )
         )
         for _ in range(20):
-            self.particles.append(Particle(int(player.x), int(player.y), (160, 60, 220)))
+            self.particles.append(
+                Particle(int(player.x), int(player.y), (160, 60, 220))
+            )
 
     def _enter_portal_realm(self, player: Player) -> None:
         """Teleport the player into the portal realm."""
@@ -996,7 +1037,12 @@ class Game:
         player.y = realm_map.spawn_row * TILE + TILE // 2
         self._snap_camera_to_player(player)
         self.floats.append(
-            FloatingText(int(player.x), int(player.y) - 30, "Entered portal realm!", (160, 60, 220))
+            FloatingText(
+                int(player.x),
+                int(player.y) - 30,
+                "Entered portal realm!",
+                (160, 60, 220),
+            )
         )
 
     def _exit_portal_realm(self, player: Player) -> None:
@@ -1011,7 +1057,16 @@ class Game:
         portal_col = getattr(origin_map, "portal_col", origin_map.cols // 2)
         portal_row = getattr(origin_map, "portal_row", origin_map.rows // 2)
         placed = False
-        for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)]:
+        for dr, dc in [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (2, 0),
+            (-2, 0),
+            (0, 2),
+            (0, -2),
+        ]:
             adj_c = portal_col + dc
             adj_r = portal_row + dr
             if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
@@ -1028,13 +1083,67 @@ class Game:
         player.portal_origin_map = None
         self._snap_camera_to_player(player)
         self.floats.append(
-            FloatingText(int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220))
+            FloatingText(
+                int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220)
+            )
+        )
+
+    def _debug_restore_portal(self, player: Player) -> None:
+        """DEBUG (F9): Force-restore the portal on the island player is currently on."""
+        map_key = player.current_map
+        # Only works on surface maps (overland / sector islands)
+        game_map = (
+            self.maps.get(map_key) if map_key != "overland" else self.maps["overland"]
+        )
+        if game_map is None or game_map.tileset not in ("overland",):
+            self.floats.append(
+                FloatingText(
+                    int(player.x),
+                    int(player.y) - 36,
+                    "[DEBUG] No portal here",
+                    (180, 80, 80),
+                )
+            )
+            return
+
+        # Ensure quest state exists for this map
+        if map_key not in self.portal_quests:
+            self._assign_portal_quest(map_key)
+            self._place_portal_on_map(game_map, map_key)
+
+        quest = self.portal_quests[map_key]
+        # Fast-forward quest to complete state regardless of type
+        if quest["type"] == PortalQuestType.RITUAL:
+            quest["stones_activated"] = quest["stones_total"]
+        elif quest["type"] == PortalQuestType.GATHER:
+            pass  # gather completion is evaluated by _check_portal_restored via the flag below
+        elif quest["type"] == PortalQuestType.COMBAT:
+            quest["guardian_defeated"] = True
+            quest["guardian_spawned"] = True
+
+        # Force the restored flag and flip the tile
+        quest["restored"] = False  # reset so _check_portal_restored can flip it
+        if quest["type"] == PortalQuestType.GATHER:
+            quest["restored"] = True
+            if hasattr(game_map, "portal_col"):
+                game_map.set_tile(
+                    game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE
+                )
+        else:
+            self._check_portal_restored(map_key)
+
+        self.floats.append(
+            FloatingText(
+                int(player.x),
+                int(player.y) - 36,
+                "[DEBUG] Portal restored!",
+                (160, 60, 220),
+            )
         )
 
     def _on_sentinel_defeated(self, map_key: str | tuple) -> None:
-        """Called when a Stone Sentinel dies; marks the combat quest guardian defeated."""
         quest = self.portal_quests.get(map_key)
-        if quest is None or quest["type"] != "combat":
+        if quest is None or quest["type"] != PortalQuestType.COMBAT:
             return
         quest["guardian_defeated"] = True
         if self._check_portal_restored(map_key):
@@ -1887,9 +1996,13 @@ class Game:
     def _spawn_portal_guardians(self) -> None:
         """Spawn Stone Sentinel enemies for combat quests when a player is nearby."""
         for map_key, quest in self.portal_quests.items():
-            if quest["type"] != "combat":
+            if quest["type"] != PortalQuestType.COMBAT:
                 continue
-            if quest["restored"] or quest.get("guardian_defeated") or quest.get("guardian_spawned"):
+            if (
+                quest["restored"]
+                or quest.get("guardian_defeated")
+                or quest.get("guardian_spawned")
+            ):
                 continue
             # Only spawn if a player is currently on this map
             player_present = any(
@@ -1912,7 +2025,12 @@ class Game:
                 game_map.enemies.append(sentinel)
             quest["guardian_spawned"] = True
             self.floats.append(
-                FloatingText(int(spawn_x), int(spawn_y) - 40, "A guardian awakens!", (200, 80, 80))
+                FloatingText(
+                    int(spawn_x),
+                    int(spawn_y) - 40,
+                    "A guardian awakens!",
+                    (200, 80, 80),
+                )
             )
 
     def _update_enemies(self, dt: float) -> None:
@@ -2555,14 +2673,22 @@ class Game:
                     # Base slab (worn)
                     pygame.draw.rect(self.screen, stone_c, (sx + 4, sy + 24, 24, 5))
                     # Four partial pillars at corners (some broken)
-                    pygame.draw.rect(self.screen, stone_c, (sx + 4, sy + 10, 5, 14))   # left
-                    pygame.draw.rect(self.screen, stone_c, (sx + 23, sy + 14, 5, 10))  # right (shorter — broken)
-                    pygame.draw.rect(self.screen, stone_c, (sx + 10, sy + 6, 5, 18))   # back-left
+                    pygame.draw.rect(
+                        self.screen, stone_c, (sx + 4, sy + 10, 5, 14)
+                    )  # left
+                    pygame.draw.rect(
+                        self.screen, stone_c, (sx + 23, sy + 14, 5, 10)
+                    )  # right (shorter — broken)
+                    pygame.draw.rect(
+                        self.screen, stone_c, (sx + 10, sy + 6, 5, 18)
+                    )  # back-left
                     # Moss accent
                     pygame.draw.rect(self.screen, moss_c, (sx + 4, sy + 10, 3, 3))
                     pygame.draw.rect(self.screen, moss_c, (sx + 23, sy + 14, 3, 2))
                     # Dark center void
-                    pygame.draw.rect(self.screen, (25, 20, 30), (sx + 10, sy + 14, 12, 10))
+                    pygame.draw.rect(
+                        self.screen, (25, 20, 30), (sx + 10, sy + 14, 12, 10)
+                    )
                 elif tid == PORTAL_ACTIVE:
                     # Glowing portal ring with pulsing inner energy
                     pulse = math.sin(ticks * 0.006)
@@ -2577,7 +2703,9 @@ class Game:
                     energy_g = max(0, min(255, int(50 + pulse * 20)))
                     energy_b = max(0, min(255, int(220 + pulse * 35)))
                     pygame.draw.ellipse(
-                        self.screen, (energy_r, energy_g, energy_b), (sx + 9, sy + 8, 14, 16)
+                        self.screen,
+                        (energy_r, energy_g, energy_b),
+                        (sx + 9, sy + 8, 14, 16),
                     )
                     # Bright centre shimmer
                     inner_b = max(0, min(255, int(200 + pulse * 55)))
@@ -2590,10 +2718,16 @@ class Game:
                     # Determine if this is the next stone to activate
                     quest = self.portal_quests.get(player.current_map)
                     is_next = False
-                    if quest and quest["type"] == "ritual" and not quest["restored"]:
+                    if (
+                        quest
+                        and quest["type"] == PortalQuestType.RITUAL
+                        and not quest["restored"]
+                    ):
                         positions = getattr(current_map, "ritual_stone_positions", [])
                         next_idx = quest["stones_activated"]
-                        tile_c_pos = int(sx + int(cam_x - screen_x)) // TILE if False else c
+                        tile_c_pos = (
+                            int(sx + int(cam_x - screen_x)) // TILE if False else c
+                        )
                         # c and r are the tile coords from the outer loop
                         if next_idx < len(positions) and positions[next_idx] == (c, r):
                             is_next = True
@@ -2601,45 +2735,78 @@ class Game:
                     pygame.draw.rect(self.screen, stone_c, (sx + 11, sy + 12, 10, 16))
                     # Pointed top
                     pygame.draw.polygon(
-                        self.screen, stone_c,
-                        [(sx + 11, sy + 12), (sx + 21, sy + 12), (sx + 16, sy + 6)]
+                        self.screen,
+                        stone_c,
+                        [(sx + 11, sy + 12), (sx + 21, sy + 12), (sx + 16, sy + 6)],
                     )
                     if is_next:
                         pulse_y = int(math.sin(ticks * 0.01) * 3)
                         pygame.draw.polygon(
-                            self.screen, (240, 210, 50),
-                            [(sx + 10, sy + 11 + pulse_y), (sx + 22, sy + 11 + pulse_y),
-                             (sx + 16, sy + 5 + pulse_y)],
+                            self.screen,
+                            (240, 210, 50),
+                            [
+                                (sx + 10, sy + 11 + pulse_y),
+                                (sx + 22, sy + 11 + pulse_y),
+                                (sx + 16, sy + 5 + pulse_y),
+                            ],
                             2,
                         )
                     else:
                         # Faint rune markings
                         pygame.draw.line(
-                            self.screen, (80, 72, 65), (sx + 14, sy + 14), (sx + 18, sy + 14), 1
+                            self.screen,
+                            (80, 72, 65),
+                            (sx + 14, sy + 14),
+                            (sx + 18, sy + 14),
+                            1,
                         )
                         pygame.draw.line(
-                            self.screen, (80, 72, 65), (sx + 14, sy + 18), (sx + 18, sy + 18), 1
+                            self.screen,
+                            (80, 72, 65),
+                            (sx + 14, sy + 18),
+                            (sx + 18, sy + 18),
+                            1,
                         )
                 elif tid == PORTAL_WALL:
                     # Ancient stone brick pattern (darker base already set by tileset color)
                     brick_c = tile_color
                     mortar_c = tuple(max(0, ch - 20) for ch in brick_c)
                     # Horizontal mortar lines
-                    pygame.draw.line(self.screen, mortar_c, (sx, sy + 10), (sx + TILE, sy + 10), 1)
-                    pygame.draw.line(self.screen, mortar_c, (sx, sy + 22), (sx + TILE, sy + 22), 1)
+                    pygame.draw.line(
+                        self.screen, mortar_c, (sx, sy + 10), (sx + TILE, sy + 10), 1
+                    )
+                    pygame.draw.line(
+                        self.screen, mortar_c, (sx, sy + 22), (sx + TILE, sy + 22), 1
+                    )
                     # Alternating vertical mortar (brick offset pattern)
-                    pygame.draw.line(self.screen, mortar_c, (sx + 16, sy), (sx + 16, sy + 10), 1)
-                    pygame.draw.line(self.screen, mortar_c, (sx + 8, sy + 10), (sx + 8, sy + 22), 1)
-                    pygame.draw.line(self.screen, mortar_c, (sx + 24, sy + 10), (sx + 24, sy + 22), 1)
-                    pygame.draw.line(self.screen, mortar_c, (sx + 16, sy + 22), (sx + 16, sy + TILE), 1)
+                    pygame.draw.line(
+                        self.screen, mortar_c, (sx + 16, sy), (sx + 16, sy + 10), 1
+                    )
+                    pygame.draw.line(
+                        self.screen, mortar_c, (sx + 8, sy + 10), (sx + 8, sy + 22), 1
+                    )
+                    pygame.draw.line(
+                        self.screen, mortar_c, (sx + 24, sy + 10), (sx + 24, sy + 22), 1
+                    )
+                    pygame.draw.line(
+                        self.screen,
+                        mortar_c,
+                        (sx + 16, sy + 22),
+                        (sx + 16, sy + TILE),
+                        1,
+                    )
                 elif tid == PORTAL_FLOOR:
                     # Flat floor with faint engraved cross/circle pattern
                     etch_c = tuple(max(0, ch - 12) for ch in tile_color)
                     # Faint circle
                     pygame.draw.circle(self.screen, etch_c, (sx + 16, sy + 16), 8, 1)
                     # Cross lines
-                    pygame.draw.line(self.screen, etch_c, (sx + 16, sy + 8), (sx + 16, sy + 24), 1)
-                    pygame.draw.line(self.screen, etch_c, (sx + 8, sy + 16), (sx + 24, sy + 16), 1)
+                    pygame.draw.line(
+                        self.screen, etch_c, (sx + 16, sy + 8), (sx + 16, sy + 24), 1
+                    )
+                    pygame.draw.line(
+                        self.screen, etch_c, (sx + 8, sy + 16), (sx + 24, sy + 16), 1
+                    )
         for par in self.particles:
             par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         for f in self.floats:
@@ -2665,10 +2832,7 @@ class Game:
         if player.current_map == "overland":
             for enemy in self.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        elif (
-            isinstance(player.current_map, tuple)
-            and len(player.current_map) == 2
-        ):
+        elif isinstance(player.current_map, tuple) and len(player.current_map) == 2:
             # Draw enemies belonging to the cave the player is currently in
             cave_map = self.get_player_current_map(player)
             if cave_map is not None:
@@ -3142,7 +3306,11 @@ class Game:
         title = font_sm.render("Crafting  (E craft · Esc close)", True, (200, 200, 255))
         self.screen.blit(title, (px + 10, py + 10))
         pygame.draw.line(
-            self.screen, (80, 80, 120), (px + 6, py + 32), (px + panel_w - 6, py + 32), 1
+            self.screen,
+            (80, 80, 120),
+            (px + 6, py + 32),
+            (px + panel_w - 6, py + 32),
+            1,
         )
 
         # Recipe rows

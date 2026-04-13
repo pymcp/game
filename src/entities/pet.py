@@ -33,7 +33,9 @@ DOG_COLORS = [
 class Pet:
     """A cat or dog that follows the player."""
 
-    def __init__(self, x: float, y: float, kind: str = "cat", home_map: str | tuple = "overland") -> None:
+    def __init__(
+        self, x: float, y: float, kind: str = "cat", home_map: str | tuple = "overland"
+    ) -> None:
         self.x = float(x)
         self.y = float(y)
         self.kind = kind
