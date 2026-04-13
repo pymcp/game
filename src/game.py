@@ -164,6 +164,10 @@ class Game:
         self.enemies = spawn_enemies(overland_map.world)
         self.projectiles = []
 
+        # Spawn land creatures on the home island
+        home_env = OverlandEnvironment(map_key="overland")
+        self.creatures.extend(home_env.spawn_creatures(overland_map))
+
         # Effects (shared)
         self.particles = []
         self.floats = []
