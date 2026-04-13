@@ -15,6 +15,7 @@ from src.config import (
     CAVE_MOUNTAIN,
     CAVE_EXIT,
     CAVE_WALL,
+    TREASURE_CHEST,
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
 from src.world.environments.base import BaseEnvironment
@@ -118,10 +119,7 @@ def _ensure_all_regions_connected(cave_world, rows, cols, spawn_col, spawn_row):
         return region
 
     all_floor = {
-        (c, r)
-        for r in range(rows)
-        for c in range(cols)
-        if cave_world[r][c] in passable
+        (c, r) for r in range(rows) for c in range(cols) if cave_world[r][c] in passable
     }
 
     if (spawn_col, spawn_row) not in all_floor:
@@ -274,11 +272,19 @@ class CaveEnvironment(BaseEnvironment):
         # Connect all isolated floor regions to the spawn/exit area
         _ensure_all_regions_connected(cave_world, rows, cols, spawn_col, spawn_row)
 
+        # Place treasure chest deep in the cave (opposite end from the exit)
+        chest_col, chest_row = self._find_floor_near_row(
+            cave_world, rows, cols, rng, target_row=rows - 5
+        )
+        cave_world[chest_row][chest_col] = TREASURE_CHEST
+
         cave_map = GameMap(cave_world, tileset=self.TILESET)
         cave_map.exit_col = exit_col
         cave_map.exit_row = exit_row
         cave_map.spawn_col = spawn_col
         cave_map.spawn_row = spawn_row
+        cave_map.chest_col = chest_col
+        cave_map.chest_row = chest_row
         cave_map.entrance_col = self.cave_col
         cave_map.entrance_row = self.cave_row
         cave_map.cave_style = "labyrinth" if is_labyrinth else "cavern"

@@ -133,6 +133,9 @@ class Game:
         # Death challenge state: {player_id: {"question": str, "answer": int, "input": str, "wrong": bool}}
         self.death_challenges = {}
 
+        # Treasure reveal state: [{"player_id": int, "items": dict, "timer": float}]
+        self.treasure_reveals = []
+
         # Deterministic seed for the ocean sector grid
         self.world_seed = random.randint(0, 0xFFFF_FFFF)
         # Alias sector (0,0) as the home overland map so sector logic can use one key type
@@ -427,10 +430,11 @@ class Game:
         """Context-sensitive interact key handler.
 
         Priority:
-          1. If a sail-prompt is pending → confirm sailing.
-          2. If player is on_boat → show sailing prompt.
-          3. If adjacent to a TREASURE_CHEST → open it.
-          4. If standing on a PIER tile with WATER adjacent → build boat (if materials).
+          1. If standing on a cave entrance → enter the cave.
+          2. If in a cave and standing on a CAVE_EXIT tile → exit the cave.
+          3. If player is on_boat → show sailing prompt.
+          4. If adjacent to a TREASURE_CHEST → open it.
+          5. If standing on a PIER tile with WATER adjacent → build boat (if materials).
         """
         pid = player.player_id
         current_map_obj = self.get_player_current_map(player)
@@ -440,7 +444,77 @@ class Game:
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
 
-        # 1. On boat — show a sailing hint (actual edge-crossing handles transit)
+        # 1. Cave entry — standing on a cave entrance tile on a surface map
+        if current_map_obj.tileset == "overland" and not (
+            isinstance(player.current_map, tuple) and len(player.current_map) == 2
+        ):
+            tile_id = current_map_obj.get_tile(p_row, p_col)
+            if tile_id in (CAVE_MOUNTAIN, CAVE_HILL):
+                cave_key = (p_col, p_row)
+                if cave_key not in self.maps:
+                    env = CaveEnvironment(p_col, p_row, cave_type=tile_id)
+                    self.maps[cave_key] = env.generate()
+                cave_map = self.maps[cave_key]
+                cave_map.origin_map = player.current_map
+                player.x = cave_map.spawn_col * TILE + TILE // 2
+                player.y = cave_map.spawn_row * TILE + TILE // 2
+                player.current_map = cave_key
+                self._snap_camera_to_player(player)
+                self.floats.append(
+                    FloatingText(
+                        player.x, player.y - 30, "Entered cave!", (100, 150, 255)
+                    )
+                )
+                return
+
+        # 2. Cave exit — in a cave and standing on the exit tile
+        if (
+            isinstance(player.current_map, tuple)
+            and len(player.current_map) == 2
+            and hasattr(current_map_obj, "entrance_col")
+        ):
+            tile_id = current_map_obj.get_tile(p_row, p_col)
+            if tile_id == CAVE_EXIT:
+                origin_key = getattr(current_map_obj, "origin_map", "overland")
+                origin_map = self.maps.get(origin_key)
+                if origin_map is None:
+                    origin_key = "overland"
+                    origin_map = self.maps["overland"]
+                entrance_col = current_map_obj.entrance_col
+                entrance_row = current_map_obj.entrance_row
+                placed = False
+                for dr, dc in [
+                    (1, 0),
+                    (-1, 0),
+                    (0, 1),
+                    (0, -1),
+                    (1, 1),
+                    (-1, -1),
+                    (1, -1),
+                    (-1, 1),
+                ]:
+                    adj_c = entrance_col + dc
+                    adj_r = entrance_row + dr
+                    if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
+                        adj_tile = origin_map.get_tile(adj_r, adj_c)
+                        if adj_tile not in (WATER, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL):
+                            player.x = adj_c * TILE + TILE // 2
+                            player.y = adj_r * TILE + TILE // 2
+                            placed = True
+                            break
+                if not placed:
+                    player.x = entrance_col * TILE + TILE // 2
+                    player.y = entrance_row * TILE + TILE // 2
+                player.current_map = origin_key
+                self._snap_camera_to_player(player)
+                self.floats.append(
+                    FloatingText(
+                        player.x, player.y - 30, "Exited cave!", (100, 255, 150)
+                    )
+                )
+                return
+
+        # 3. On boat — show a sailing hint (actual edge-crossing handles transit)
         if player.on_boat:
             self.floats.append(
                 FloatingText(
@@ -452,23 +526,18 @@ class Game:
             )
             return
 
-        # 2. Adjacent treasure chest
+        # 4. Adjacent treasure chest
         for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
             cc, rr = p_col + dc, p_row + dr
             if current_map_obj.get_tile(rr, cc) == TREASURE_CHEST:
                 current_map_obj.set_tile(rr, cc, GRASS)
                 current_map_obj.set_tile_hp(rr, cc, 0)
-                player.inventory["Sail"] = player.inventory.get("Sail", 0) + 1
                 tx = cc * TILE + TILE // 2
                 ty = rr * TILE + TILE // 2
-                self.floats.append(
-                    FloatingText(tx, ty - 20, "Got a Sail!", (255, 220, 80))
-                )
-                for _ in range(15):
-                    self.particles.append(Particle(tx, ty, (255, 200, 60)))
+                self._open_treasure_chest(player, tx, ty)
                 return
 
-        # 3. On a PIER tile → try to build a boat in the next water cell
+        # 5. On a PIER tile → try to build a boat in the next water cell
         if current_map_obj.get_tile(p_row, p_col) == PIER:
             for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
@@ -1113,25 +1182,7 @@ class Game:
         map1 = self.get_player_current_map(self.player1)
         map2 = self.get_player_current_map(self.player2)
 
-        # Check for cave transitions (only for living players)
-        if not self.player1.is_dead:
-            self.check_cave_transitions(self.player1, map1)
-        if not self.player2.is_dead:
-            self.check_cave_transitions(self.player2, map2)
-
         # Update maps after potential transitions
-        map1 = self.get_player_current_map(self.player1)
-        map2 = self.get_player_current_map(self.player2)
-
-        # Check for cave exits (only for living players)
-        if not self.player1.is_dead:
-            self.check_cave_exits(self.player1, map1)
-        if not self.player2.is_dead:
-            self.check_cave_exits(self.player2, map2)
-
-        # Update maps again after potential exits
-        map1 = self.get_player_current_map(self.player1)
-        map2 = self.get_player_current_map(self.player2)
 
         # -- Sector-wipe animation tick ------------------------------------
         for pid in list(self.sector_wipe.keys()):
@@ -1300,6 +1351,11 @@ class Game:
         for f in self.floats:
             f.update()
         self.floats = [f for f in self.floats if f.life > 0]
+
+        # Tick treasure reveals
+        for rev in self.treasure_reveals:
+            rev["timer"] -= dt
+        self.treasure_reveals = [r for r in self.treasure_reveals if r["timer"] > 0]
 
     def _update_enemies(self, dt):
         """Update all enemies and check for attacks on both players."""
@@ -1922,6 +1978,7 @@ class Game:
         self._draw_player_ui(player, screen_x, screen_y, view_w, view_h)
         if player.is_dead:
             self._draw_death_challenge(player, screen_x, screen_y, view_w, view_h)
+        self._draw_treasure_reveal(player, screen_x, screen_y, view_w, view_h)
 
         # Sector-wipe flash overlay (drawn last so it appears on top)
         wipe_state = self.sector_wipe.get(player.player_id)
@@ -1957,7 +2014,9 @@ class Game:
 
         wpn_name = WEAPONS[player.weapon_level]["name"]
         if player.weapon_level < len(WEAPON_UNLOCK_COSTS):
-            wpn_cost = _cost_str(WEAPON_UNLOCK_COSTS[player.weapon_level], player.inventory)
+            wpn_cost = _cost_str(
+                WEAPON_UNLOCK_COSTS[player.weapon_level], player.inventory
+            )
             upg_lines.append((f"Wpn ({wpn_name}):", wpn_cost))
         else:
             upg_lines.append((f"Wpn ({wpn_name}):", None))
@@ -2112,16 +2171,42 @@ class Game:
         # Auto-toggle status lines (appended below the controls grid)
         auto_y = ctrl_y + 24 + (controls_per_column - 1) * 15 + 20
         auto_mine_key = pygame.key.name(player.controls.toggle_auto_mine_key).upper()
-        auto_mine_status = f"Auto Mine ({auto_mine_key}): {'ON' if player.auto_mine else 'OFF'}"
+        auto_mine_status = (
+            f"Auto Mine ({auto_mine_key}): {'ON' if player.auto_mine else 'OFF'}"
+        )
         auto_mine_color = (100, 255, 100) if player.auto_mine else (150, 150, 150)
         auto_mine_text = font_tiny.render(auto_mine_status, True, auto_mine_color)
         self.screen.blit(auto_mine_text, (screen_x + 18, auto_y))
 
         auto_fire_key = pygame.key.name(player.controls.toggle_auto_fire_key).upper()
-        auto_fire_status = f"Auto Fire ({auto_fire_key}): {'ON' if player.auto_fire else 'OFF'}"
+        auto_fire_status = (
+            f"Auto Fire ({auto_fire_key}): {'ON' if player.auto_fire else 'OFF'}"
+        )
         auto_fire_color = (100, 255, 100) if player.auto_fire else (150, 150, 150)
         auto_fire_text = font_tiny.render(auto_fire_status, True, auto_fire_color)
         self.screen.blit(auto_fire_text, (screen_x + 18, auto_y + 16))
+
+        # Cave interaction hint — shown when standing on a cave entrance or exit
+        interact_key = pygame.key.name(player.controls.interact_key).upper()
+        current_map_obj = self.get_player_current_map(player)
+        if current_map_obj is not None:
+            p_col = int(player.x) // TILE
+            p_row = int(player.y) // TILE
+            tile_id = current_map_obj.get_tile(p_row, p_col)
+            if tile_id in (CAVE_MOUNTAIN, CAVE_HILL):
+                hint = font_tiny.render(
+                    f"[{interact_key}] Enter cave", True, (180, 180, 255)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
+            elif tile_id == CAVE_EXIT:
+                hint = font_tiny.render(
+                    f"[{interact_key}] Exit cave", True, (180, 255, 180)
+                )
+                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
+                hint_y = screen_y + view_h - 150
+                self.screen.blit(hint, (hint_x, hint_y))
 
         # Sector minimap (top-right corner)
         self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
@@ -2139,9 +2224,9 @@ class Game:
 
         cx, cy = player_sector  # current sector coords
 
-        CELL = 10       # px per cell
-        GAP = 1         # px gap between cells
-        WINDOW = 9      # cells across / down (must be odd)
+        CELL = 10  # px per cell
+        GAP = 1  # px gap between cells
+        WINDOW = 9  # cells across / down (must be odd)
         half = WINDOW // 2
 
         panel_w = WINDOW * (CELL + GAP) - GAP + 8
@@ -2153,13 +2238,15 @@ class Game:
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill((20, 20, 30, 200))
         self.screen.blit(panel_surf, (panel_x, panel_y))
-        pygame.draw.rect(self.screen, (150, 150, 150),
-                         (panel_x, panel_y, panel_w, panel_h), 2)
+        pygame.draw.rect(
+            self.screen, (150, 150, 150), (panel_x, panel_y, panel_w, panel_h), 2
+        )
 
         # "MAP" label
         label = self.font_ui_xs.render("MAP", True, (180, 180, 180))
-        self.screen.blit(label, (panel_x + panel_w // 2 - label.get_width() // 2,
-                                  panel_y + 3))
+        self.screen.blit(
+            label, (panel_x + panel_w // 2 - label.get_width() // 2, panel_y + 3)
+        )
 
         grid_top = panel_y + 14 + 4  # below label
 
@@ -2173,18 +2260,19 @@ class Game:
 
                 if (sx, sy) in self.visited_sectors:
                     if (sx, sy) in self.land_sectors:
-                        color = (50, 110, 50)   # has land — muted green
+                        color = (50, 110, 50)  # has land — muted green
                     else:
-                        color = (35, 55, 110)   # visited ocean — dark navy
+                        color = (35, 55, 110)  # visited ocean — dark navy
                 else:
-                    color = (25, 25, 35)        # fog / unvisited
+                    color = (25, 25, 35)  # fog / unvisited
 
                 pygame.draw.rect(self.screen, color, (cell_x, cell_y, CELL, CELL))
 
                 # Highlight current sector with a bright border
                 if sx == cx and sy == cy:
-                    pygame.draw.rect(self.screen, (220, 220, 255),
-                                     (cell_x, cell_y, CELL, CELL), 2)
+                    pygame.draw.rect(
+                        self.screen, (220, 220, 255), (cell_x, cell_y, CELL, CELL), 2
+                    )
 
         # Draw a small dot at the exact centre cell to mark the player
         centre_col = half
@@ -2192,6 +2280,119 @@ class Game:
         dot_x = panel_x + 4 + centre_col * (CELL + GAP) + CELL // 2
         dot_y = grid_top + centre_row * (CELL + GAP) + CELL // 2
         pygame.draw.circle(self.screen, (255, 255, 255), (dot_x, dot_y), 2)
+
+    def _open_treasure_chest(self, player, tx, ty):
+        """Award loot from a treasure chest, spawn particles, and queue a reveal popup."""
+        # Loot table: always a Sail + a random bonus
+        loot = {"Sail": 1}
+        bonus_pool = [
+            {"Iron": random.randint(8, 18)},
+            {"Gold": random.randint(4, 10)},
+            {"Diamond": random.randint(1, 3)},
+            {"Wood": random.randint(15, 30)},
+            {"Stone": random.randint(20, 40)},
+            {"Gold": random.randint(3, 7), "Iron": random.randint(5, 12)},
+            {"Diamond": 1, "Gold": random.randint(3, 6)},
+        ]
+        bonus = random.choice(bonus_pool)
+        for item, qty in bonus.items():
+            loot[item] = loot.get(item, 0) + qty
+
+        for item, qty in loot.items():
+            player.inventory[item] = player.inventory.get(item, 0) + qty
+
+        # Dramatic particle burst — gold/sparkle colours, upward fan + scatter
+        sparkle_colors = [
+            (255, 230, 80),  # gold
+            (255, 200, 40),  # deep gold
+            (255, 255, 160),  # pale yellow
+            (255, 255, 255),  # white sparkle
+            (255, 180, 60),  # amber
+        ]
+        for _ in range(55):
+            p = Particle(tx, ty, random.choice(sparkle_colors))
+            # Override default random speed with a stronger upward bias
+            angle = random.uniform(-math.pi, 0)  # upper hemisphere
+            speed = random.uniform(2, 6)
+            p.vx = math.cos(angle) * speed
+            p.vy = math.sin(angle) * speed
+            p.life = random.randint(25, 50)
+            p.size = random.randint(2, 5)
+            self.particles.append(p)
+        # A few stray downward particles for the "chest lid" effect
+        for _ in range(12):
+            p = Particle(tx, ty, (200, 140, 40))
+            p.life = random.randint(10, 20)
+            p.size = random.randint(3, 6)
+            self.particles.append(p)
+
+        # Queue reveal popup (lasts 180 ticks ≈ 3 s at 60 fps)
+        self.treasure_reveals.append(
+            {
+                "player_id": player.player_id,
+                "items": loot,
+                "timer": 180.0,
+            }
+        )
+
+    def _draw_treasure_reveal(self, player, screen_x, screen_y, view_w, view_h):
+        """Draw the treasure chest loot popup for a player's viewport."""
+        reveal = next(
+            (r for r in self.treasure_reveals if r["player_id"] == player.player_id),
+            None,
+        )
+        if reveal is None:
+            return
+
+        # Fade out during the last 60 ticks
+        alpha = int(min(255, reveal["timer"] / 60 * 255))
+        alpha = max(0, min(255, alpha))
+
+        items = reveal["items"]
+        item_count = len(items)
+
+        panel_w = max(280, item_count * 90 + 40)
+        panel_h = 100
+        panel_x = screen_x + view_w // 2 - panel_w // 2
+        panel_y = screen_y + view_h // 2 - panel_h // 2 - 40
+
+        # Background panel
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((30, 20, 0, min(220, alpha)))
+        self.screen.blit(panel_surf, (panel_x, panel_y))
+        border_col = (220, 180, 40, alpha)
+        border_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pygame.draw.rect(border_surf, border_col, (0, 0, panel_w, panel_h), 3)
+        self.screen.blit(border_surf, (panel_x, panel_y))
+
+        # Header
+        font_med = self.font_dc_med
+        font_sm = self.font_dc_sm
+        header = font_med.render("✦ TREASURE! ✦", True, (255, 220, 60))
+        header.set_alpha(alpha)
+        self.screen.blit(
+            header,
+            (panel_x + panel_w // 2 - header.get_width() // 2, panel_y + 6),
+        )
+
+        # Loot items in a row
+        item_y = panel_y + 52
+        total_w = sum(font_sm.size(f"{k}  x{v}")[0] + 16 for k, v in items.items())
+        ix = panel_x + panel_w // 2 - total_w // 2
+        item_colors = {
+            "Sail": (100, 200, 255),
+            "Iron": (180, 200, 220),
+            "Gold": (255, 215, 0),
+            "Diamond": (180, 240, 255),
+            "Wood": (180, 130, 70),
+            "Stone": (160, 160, 160),
+        }
+        for item, qty in items.items():
+            col = item_colors.get(item, (220, 220, 220))
+            txt = font_sm.render(f"{item}  x{qty}", True, col)
+            txt.set_alpha(alpha)
+            self.screen.blit(txt, (ix, item_y))
+            ix += txt.get_width() + 16
 
     def _draw_death_challenge(self, player, screen_x, screen_y, view_w, view_h):
         """Draw the death/respawn math challenge overlay for a player's viewport."""

@@ -17,6 +17,7 @@ SAVE_VERSION = 1
 # Map key encoding (JSON only allows string keys)
 # ---------------------------------------------------------------------------
 
+
 def _key_to_str(key):
     """Convert a map dict key to a JSON-safe string."""
     if key == "overland":
@@ -57,9 +58,14 @@ def _str_to_player_map_key(s):
 
 # Optional attributes that cave maps carry (not present on overland maps)
 _CAVE_EXTRA_ATTRS = (
-    "entrance_col", "entrance_row",
-    "exit_col", "exit_row",
-    "spawn_col", "spawn_row",
+    "entrance_col",
+    "entrance_row",
+    "exit_col",
+    "exit_row",
+    "spawn_col",
+    "spawn_row",
+    "chest_col",
+    "chest_row",
     "cave_style",
 )
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
@@ -153,6 +159,7 @@ def _serialize_enemy(enemy):
 # Deserializers
 # ---------------------------------------------------------------------------
 
+
 def _deserialize_map(data):
     """Reconstruct a GameMap from saved dict."""
     game_map = GameMap(data["world"], tileset=data["tileset"])
@@ -172,8 +179,9 @@ def _deserialize_map(data):
 
 
 def _deserialize_player(data, control_scheme):
-    player = Player(data["x"], data["y"], player_id=data["player_id"],
-                    control_scheme=control_scheme)
+    player = Player(
+        data["x"], data["y"], player_id=data["player_id"], control_scheme=control_scheme
+    )
     player.color = tuple(data["color"])
     player.pick_level = data["pick_level"]
     player.weapon_level = data["weapon_level"]
@@ -227,12 +235,19 @@ def _deserialize_enemy(data):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def save_game(game):
     """Serialize full game state to save.json."""
     maps_data = {}
     for key, game_map in game.maps.items():
         # Skip the sector (0,0) alias — it's the same object as "overland"
-        if isinstance(key, tuple) and len(key) == 3 and key[0] == "sector" and key[1] == 0 and key[2] == 0:
+        if (
+            isinstance(key, tuple)
+            and len(key) == 3
+            and key[0] == "sector"
+            and key[1] == 0
+            and key[2] == 0
+        ):
             continue
         maps_data[_key_to_str(key)] = _serialize_map(game_map)
 
@@ -282,7 +297,7 @@ def apply_save(game, data):
     # Re-create the sector (0,0) alias
     game.maps[("sector", 0, 0)] = game.maps["overland"]
 
-    # Overland enemies  
+    # Overland enemies
     game.enemies = [_deserialize_enemy(e) for e in data["enemies"]]
 
     # Players
