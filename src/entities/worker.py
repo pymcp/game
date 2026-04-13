@@ -11,11 +11,12 @@ from src.effects import Particle, FloatingText
 class Worker:
     """An AI-controlled character that wanders and mines for the player."""
 
-    def __init__(self, x: float, y: float, player_id: int = 1) -> None:
+    def __init__(self, x: float, y: float, player_id: int = 1, home_map: str | tuple = "overland") -> None:
         self.x = float(x)
         self.y = float(y)
         self.speed = random.uniform(1.4, 2.2)
         self.player_id = player_id
+        self.home_map: str | tuple = home_map
         self.xp_earned = 0
 
         self.body_color = tuple(random.randint(60, 220) for _ in range(3))

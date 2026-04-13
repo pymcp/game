@@ -33,11 +33,12 @@ DOG_COLORS = [
 class Pet:
     """A cat or dog that follows the player."""
 
-    def __init__(self, x: float, y: float, kind: str = "cat") -> None:
+    def __init__(self, x: float, y: float, kind: str = "cat", home_map: str | tuple = "overland") -> None:
         self.x = float(x)
         self.y = float(y)
         self.kind = kind
         self.speed = random.uniform(2.8, 3.6)
+        self.home_map: str | tuple = home_map
 
         if kind == "cat":
             self.body_color = random.choice(CAT_COLORS)

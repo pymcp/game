@@ -18,6 +18,10 @@ from src.config import (
     PIER,
     BOAT,
     TREASURE_CHEST,
+    SAND,
+    CORAL,
+    REEF,
+    DIVE_EXIT,
 )
 
 TILE_INFO = {
@@ -157,6 +161,38 @@ TILE_INFO = {
         "drop": None,
         "drop_color": None,
     },
+    SAND: {
+        "name": "Sand",
+        "color": (210, 185, 120),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    CORAL: {
+        "name": "Coral",
+        "color": (240, 80, 130),
+        "mineable": True,
+        "hp": 35,
+        "drop": "Coral",
+        "drop_color": (240, 80, 130),
+    },
+    REEF: {
+        "name": "Reef",
+        "color": (90, 75, 130),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    DIVE_EXIT: {
+        "name": "Dive Exit",
+        "color": (60, 190, 220),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
 }
 
-BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL, TREASURE_CHEST)
+BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL, TREASURE_CHEST, REEF)

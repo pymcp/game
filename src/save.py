@@ -14,6 +14,7 @@ from src.entities.player import (
 from src.entities.worker import Worker
 from src.entities.pet import Pet
 from src.entities.enemy import Enemy
+from src.entities.sea_creature import SeaCreature
 
 if TYPE_CHECKING:
     from src.game import Game
@@ -34,6 +35,8 @@ def _key_to_str(key: str | tuple) -> str:
     if isinstance(key, tuple):
         if len(key) == 3 and key[0] == "sector":
             return f"sector:{key[1]}:{key[2]}"
+        if len(key) == 3 and key[0] == "underwater":
+            return f"underwater:{key[1]}:{key[2]}"
         if len(key) == 2:
             return f"cave:{key[0]}:{key[1]}"
     return str(key)
@@ -46,6 +49,9 @@ def _str_to_key(s: str) -> str | tuple:
     if s.startswith("sector:"):
         _, sx, sy = s.split(":")
         return ("sector", int(sx), int(sy))
+    if s.startswith("underwater:"):
+        _, col, row = s.split(":")
+        return ("underwater", int(col), int(row))
     if s.startswith("cave:"):
         _, col, row = s.split(":")
         return (int(col), int(row))
@@ -65,8 +71,8 @@ def _str_to_player_map_key(s: str) -> str | tuple:
 # Serializers
 # ---------------------------------------------------------------------------
 
-# Optional attributes that cave maps carry (not present on overland maps)
-_CAVE_EXTRA_ATTRS = (
+# Optional attributes that cave/underwater maps carry (not present on all maps)
+_MAP_EXTRA_ATTRS = (
     "entrance_col",
     "entrance_row",
     "exit_col",
@@ -76,6 +82,8 @@ _CAVE_EXTRA_ATTRS = (
     "chest_col",
     "chest_row",
     "cave_style",
+    "dive_col",
+    "dive_row",
 )
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
@@ -92,8 +100,8 @@ def _serialize_map(game_map: GameMap) -> dict:
         "town_clusters": tc,
         "enemies": enemies,
     }
-    # Persist cave-specific attributes when present
-    for attr in _CAVE_EXTRA_ATTRS:
+    # Persist map-specific attributes when present
+    for attr in _MAP_EXTRA_ATTRS:
         if hasattr(game_map, attr):
             data[attr] = getattr(game_map, attr)
     if hasattr(game_map, "origin_map"):
@@ -137,6 +145,7 @@ def _serialize_worker(worker: Worker) -> dict:
         "skin_color": list(worker.skin_color),
         "hat_color": list(worker.hat_color),
         "size_mod": worker.size_mod,
+        "home_map": _key_to_str(worker.home_map),
     }
 
 
@@ -152,6 +161,7 @@ def _serialize_pet(pet: Pet) -> dict:
         "spot_color": list(pet.spot_color),
         "follow_offset_x": pet.follow_offset_x,
         "follow_offset_y": pet.follow_offset_y,
+        "home_map": _key_to_str(pet.home_map),
     }
 
 
@@ -161,6 +171,19 @@ def _serialize_enemy(enemy: Enemy) -> dict:
         "y": enemy.y,
         "type_key": enemy.type_key,
         "hp": enemy.hp,
+    }
+
+
+def _serialize_sea_creature(sc: SeaCreature) -> dict:
+    return {
+        "x": sc.x,
+        "y": sc.y,
+        "kind": sc.kind,
+        "speed": sc.speed,
+        "size": sc.size,
+        "body_color": list(sc.body_color),
+        "facing_right": sc.facing_right,
+        "home_map": _key_to_str(sc.home_map),
     }
 
 
@@ -178,8 +201,8 @@ def _deserialize_map(data: dict) -> GameMap:
         for k, v in data["town_clusters"].items()
     }
     game_map.enemies = [_deserialize_enemy(e) for e in data.get("enemies", [])]
-    # Restore cave-specific attributes when present
-    for attr in _CAVE_EXTRA_ATTRS:
+    # Restore map-specific attributes when present
+    for attr in _MAP_EXTRA_ATTRS:
         if attr in data:
             setattr(game_map, attr, data[attr])
     if "origin_map" in data:
@@ -213,7 +236,12 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
 
 
 def _deserialize_worker(data: dict) -> Worker:
-    w = Worker(data["x"], data["y"], player_id=data["player_id"])
+    w = Worker(
+        data["x"],
+        data["y"],
+        player_id=data["player_id"],
+        home_map=_str_to_key(data.get("home_map", "overland")),
+    )
     w.speed = data["speed"]
     w.body_color = tuple(data["body_color"])
     w.skin_color = tuple(data["skin_color"])
@@ -223,7 +251,12 @@ def _deserialize_worker(data: dict) -> Worker:
 
 
 def _deserialize_pet(data: dict) -> Pet:
-    p = Pet(data["x"], data["y"], kind=data["kind"])
+    p = Pet(
+        data["x"],
+        data["y"],
+        kind=data["kind"],
+        home_map=_str_to_key(data.get("home_map", "overland")),
+    )
     p.speed = data["speed"]
     p.body_color = tuple(data["body_color"])
     p.eye_color = tuple(data["eye_color"])
@@ -238,6 +271,20 @@ def _deserialize_enemy(data: dict) -> Enemy:
     e = Enemy(data["x"], data["y"], data["type_key"])
     e.hp = data["hp"]
     return e
+
+
+def _deserialize_sea_creature(data: dict) -> SeaCreature:
+    sc = SeaCreature(
+        data["x"],
+        data["y"],
+        kind=data["kind"],
+        home_map=_str_to_key(data.get("home_map", "overland")),
+    )
+    sc.speed = data["speed"]
+    sc.size = data["size"]
+    sc.body_color = tuple(data["body_color"])
+    sc.facing_right = data.get("facing_right", True)
+    return sc
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +318,7 @@ def save_game(game: "Game") -> None:
         ],
         "workers": [_serialize_worker(w) for w in game.workers],
         "pets": [_serialize_pet(p) for p in game.pets],
+        "sea_creatures": [_serialize_sea_creature(sc) for sc in game.sea_creatures],
         "visited_sectors": [list(s) for s in game.visited_sectors],
         "land_sectors": [list(s) for s in game.land_sectors],
     }
@@ -317,6 +365,7 @@ def apply_save(game: "Game", data: dict) -> None:
     # Workers and pets
     game.workers = [_deserialize_worker(w) for w in data["workers"]]
     game.pets = [_deserialize_pet(p) for p in data["pets"]]
+    game.sea_creatures = [_deserialize_sea_creature(sc) for sc in data.get("sea_creatures", [])]
 
     # Visited sectors
     game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}

@@ -26,6 +26,11 @@ from src.config import (
     PIER,
     BOAT,
     TREASURE_CHEST,
+    SAND,
+    CORAL,
+    REEF,
+    DIVE_EXIT,
+    SCUBA_BUILD_COST,
     SETTLEMENT_TIER_SIZES,
     SETTLEMENT_TIER_NAMES,
     HOUSE_BUILD_COST,
@@ -43,8 +48,8 @@ from src.world import (
     compute_town_clusters,
 )
 from src.world.map import GameMap
-from src.world.environments import CaveEnvironment
-from src.entities import Player, Projectile, Worker, Pet, Enemy
+from src.world.environments import CaveEnvironment, UnderwaterEnvironment
+from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.save import save_game, load_game, apply_save
@@ -121,6 +126,7 @@ class Game:
         # Entities (shared between players - only on overland map)
         self.workers = []
         self.pets = []
+        self.sea_creatures = []
         self.enemies = spawn_enemies(overland_map.world)
         self.projectiles = []
 
@@ -351,15 +357,16 @@ class Game:
 
     def _try_build_house(self, player: Player) -> None:
         """Attempt to build a house at player position."""
-        if player.current_map != "overland":
-            return  # Can only build houses on overland map
+        # Only allow building on overland-tileset maps (blocks caves and underwater)
+        current_map = self.maps[player.current_map]
+        if current_map.tileset != "overland":
+            return
 
         build_col = int(player.x) // TILE
         build_row = int(player.y) // TILE
         if not (0 <= build_col < WORLD_COLS and 0 <= build_row < WORLD_ROWS):
             return
 
-        current_map = self.maps["overland"]
         if (
             current_map.get_tile(build_row, build_col) != GRASS
             or player.inventory.get("Dirt", 0) < HOUSE_BUILD_COST
@@ -378,24 +385,27 @@ class Game:
         for _ in range(10):
             self.particles.append(Particle(tile_cx, tile_cy, (160, 82, 45)))
 
+        home = player.current_map
         if random.random() < 0.25:
-            self.pets.append(Pet(tile_cx, tile_cy, kind="dog"))
+            self.pets.append(Pet(tile_cx, tile_cy, kind="dog", home_map=home))
             self.floats.append(
                 FloatingText(tile_cx, tile_cy - 20, "Dog spawned!", (180, 130, 70))
             )
         else:
-            self.workers.append(Worker(tile_cx, tile_cy, player_id=player.player_id))
+            self.workers.append(
+                Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
+            )
             self.floats.append(
                 FloatingText(tile_cx, tile_cy - 20, "Worker spawned!", (100, 220, 255))
             )
 
-        if has_adjacent_house(self.maps["overland"].world, build_col, build_row):
-            self.pets.append(Pet(tile_cx, tile_cy, kind="cat"))
+        if has_adjacent_house(current_map.world, build_col, build_row):
+            self.pets.append(Pet(tile_cx, tile_cy, kind="cat", home_map=home))
             self.floats.append(
                 FloatingText(tile_cx, tile_cy - 36, "Cat appeared!", (255, 165, 0))
             )
 
-        self._update_town_clusters(build_col, build_row, player)
+        self._update_town_clusters(build_col, build_row, player, current_map)
 
     # -- helpers -----------------------------------------------------------
 
@@ -432,9 +442,11 @@ class Game:
         """Context-sensitive interact key handler.
 
         Priority:
+          0. On a surface map adjacent to a HOUSE → craft Scuba Gear (5 Wood).
           1. If standing on a cave entrance → enter the cave.
           2. If in a cave and standing on a CAVE_EXIT tile → exit the cave.
-          3. If player is on_boat → show sailing prompt.
+          2.5. If in an underwater map and standing on DIVE_EXIT → surface.
+          3. If player is on_boat → dive (with Scuba Gear) or show hint.
           4. If adjacent to a TREASURE_CHEST → open it.
           5. If standing on a PIER tile with WATER adjacent → build boat (if materials).
         """
@@ -446,8 +458,38 @@ class Game:
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
 
+        # 0. Craft Scuba Gear at a house (surface maps only)
+        if current_map_obj.tileset == "overland":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == HOUSE:
+                    tx = p_col * TILE + TILE // 2
+                    ty = p_row * TILE + TILE // 2
+                    if player.inventory.get("Wood", 0) < SCUBA_BUILD_COST:
+                        self.floats.append(
+                            FloatingText(
+                                tx,
+                                ty - 20,
+                                f"Need {SCUBA_BUILD_COST} Wood to craft Scuba Gear!",
+                                (255, 100, 100),
+                            )
+                        )
+                        return
+                    if not try_spend(player.inventory, {"Wood": SCUBA_BUILD_COST}):
+                        return
+                    player.inventory["Scuba Gear"] = (
+                        player.inventory.get("Scuba Gear", 0) + 1
+                    )
+                    self.floats.append(
+                        FloatingText(tx, ty, "Scuba Gear crafted!", (60, 200, 255))
+                    )
+                    for _ in range(8):
+                        self.particles.append(Particle(tx, ty, (40, 160, 220)))
+                    return
+
         # 1. Cave entry — standing on a cave entrance tile on a surface map
         if current_map_obj.tileset == "overland" and not (
+
             isinstance(player.current_map, tuple) and len(player.current_map) == 2
         ):
             tile_id = current_map_obj.get_tile(p_row, p_col)
@@ -516,8 +558,41 @@ class Game:
                 )
                 return
 
-        # 3. On boat — show a sailing hint (actual edge-crossing handles transit)
+        # 2.5. Underwater exit — standing on DIVE_EXIT returns player to the surface
+        if (
+            isinstance(player.current_map, tuple)
+            and len(player.current_map) == 3
+            and player.current_map[0] == "underwater"
+        ):
+            tile_id = current_map_obj.get_tile(p_row, p_col)
+            if tile_id == DIVE_EXIT:
+                origin_key = getattr(current_map_obj, "origin_map", "overland")
+                origin_map = self.maps.get(origin_key)
+                if origin_map is None:
+                    origin_key = "overland"
+                    origin_map = self.maps["overland"]
+                # Place player back on the boat tile position
+                dive_col = getattr(current_map_obj, "dive_col", 0)
+                dive_row = getattr(current_map_obj, "dive_row", 0)
+                player.x = dive_col * TILE + TILE // 2
+                player.y = dive_row * TILE + TILE // 2
+                player.current_map = origin_key
+                # Restore boat at dive position (player is back on the water)
+                player.on_boat = True
+                player.boat_col = dive_col
+                player.boat_row = dive_row
+                origin_map.set_tile(dive_row, dive_col, WATER)
+                self._snap_camera_to_player(player)
+                self.floats.append(
+                    FloatingText(player.x, player.y - 30, "Surfaced!", (60, 200, 255))
+                )
+                return
+
+        # 3. On boat — dive if player has Scuba Gear, otherwise show sailing hint
         if player.on_boat:
+            if player.inventory.get("Scuba Gear", 0) > 0:
+                self._try_dive(player)
+                return
             self.floats.append(
                 FloatingText(
                     int(player.x),
@@ -567,6 +642,37 @@ class Game:
                     for _ in range(12):
                         self.particles.append(Particle(btx, bty, (80, 160, 220)))
                     return
+
+    def _try_dive(self, player: Player) -> None:
+        """Transition from the boat surface into an underwater map at the current position."""
+        dive_col = player.boat_col
+        dive_row = player.boat_row
+        if dive_col is None or dive_row is None:
+            return
+
+        dive_key = ("underwater", dive_col, dive_row)
+        if dive_key not in self.maps:
+            env = UnderwaterEnvironment(dive_col, dive_row)
+            underwater_map = env.generate()
+            underwater_map.origin_map = player.current_map
+            self.maps[dive_key] = underwater_map
+            # Spawn sea creatures and register them
+            creatures = env.spawn_sea_creatures(underwater_map)
+            self.sea_creatures.extend(creatures)
+        else:
+            underwater_map = self.maps[dive_key]
+            underwater_map.origin_map = player.current_map
+
+        player.on_boat = False
+        player.x = underwater_map.spawn_col * TILE + TILE // 2
+        player.y = underwater_map.spawn_row * TILE + TILE // 2
+        player.current_map = dive_key
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(player.x, player.y - 30, "Diving!", (60, 200, 255))
+        )
+        for _ in range(12):
+            self.particles.append(Particle(int(player.x), int(player.y), (40, 160, 220)))
 
     def _try_build_pier(self, player: Player) -> None:
         """Build a 2-tile pier extending from the player's shore tile into water."""
@@ -770,11 +876,14 @@ class Game:
         return (0, SETTLEMENT_TIER_NAMES[0])
 
     def _update_town_clusters(
-        self, build_col: int, build_row: int, player: Player
+        self,
+        build_col: int,
+        build_row: int,
+        player: Player,
+        game_map: "GameMap",
     ) -> None:
         """Recompute town clusters after a house is placed and announce tier upgrades."""
-        overland = self.maps["overland"]
-        old_clusters = overland.town_clusters
+        old_clusters = game_map.town_clusters
 
         # Determine the largest cluster any adjacent tile belonged to before this build
         old_max_size = 0
@@ -786,8 +895,8 @@ class Game:
         old_tier_idx, _ = self._get_settlement_tier(old_max_size)
 
         # Recompute all clusters
-        new_clusters = compute_town_clusters(overland.world)
-        overland.town_clusters = new_clusters
+        new_clusters = compute_town_clusters(game_map.world)
+        game_map.town_clusters = new_clusters
 
         new_size = new_clusters.get((build_row, build_col), 1)
         new_tier_idx, new_tier_name = self._get_settlement_tier(new_size)
@@ -816,9 +925,10 @@ class Game:
             for res, qty in bonus_resources.items():
                 player.inventory[res] = player.inventory.get(res, 0) + qty
 
+            home = player.current_map
             for _ in range(bonus_workers):
                 self.workers.append(
-                    Worker(tile_cx, tile_cy, player_id=player.player_id)
+                    Worker(tile_cx, tile_cy, player_id=player.player_id, home_map=home)
                 )
 
             if bonus_resources:
@@ -1302,15 +1412,16 @@ class Game:
                 )
         # ----------------------------------------------------------------
 
-        # Workers (each assigned to a specific player) - only on overland map
-        overland_map = self.maps["overland"]
+        # Workers (each assigned to a specific player, operating on their home island)
         for w in self.workers:
-            # Get the player this worker is assigned to
+            worker_map = self.maps.get(w.home_map)
+            if worker_map is None:
+                continue
             target_player = self.player1 if w.player_id == 1 else self.player2
             w.update(
                 dt,
-                overland_map.world,
-                overland_map.tile_hp,
+                worker_map.world,
+                worker_map.tile_hp,
                 target_player.inventory,
                 self.particles,
                 self.floats,
@@ -1319,13 +1430,32 @@ class Game:
             target_player.xp += w.xp_earned
             w.xp_earned = 0
 
-        # Pets (only on overland map)
+        # Pets follow players only when on the same island
         for pet in self.pets:
-            # Pets follow the closest player
-            dist1 = math.hypot(pet.x - self.player1.x, pet.y - self.player1.y)
-            dist2 = math.hypot(pet.x - self.player2.x, pet.y - self.player2.y)
-            target = self.player1 if dist1 < dist2 else self.player2
-            pet.update(dt, target.x, target.y, overland_map.world)
+            pet_map = self.maps.get(pet.home_map)
+            if pet_map is None:
+                continue
+            # Only consider players that are currently on this pet's home island
+            p1_here = self.player1.current_map == pet.home_map
+            p2_here = self.player2.current_map == pet.home_map
+            if not p1_here and not p2_here:
+                continue
+            if p1_here and p2_here:
+                dist1 = math.hypot(pet.x - self.player1.x, pet.y - self.player1.y)
+                dist2 = math.hypot(pet.x - self.player2.x, pet.y - self.player2.y)
+                target = self.player1 if dist1 < dist2 else self.player2
+            elif p1_here:
+                target = self.player1
+            else:
+                target = self.player2
+            pet.update(dt, target.x, target.y, pet_map.world)
+
+        # Sea creatures — wander their home underwater map
+        for sc in self.sea_creatures:
+            sc_map = self.maps.get(sc.home_map)
+            if sc_map is None:
+                continue
+            sc.update(dt, sc_map.world)
 
         # Enemies
         self._update_enemies(dt)
@@ -1973,23 +2103,76 @@ class Game:
                         (sx + 24, sy + 28),
                         2,
                     )
-
-        # Draw effects and objects for this viewport
+                elif tid == CORAL:
+                    # Coral formation: branching pink arms
+                    coral_c = info.get("drop_color", (240, 80, 130))
+                    bright_c = tuple(min(255, ch + 60) for ch in coral_c)
+                    # Central stalk
+                    pygame.draw.line(
+                        self.screen, coral_c, (sx + 16, sy + 28), (sx + 16, sy + 14), 2
+                    )
+                    # Left branch
+                    pygame.draw.line(
+                        self.screen, coral_c, (sx + 16, sy + 20), (sx + 8, sy + 12), 2
+                    )
+                    pygame.draw.circle(self.screen, bright_c, (sx + 8, sy + 11), 3)
+                    # Right branch
+                    pygame.draw.line(
+                        self.screen, coral_c, (sx + 16, sy + 18), (sx + 24, sy + 10), 2
+                    )
+                    pygame.draw.circle(self.screen, bright_c, (sx + 24, sy + 9), 3)
+                    # Top tip
+                    pygame.draw.circle(self.screen, bright_c, (sx + 16, sy + 13), 3)
+                elif tid == DIVE_EXIT:
+                    # Upward-floating bubbles and chevron indicating surface
+                    pulse = int(math.sin(ticks * 0.005) * 15 + 40)
+                    glow = (pulse, pulse + 80, min(255, pulse + 120))
+                    pygame.draw.rect(self.screen, glow, (sx + 4, sy + 2, 24, 28))
+                    # Upward chevron
+                    arrow_c = (200, 240, 255)
+                    pygame.draw.polygon(
+                        self.screen,
+                        arrow_c,
+                        [(sx + 16, sy + 6), (sx + 10, sy + 14), (sx + 22, sy + 14)],
+                    )
+                    pygame.draw.polygon(
+                        self.screen,
+                        arrow_c,
+                        [(sx + 16, sy + 14), (sx + 10, sy + 22), (sx + 22, sy + 22)],
+                    )
+                    # Bubble
+                    bub_off = int(math.sin(ticks * 0.004 + 1.5) * 3)
+                    pygame.draw.circle(
+                        self.screen, (180, 230, 255), (sx + 24, sy + 10 + bub_off), 2
+                    )
         for par in self.particles:
             par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         for f in self.floats:
             f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
 
-        # Workers, pets, and overland enemies only on overland map
-        if player.current_map == "overland":
+        # Workers and pets: only visible on their home island
+        if player.current_map == "overland" or (
+            isinstance(player.current_map, tuple) and len(player.current_map) == 3
+        ):
             for w in self.workers:
-                w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-
+                if w.home_map == player.current_map:
+                    w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
             for pet in self.pets:
-                pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
+                if pet.home_map == player.current_map:
+                    pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
+
+        # Sea creatures — only in their home underwater map
+        for sc in self.sea_creatures:
+            if sc.home_map == player.current_map:
+                sc.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
+
+        # Overland enemies only on the main island; cave enemies on their specific cave
+        if player.current_map == "overland":
             for enemy in self.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        else:
+        elif not (
+            isinstance(player.current_map, tuple) and len(player.current_map) == 3
+        ):
             # Draw enemies belonging to the cave the player is currently in
             cave_map = self.get_player_current_map(player)
             if cave_map is not None:
@@ -2123,9 +2306,9 @@ class Game:
         self.screen.blit(inv_text, (screen_x + 18, inv_y))
 
         items = list(player.inventory.items())
-        items_per_column = 2
-
         column_widths = [0, 80, 160]
+        num_columns = len(column_widths)
+        items_per_column = max(1, math.ceil(len(items) / num_columns))
         for idx, (res, qty) in enumerate(items):
             col = idx // items_per_column
             row = idx % items_per_column

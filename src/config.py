@@ -37,6 +37,10 @@ CAVE_WALL = 13  # Solid cave wall tile (impassable, non-mineable)
 PIER = 14  # Dock tile extending into ocean (walkable)
 BOAT = 15  # Boat tile moored next to pier (board by walking on)
 TREASURE_CHEST = 16  # Chest tile on land containing loot
+SAND = 17           # Underwater sand floor tile (walkable)
+CORAL = 18          # Mineable coral formation (drops "Coral")
+REEF = 19           # Solid reef wall (impassable, non-mineable)
+DIVE_EXIT = 20      # Exit tile in underwater map (returns player to surface)
 
 # Settlement tiers: minimum connected-house cluster size to reach each tier
 SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
@@ -45,5 +49,6 @@ SETTLEMENT_TIER_NAMES = ["Cottage", "Hamlet", "Village", "Town", "Large Town", "
 HOUSE_BUILD_COST = 20  # Dirt required to build a house
 PIER_BUILD_COST = 5  # Wood required to build a pier
 BOAT_BUILD_COST = 1  # Wood required to build a boat (+ 1 Sail)
+SCUBA_BUILD_COST = 5  # Wood required to craft Scuba Gear at a house
 SECTOR_WIPE_DURATION = 0.5  # Seconds for the edge-crossing scroll wipe
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island

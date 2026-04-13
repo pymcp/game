@@ -71,4 +71,12 @@ class GameMap:
             b = max(0, int(b * 0.6))
             return (r, g, b)
 
+        # Adjust colors for underwater tileset: blue-green tint
+        if self.tileset == "underwater":
+            r, g, b = base_color
+            r = max(0, int(r * 0.65))
+            g = max(0, int(g * 0.9))
+            b = min(255, int(b * 1.3))
+            return (r, g, b)
+
         return base_color
