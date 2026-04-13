@@ -1914,9 +1914,47 @@ class Game:
         font_small = self.font_ui_sm
         font_tiny = self.font_ui_xs
 
-        # Top HUD Panel (Stats & Inventory)
-        top_panel_h = 240
+        # Pre-compute upgrade lines so the combined panel can be sized correctly
+        def _cost_str(cost_dict, inventory):
+            """Format a cost dict as 'Item: need/have' entries."""
+            parts = []
+            for item, needed in cost_dict.items():
+                have = inventory.get(item, 0)
+                color_flag = have >= needed
+                parts.append((f"{item}: {have}/{needed}", color_flag))
+            return parts
+
+        upg_lines = []
+        pick_name = PICKAXES[player.pick_level]["name"]
+        if player.pick_level < len(UPGRADE_COSTS):
+            pick_cost = _cost_str(UPGRADE_COSTS[player.pick_level], player.inventory)
+            upg_lines.append((f"Pick ({pick_name}):", pick_cost))
+        else:
+            upg_lines.append((f"Pick ({pick_name}):", None))
+
+        wpn_name = WEAPONS[player.weapon_level]["name"]
+        if player.weapon_level < len(WEAPON_UNLOCK_COSTS):
+            wpn_cost = _cost_str(WEAPON_UNLOCK_COSTS[player.weapon_level], player.inventory)
+            upg_lines.append((f"Wpn ({wpn_name}):", wpn_cost))
+        else:
+            upg_lines.append((f"Wpn ({wpn_name}):", None))
+
+        house_cost = _cost_str({"Dirt": HOUSE_BUILD_COST}, player.inventory)
+        build_key = pygame.key.name(player.controls.build_house_key).upper()
+        upg_lines.append((f"House ({build_key}):", house_cost))
+
+        pier_key = pygame.key.name(player.controls.build_pier_key).upper()
+        pier_cost = _cost_str({"Wood": PIER_BUILD_COST}, player.inventory)
+        upg_lines.append((f"Pier ({pier_key}):", pier_cost))
+
+        int_key = pygame.key.name(player.controls.interact_key).upper()
+        boat_cost = _cost_str({"Wood": BOAT_BUILD_COST, "Sail": 1}, player.inventory)
+        upg_lines.append((f"Boat ({int_key} at pier):", boat_cost))
+
+        # Top HUD Panel (Stats, Inventory & Upgrades — combined)
         top_panel_w = 240
+        # inv_y = screen_y + 105; upgrades header at inv_y + 100 = screen_y + 205
+        top_panel_h = 197 + 18 + len(upg_lines) * 30 + 10
         top_panel_surf = pygame.Surface((top_panel_w, top_panel_h), pygame.SRCALPHA)
         top_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
         self.screen.blit(top_panel_surf, (screen_x + 8, screen_y + 8))
@@ -1971,10 +2009,11 @@ class Game:
         items = list(player.inventory.items())
         items_per_column = 2
 
+        column_widths = [0, 80, 160]
         for idx, (res, qty) in enumerate(items):
             col = idx // items_per_column
             row = idx % items_per_column
-            x_offset = col * 110  # Column width
+            x_offset = column_widths[col]
             y_offset = inv_y + 22 + row * 18
             res_text = font_tiny.render(f"{res}: {qty}", True, (180, 180, 180))
             self.screen.blit(res_text, (screen_x + 18 + x_offset, y_offset))
@@ -1984,72 +2023,18 @@ class Game:
         wpn_text = font_tiny.render(f"Weapon: {wpn['name']}", True, (255, 150, 100))
         self.screen.blit(wpn_text, (screen_x + 18, inv_y + 82))
 
-        # Upgrades panel
-        upg_panel_y = screen_y + 8 + 240 + 6
-        upg_panel_w = 240
-
-        def _cost_str(cost_dict, inventory):
-            """Format a cost dict as 'Item: need/have' entries."""
-            parts = []
-            for item, needed in cost_dict.items():
-                have = inventory.get(item, 0)
-                color_flag = have >= needed
-                parts.append((f"{item}: {have}/{needed}", color_flag))
-            return parts
-
-        upg_lines = []  # list of (label, [(text, met), ...]) or (label, None) for MAX
-
-        # Pickaxe upgrade
-        pick_name = PICKAXES[player.pick_level]["name"]
-        if player.pick_level < len(UPGRADE_COSTS):
-            next_pick = PICKAXES[player.pick_level + 1]["name"]
-            pick_cost = _cost_str(UPGRADE_COSTS[player.pick_level], player.inventory)
-            upg_lines.append((f"Pick ({pick_name}→{next_pick}):", pick_cost))
-        else:
-            upg_lines.append((f"Pick ({pick_name}):", None))
-
-        # Weapon unlock
-        wpn_name = WEAPONS[player.weapon_level]["name"]
-        if player.weapon_level < len(WEAPON_UNLOCK_COSTS):
-            next_wpn = WEAPONS[player.weapon_level + 1]["name"]
-            wpn_cost = _cost_str(
-                WEAPON_UNLOCK_COSTS[player.weapon_level], player.inventory
-            )
-            upg_lines.append((f"Wpn ({wpn_name}→{next_wpn}):", wpn_cost))
-        else:
-            upg_lines.append((f"Wpn ({wpn_name}):", None))
-
-        # House
-        house_cost = _cost_str({"Dirt": HOUSE_BUILD_COST}, player.inventory)
-        build_key = pygame.key.name(player.controls.build_house_key).upper()
-        upg_lines.append((f"House ({build_key}):", house_cost))
-
-        # Pier
-        pier_key = pygame.key.name(player.controls.build_pier_key).upper()
-        pier_cost = _cost_str({"Wood": PIER_BUILD_COST}, player.inventory)
-        upg_lines.append((f"Pier ({pier_key}):", pier_cost))
-
-        # Boat
-        int_key = pygame.key.name(player.controls.interact_key).upper()
-        boat_cost = _cost_str({"Wood": BOAT_BUILD_COST, "Sail": 1}, player.inventory)
-        upg_lines.append((f"Boat ({int_key} at pier):", boat_cost))
-
-        # Calculate panel height: header + 2 rows per entry (label + costs)
-        upg_panel_h = 14 + len(upg_lines) * 30
-        upg_surf = pygame.Surface((upg_panel_w, upg_panel_h), pygame.SRCALPHA)
-        upg_surf.fill((20, 20, 30, 200))
-        self.screen.blit(upg_surf, (screen_x + 8, upg_panel_y))
-        pygame.draw.rect(
+        # Upgrades section — inline inside the combined top panel
+        pygame.draw.line(
             self.screen,
-            (150, 150, 150),
-            (screen_x + 8, upg_panel_y, upg_panel_w, upg_panel_h),
-            2,
+            (80, 80, 100),
+            (screen_x + 12, inv_y + 97),
+            (screen_x + 12 + top_panel_w - 8, inv_y + 97),
+            1,
         )
-
         upg_header = font_small.render("Upgrades:", True, (200, 200, 200))
-        self.screen.blit(upg_header, (screen_x + 18, upg_panel_y + 4))
+        self.screen.blit(upg_header, (screen_x + 18, inv_y + 100))
 
-        entry_y = upg_panel_y + 20
+        entry_y = inv_y + 116
         for label, cost_parts in upg_lines:
             label_surf = font_tiny.render(label, True, (200, 200, 200))
             self.screen.blit(label_surf, (screen_x + 18, entry_y))
@@ -2065,28 +2050,10 @@ class Game:
                     cx += ts.get_width() + 6
             entry_y += 30
 
-        # Auto toggle status
-        auto_status_y = inv_y + 100
-        auto_mine_key = pygame.key.name(player.controls.toggle_auto_mine_key).upper()
-        auto_mine_status = (
-            f"Auto Mine ({auto_mine_key}): {'ON' if player.auto_mine else 'OFF'}"
-        )
-        auto_mine_color = (100, 255, 100) if player.auto_mine else (150, 150, 150)
-        auto_mine_text = font_tiny.render(auto_mine_status, True, auto_mine_color)
-        self.screen.blit(auto_mine_text, (screen_x + 18, auto_status_y))
-
-        auto_fire_key = pygame.key.name(player.controls.toggle_auto_fire_key).upper()
-        auto_fire_status = (
-            f"Auto Fire ({auto_fire_key}): {'ON' if player.auto_fire else 'OFF'}"
-        )
-        auto_fire_color = (100, 255, 100) if player.auto_fire else (150, 150, 150)
-        auto_fire_text = font_tiny.render(auto_fire_status, True, auto_fire_color)
-        self.screen.blit(auto_fire_text, (screen_x + 18, auto_status_y + 16))
-
-        # Bottom HUD Panel (Controls)
-        ctrl_y_start = screen_y + view_h - 100
-        bottom_panel_h = 92
-        bottom_panel_w = 240
+        # Bottom HUD Panel (Controls + Auto-toggle status)
+        bottom_panel_h = 130
+        ctrl_y_start = screen_y + view_h - 138
+        bottom_panel_w = 340
         bottom_panel_surf = pygame.Surface(
             (bottom_panel_w, bottom_panel_h), pygame.SRCALPHA
         )
@@ -2110,13 +2077,28 @@ class Game:
 
         controls_per_column = 3
 
+        column_widths = [0, 90, 210]
         for idx, ctrl_text in enumerate(controls):
             col = idx // controls_per_column
             row = idx % controls_per_column
-            x_offset = col * 110  # Column width
+            x_offset = column_widths[col]
             y_offset = ctrl_y + 24 + row * 15
             ctrl_surf = font_tiny.render(ctrl_text, True, (180, 180, 180))
             self.screen.blit(ctrl_surf, (screen_x + 18 + x_offset, y_offset))
+
+        # Auto-toggle status lines (appended below the controls grid)
+        auto_y = ctrl_y + 24 + (controls_per_column - 1) * 15 + 20
+        auto_mine_key = pygame.key.name(player.controls.toggle_auto_mine_key).upper()
+        auto_mine_status = f"Auto Mine ({auto_mine_key}): {'ON' if player.auto_mine else 'OFF'}"
+        auto_mine_color = (100, 255, 100) if player.auto_mine else (150, 150, 150)
+        auto_mine_text = font_tiny.render(auto_mine_status, True, auto_mine_color)
+        self.screen.blit(auto_mine_text, (screen_x + 18, auto_y))
+
+        auto_fire_key = pygame.key.name(player.controls.toggle_auto_fire_key).upper()
+        auto_fire_status = f"Auto Fire ({auto_fire_key}): {'ON' if player.auto_fire else 'OFF'}"
+        auto_fire_color = (100, 255, 100) if player.auto_fire else (150, 150, 150)
+        auto_fire_text = font_tiny.render(auto_fire_status, True, auto_fire_color)
+        self.screen.blit(auto_fire_text, (screen_x + 18, auto_y + 16))
 
     def _draw_death_challenge(self, player, screen_x, screen_y, view_w, view_h):
         """Draw the death/respawn math challenge overlay for a player's viewport."""
