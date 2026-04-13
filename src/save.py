@@ -23,7 +23,10 @@ from src.entities.overland_creature import OverlandCreature
 if TYPE_CHECKING:
     from src.game import Game
 
-SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+SAVE_DIR = os.path.join(_PROJECT_ROOT, "saves")
+SAVE_PATH = os.path.join(SAVE_DIR, "save.json")
+_LEGACY_SAVE_PATH = os.path.join(_PROJECT_ROOT, "save.json")
 SAVE_VERSION = 10
 
 
@@ -504,12 +507,21 @@ def save_game(game: "Game") -> None:
         },
     }
 
+    os.makedirs(SAVE_DIR, exist_ok=True)
     with open(SAVE_PATH, "w") as f:
         json.dump(save_data, f)
 
 
+def _migrate_legacy_save() -> None:
+    """Move a save.json from the old project-root location into saves/."""
+    if os.path.exists(_LEGACY_SAVE_PATH) and not os.path.exists(SAVE_PATH):
+        os.makedirs(SAVE_DIR, exist_ok=True)
+        os.rename(_LEGACY_SAVE_PATH, SAVE_PATH)
+
+
 def load_game() -> dict | None:
-    """Load save.json and return the raw dict, or None if no save exists."""
+    """Load saves/save.json and return the raw dict, or None if no save exists."""
+    _migrate_legacy_save()
     if not os.path.exists(SAVE_PATH):
         return None
     try:

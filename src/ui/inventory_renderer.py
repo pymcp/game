@@ -13,6 +13,7 @@ from src.config import TILE
 from src.data import PICKAXES, ARMOR_PIECES, ACCESSORY_PIECES
 from src.data.attack_patterns import WEAPON_REGISTRY
 from src.effects import Particle, FloatingText
+from src.ui.context_panel import ContextLine, ContextPanel
 from src.ui.inventory import (
     InventoryState,
     InventoryTab,
@@ -46,7 +47,6 @@ class InventoryRenderer:
     GAP: int = 5
     COLS: int = 8
     TAB_H: int = 68
-    TOOLTIP_H: int = 165
     SLOT_SZ: int = 40
 
     def __init__(self, game: object) -> None:
@@ -185,7 +185,7 @@ class InventoryRenderer:
             state.scroll_offset = row - visible_rows + 1
 
     def _visible_rows(self) -> int:
-        grid_h = self.game.viewport_h - self.TAB_H - self.TOOLTIP_H - 8
+        grid_h = self.game.viewport_h - self.TAB_H - 8
         return max(1, grid_h // (self.CELL + self.GAP))
 
     def _float(
@@ -482,13 +482,12 @@ class InventoryRenderer:
         w: int,
         h: int,
     ) -> None:
-        """Draw the tab strip + item grid + tooltip."""
+        """Draw the tab strip + item grid + floating tooltip."""
         screen = self.game.screen
         font_xs = self.game.font_ui_xs
         font_sm = self.game.font_ui_sm
 
         tab_h = self.TAB_H
-        tooltip_h = self.TOOLTIP_H
         cell = self.CELL
         gap = self.GAP
         cols = self.COLS
@@ -519,7 +518,7 @@ class InventoryRenderer:
             screen.blit(lbl, (tx + (tab_w - lbl.get_width()) // 2, ty + 44))
 
         grid_top = by + tab_h + 4
-        grid_h = h - tab_h - tooltip_h - 8
+        grid_h = h - tab_h - 8
         total_grid_w = cols * (cell + gap) - gap
         grid_left = bx + (w - total_grid_w) // 2
 
@@ -528,6 +527,8 @@ class InventoryRenderer:
         items = get_tab_items(player, state.tab)
         visible_rows = self._visible_rows()
 
+        sel_sx: int = grid_left
+        sel_sy: int = grid_top
         for idx, item in enumerate(items):
             row = idx // cols
             col_i = idx % cols
@@ -537,6 +538,8 @@ class InventoryRenderer:
             sy = grid_top + (row - state.scroll_offset) * (cell + gap)
 
             is_selected = (not state.doll_focus) and idx == state.grid_idx
+            if is_selected:
+                sel_sx, sel_sy = sx, sy
             self._draw_cell(item, player, sx, sy, cell, is_selected, state)
 
         screen.set_clip(None)
@@ -565,14 +568,22 @@ class InventoryRenderer:
             self._draw_ring_pick(state, bx, by, w, h)
             return
 
-        tooltip_top = by + h - tooltip_h
-        pygame.draw.line(
-            screen, (60, 55, 90), (bx, tooltip_top), (bx + w, tooltip_top), 1
-        )
         focused_item = (
             items[state.grid_idx] if (not state.doll_focus and items) else None
         )
-        self._draw_tooltip(player, state, focused_item, bx, tooltip_top, w, tooltip_h)
+        anchor_x = sel_sx + cell // 2
+        anchor_y = sel_sy + cell
+        self._draw_tooltip(
+            player,
+            state,
+            focused_item,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
+            viewport_x=bx,
+            viewport_y=by,
+            viewport_w=w,
+            viewport_h=h,
+        )
 
     def _draw_cell(
         self,
@@ -655,45 +666,57 @@ class InventoryRenderer:
                 screen, (55, 50, 82), (sx, sy, cell, cell), 1, border_radius=4
             )
 
+    _tooltip_panel = ContextPanel(
+        bg_color=(14, 12, 24, 210),
+        border_color=None,
+        padding=14,
+        max_width=500,
+    )
+
     def _draw_tooltip(
         self,
         player: "Player",
         state: InventoryState,
         item: dict | None,
-        bx: int,
-        by: int,
-        w: int,
-        h: int,
+        *,
+        anchor_x: int,
+        anchor_y: int,
+        viewport_x: int,
+        viewport_y: int,
+        viewport_w: int,
+        viewport_h: int,
     ) -> None:
-        """Draw the tooltip strip at the bottom of the grid panel."""
-        screen = self.game.screen
-        font_sm = self.game.font_ui_sm
-        font_xs = self.game.font_ui_xs
-        PADX = 14
-
-        bg = pygame.Surface((w, h), pygame.SRCALPHA)
-        bg.fill((14, 12, 24, 210))
-        screen.blit(bg, (bx, by))
+        """Draw a floating tooltip anchored near the selected cell."""
+        fonts: dict[str, pygame.font.Font] = {
+            "sm": self.game.font_ui_sm,
+            "xs": self.game.font_ui_xs,
+        }
 
         if state.message:
-            msg = font_sm.render(state.message, True, (255, 180, 80))
-            screen.blit(msg, (bx + PADX, by + (h - msg.get_height()) // 2))
+            lines = [ContextLine(state.message, color=(255, 180, 80), font_key="sm")]
+            self._tooltip_panel.draw(
+                self.game.screen,
+                fonts,
+                title=None,
+                lines=lines,
+                viewport_x=viewport_x,
+                viewport_y=viewport_y,
+                viewport_w=viewport_w,
+                viewport_h=viewport_h,
+                anchor_x=anchor_x,
+                anchor_y=anchor_y,
+            )
             return
 
         if item is None:
             return
 
         itype = item["type"]
-        name_surf = font_sm.render(item["name"], True, (220, 210, 255))
-        screen.blit(name_surf, (bx + PADX, by + 10))
-
-        y = by + 36
-        line_h = 18
+        title = item["name"]
+        ctx_lines: list[ContextLine] = []
 
         def _line(text: str, col: tuple[int, ...] = (180, 175, 210)) -> None:
-            nonlocal y
-            screen.blit(font_xs.render(text, True, col), (bx + PADX, y))
-            y += line_h
+            ctx_lines.append(ContextLine(text, color=col))
 
         if itype == "armor":
             _line(
@@ -789,6 +812,19 @@ class InventoryRenderer:
             _line(hint, hint_col)
             if not item["can_afford"]:
                 _line("(Missing materials)", (220, 100, 80))
+
+        self._tooltip_panel.draw(
+            self.game.screen,
+            fonts,
+            title=title,
+            lines=ctx_lines,
+            viewport_x=viewport_x,
+            viewport_y=viewport_y,
+            viewport_w=viewport_w,
+            viewport_h=viewport_h,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
+        )
 
     def _draw_ring_pick(
         self,

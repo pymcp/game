@@ -672,6 +672,11 @@ class Game:
             self._exit_sky_view(player)
             return
 
+        # Dismiss active sign display on interact press
+        if self._sign_display[pid] is not None:
+            self._sign_display[pid] = None
+            return
+
         # 0. Enter housing environment — stand ON a HOUSE tile on any surface map
         if (
             current_map_obj.tileset == "overland"
@@ -890,7 +895,12 @@ class Game:
                 if current_map_obj.get_tile(rr, cc) == SIGN:
                     raw = object.__getattribute__(current_map_obj, "map")
                     text = raw.sign_texts.get((cc, rr), "...")
-                    self._sign_display[pid] = {"text": text, "timer": 6.0}
+                    self._sign_display[pid] = {
+                        "text": text,
+                        "timer": 6.0,
+                        "tile_col": cc,
+                        "tile_row": rr,
+                    }
                     return
 
         # 4.45 Adjacent BROKEN_LADDER — repair if player has materials

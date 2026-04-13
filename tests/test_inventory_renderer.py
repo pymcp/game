@@ -152,7 +152,6 @@ def test_layout_constants() -> None:
     assert InventoryRenderer.GAP == 5
     assert InventoryRenderer.COLS == 8
     assert InventoryRenderer.TAB_H == 68
-    assert InventoryRenderer.TOOLTIP_H == 165
     assert InventoryRenderer.SLOT_SZ == 40
 
 

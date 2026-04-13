@@ -20,12 +20,12 @@ class FloatingText:
         self.y = y
         self.text = text
         self.color = color
-        self.life = 45
+        self.life = 120
         self.map_key = map_key
 
     def update(self) -> None:
         """Float upward and fade."""
-        self.y -= 0.8
+        self.y -= 0.3
         self.life -= 1
 
     def draw(

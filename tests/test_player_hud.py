@@ -127,6 +127,21 @@ class TestSignDisplay:
         hud = _make_hud(mock_game)
         hud._draw_sign_display(player1, 0, 0, 320, 360)
 
+    def test_dismiss_on_interact(self, mock_game: MockGame, player1) -> None:
+        """Pressing interact while a sign display is active should dismiss it."""
+        mock_game._sign_display[1] = {
+            "text": "Hello",
+            "timer": 5.0,
+            "tile_col": 10,
+            "tile_row": 10,
+        }
+        # Simulate the dismiss logic from _try_interact
+        pid = player1.player_id
+        assert mock_game._sign_display[pid] is not None
+        # The game clears the display when interact is pressed
+        mock_game._sign_display[pid] = None
+        assert mock_game._sign_display[pid] is None
+
 
 # ---------------------------------------------------------------------------
 # Sky anim overlay

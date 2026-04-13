@@ -119,6 +119,12 @@ class MockGame:
         self.viewport_w: int = 320
         self.viewport_h: int = 360
 
+        # Camera positions
+        self.cam1_x: float = 0.0
+        self.cam1_y: float = 0.0
+        self.cam2_x: float = 0.0
+        self.cam2_y: float = 0.0
+
         # Effect collectors (simple lists for testing)
         self._floats: list[Any] = []
         self._particles: list[Any] = []

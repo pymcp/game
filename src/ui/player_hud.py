@@ -28,6 +28,7 @@ from src.config import (
 )
 from src.data import PICKAXES
 from src.data.attack_patterns import WEAPON_REGISTRY
+from src.ui.context_panel import ContextLine, ContextPanel
 from src.world import get_sector_biome
 
 if TYPE_CHECKING:
@@ -458,6 +459,14 @@ class PlayerHUD:
     # Sign text popup
     # ------------------------------------------------------------------
 
+    _sign_panel = ContextPanel(
+        bg_color=(15, 10, 5, 210),
+        border_color=(180, 140, 70),
+        border_width=2,
+        padding=14,
+        border_radius=4,
+    )
+
     def _draw_sign_display(
         self,
         player: "Player",
@@ -472,27 +481,43 @@ class PlayerHUD:
         if disp is None:
             return
 
-        screen = game.screen
-        lines = disp["text"].split("\n")
-        font = game.font_ui_sm
-        line_h = font.get_height() + 4
-        padding = 14
-        panel_h = line_h * len(lines) + padding * 2
-        panel_w = view_w - 80
-        panel_x = screen_x + 40
-        panel_y = screen_y + view_h - panel_h - 24
+        text_lines = disp["text"].split("\n")
+        ctx_lines = [
+            ContextLine(
+                line,
+                color=(230, 200, 130) if i == 0 else (210, 185, 145),
+                font_key="sm",
+            )
+            for i, line in enumerate(text_lines)
+        ]
 
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel_surf.fill((15, 10, 5, 210))
-        pygame.draw.rect(
-            panel_surf, (180, 140, 70), (0, 0, panel_w, panel_h), 2, border_radius=4
+        # Compute anchor from sign tile position + camera offset
+        cam_x = game.cam1_x if pid == 1 else game.cam2_x
+        cam_y = game.cam1_y if pid == 1 else game.cam2_y
+        tile_col = disp.get("tile_col")
+        tile_row = disp.get("tile_row")
+
+        if tile_col is not None and tile_row is not None:
+            anchor_x = int(tile_col * TILE + TILE // 2 - cam_x) + screen_x
+            anchor_y = int(tile_row * TILE - cam_y) + screen_y
+        else:
+            anchor_x = None
+            anchor_y = None
+
+        fonts = {"sm": game.font_ui_sm, "xs": game.font_ui_xs}
+        self._sign_panel.max_width = view_w - 80
+        self._sign_panel.draw(
+            game.screen,
+            fonts,
+            title=None,
+            lines=ctx_lines,
+            viewport_x=screen_x,
+            viewport_y=screen_y,
+            viewport_w=view_w,
+            viewport_h=view_h,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
         )
-        screen.blit(panel_surf, (panel_x, panel_y))
-
-        for i, line in enumerate(lines):
-            color = (230, 200, 130) if i == 0 else (210, 185, 145)
-            rendered = font.render(line, True, color)
-            screen.blit(rendered, (panel_x + padding, panel_y + padding + i * line_h))
 
     # ------------------------------------------------------------------
     # Sky ascend/descend flash overlay
