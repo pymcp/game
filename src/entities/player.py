@@ -14,6 +14,7 @@ from src.config import (
     MOUNTAIN,
 )
 from src.data import PICKAXES, WEAPONS, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, TILE_INFO
+from src.data.attack_patterns import WEAPON_REGISTRY, DEFAULT_WEAPONS, LEGACY_WEAPON_MAP
 from src.data.armor import (
     ARMOR_PIECES,
     ACCESSORY_PIECES,
@@ -41,6 +42,7 @@ class ControlScheme:
         interact_key: int,
         build_pier_key: int,
         equip_key: int,
+        cycle_weapon_key: int,
         move_description: str = "",
     ) -> None:
         """Initialize control scheme.
@@ -68,6 +70,7 @@ class ControlScheme:
         self.interact_key = interact_key
         self.build_pier_key = build_pier_key
         self.equip_key = equip_key
+        self.cycle_weapon_key = cycle_weapon_key
         self.move_description = move_description
 
     def get_controls_list(self) -> list[str]:
@@ -102,6 +105,7 @@ CONTROL_SCHEME_PLAYER1 = ControlScheme(
     interact_key=pygame.K_e,
     build_pier_key=pygame.K_h,
     equip_key=pygame.K_q,
+    cycle_weapon_key=pygame.K_TAB,
     move_description="WASD",
 )
 
@@ -122,6 +126,7 @@ CONTROL_SCHEME_PLAYER2 = ControlScheme(
     interact_key=pygame.K_KP_5,
     build_pier_key=pygame.K_KP_PLUS,
     equip_key=pygame.K_RSHIFT,
+    cycle_weapon_key=pygame.K_KP_PERIOD,
     move_description="Arrows",
 )
 
@@ -166,8 +171,9 @@ class Player:
 
         # Equipment
         self.pick_level = 0
-        self.weapon_level = 0
-        self.weapon_cooldown = 0.0
+        self.weapon_id: str = DEFAULT_WEAPONS[0]
+        self.unlocked_weapons: list[str] = [DEFAULT_WEAPONS[0]]
+        self.weapon_cooldown: float = 0.0
 
         # Armor & accessories — None means the slot is empty
         self.equipment: dict[str, str | None] = {
@@ -318,13 +324,47 @@ class Player:
                 return True
         return False
 
+    @property
+    def weapon_level(self) -> int:
+        """Legacy compat: index of current weapon in DEFAULT_WEAPONS list."""
+        if self.weapon_id in DEFAULT_WEAPONS:
+            return DEFAULT_WEAPONS.index(self.weapon_id)
+        return len(DEFAULT_WEAPONS) - 1
+
+    @weapon_level.setter
+    def weapon_level(self, value: int) -> None:
+        """Legacy compat: set weapon by old integer index."""
+        wid = LEGACY_WEAPON_MAP.get(value, DEFAULT_WEAPONS[0])
+        self.weapon_id = wid
+        if wid not in self.unlocked_weapons:
+            self.unlocked_weapons.append(wid)
+
     def try_upgrade_weapon(self) -> bool:
-        """Attempt to unlock next weapon if cost is affordable."""
-        if self.weapon_level < len(WEAPONS) - 1:
-            if try_spend(self.inventory, WEAPON_UNLOCK_COSTS[self.weapon_level]):
-                self.weapon_level += 1
+        """Attempt to unlock next default weapon if cost is affordable."""
+        idx = self.weapon_level
+        if idx < len(WEAPON_UNLOCK_COSTS):
+            if try_spend(self.inventory, WEAPON_UNLOCK_COSTS[idx]):
+                next_id = DEFAULT_WEAPONS[idx + 1]
+                self.unlock_weapon(next_id)
+                self.weapon_id = next_id
                 return True
         return False
+
+    def unlock_weapon(self, weapon_id: str) -> None:
+        """Add a weapon to the unlocked list if not already present."""
+        if weapon_id not in self.unlocked_weapons:
+            self.unlocked_weapons.append(weapon_id)
+
+    def cycle_weapon(self, direction: int = 1) -> None:
+        """Switch to the next/previous unlocked weapon."""
+        if len(self.unlocked_weapons) <= 1:
+            return
+        try:
+            idx = self.unlocked_weapons.index(self.weapon_id)
+        except ValueError:
+            idx = 0
+        idx = (idx + direction) % len(self.unlocked_weapons)
+        self.weapon_id = self.unlocked_weapons[idx]
 
     def toggle_auto_mine(self) -> None:
         """Toggle auto mine mode."""

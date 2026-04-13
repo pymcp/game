@@ -66,6 +66,11 @@ from src.data import (
     AccessoryEffect,
     ArmorMaterial,
 )
+from src.data.attack_patterns import (
+    AttackPattern,
+    WEAPON_REGISTRY,
+)
+from src.entities.attacks import create_attack
 from src.world import (
     generate_world,
     generate_ocean_sector,
@@ -94,6 +99,7 @@ from src.entities import (
     Creature,
     OverlandCreature,
 )
+from src.entities.attack import Attack
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.save import save_game, load_game, apply_save
@@ -862,6 +868,11 @@ class Game:
             self._inventory_open[pid] = not self._inventory_open[pid]
             if self._inventory_open[pid]:
                 self._inventory_ui[pid] = InventoryState()
+        elif (
+            not self.player1.is_dead
+            and key == self.player1.controls.cycle_weapon_key
+        ):
+            self.player1.cycle_weapon()
         # Player 2 controls (blocked while dead)
         elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
             self.player2.try_upgrade_pick()
@@ -890,6 +901,11 @@ class Game:
             self._inventory_open[pid] = not self._inventory_open[pid]
             if self._inventory_open[pid]:
                 self._inventory_ui[pid] = InventoryState()
+        elif (
+            not self.player2.is_dead
+            and key == self.player2.controls.cycle_weapon_key
+        ):
+            self.player2.cycle_weapon()
 
     def _try_build_house(self, player: Player) -> None:
         """Attempt to build a house at player position."""
@@ -3702,81 +3718,111 @@ class Game:
         dt: float,
     ) -> None:
         """Handle weapon firing for both players."""
-        # Player 1 firing (skipped while dead)
-        if self.player1.weapon_cooldown > 0:
-            self.player1.weapon_cooldown -= dt
-        if not self.player1.is_dead:
-            fire_input_p1 = (
-                keys[self.player1.controls.fire_key]
-                or mouse_buttons[2]
-                or self.player1.auto_fire
-            )
-            if fire_input_p1 and self.player1.weapon_cooldown <= 0:
-                wpn = WEAPONS[self.player1.weapon_level]
-                dmg_mult1 = 1.0 + self.player1.active_effects().get(
-                    AccessoryEffect.DAMAGE_BOOST, 0.0
-                )
-                wpn_p1 = {**wpn, "damage": int(wpn["damage"] * dmg_mult1)}
-                proj = Projectile(
-                    self.player1.x,
-                    self.player1.y,
-                    self.player1.facing_dx,
-                    self.player1.facing_dy,
-                    wpn_p1,
-                    player_id=1,
-                    map_key=self.player1.current_map,
-                )
-                p1_scene = self.maps.get(self.player1.current_map)
-                if p1_scene is not None:
-                    p1_scene.projectiles.append(proj)
-                self.player1.weapon_cooldown = wpn["cooldown"]
+        for player in (self.player1, self.player2):
+            if player.weapon_cooldown > 0:
+                player.weapon_cooldown -= dt
+            if player.is_dead:
+                continue
 
-        # Player 2 firing (skipped while dead)
-        if self.player2.weapon_cooldown > 0:
-            self.player2.weapon_cooldown -= dt
-        if not self.player2.is_dead:
-            fire_input_p2 = (
-                keys[self.player2.controls.fire_key] or self.player2.auto_fire
-            )
-            if fire_input_p2 and self.player2.weapon_cooldown <= 0:
-                wpn = WEAPONS[self.player2.weapon_level]
-                dmg_mult2 = 1.0 + self.player2.active_effects().get(
+            if player.player_id == 1:
+                fire_input = (
+                    keys[player.controls.fire_key]
+                    or mouse_buttons[2]
+                    or player.auto_fire
+                )
+            else:
+                fire_input = (
+                    keys[player.controls.fire_key] or player.auto_fire
+                )
+
+            # Beam management: keep existing beam alive while fire held
+            scene = self.maps.get(player.current_map)
+            if scene is not None:
+                active_beam = self._find_active_beam(scene, player.player_id)
+                if active_beam is not None:
+                    if fire_input:
+                        # Update beam direction to current facing
+                        active_beam.dir_x = player.facing_dx
+                        active_beam.dir_y = player.facing_dy
+                        continue  # Don't spawn a new attack while beam is active
+                    else:
+                        active_beam.alive = False
+
+            if fire_input and player.weapon_cooldown <= 0:
+                wpn_def = WEAPON_REGISTRY.get(player.weapon_id)
+                if wpn_def is None:
+                    continue
+                dmg_mult = 1.0 + player.active_effects().get(
                     AccessoryEffect.DAMAGE_BOOST, 0.0
                 )
-                wpn_p2 = {**wpn, "damage": int(wpn["damage"] * dmg_mult2)}
-                proj = Projectile(
-                    self.player2.x,
-                    self.player2.y,
-                    self.player2.facing_dx,
-                    self.player2.facing_dy,
-                    wpn_p2,
-                    player_id=2,
-                    map_key=self.player2.current_map,
+                atk = create_attack(
+                    weapon=wpn_def,
+                    x=player.x,
+                    y=player.y,
+                    dir_x=player.facing_dx,
+                    dir_y=player.facing_dy,
+                    player_id=player.player_id,
+                    map_key=player.current_map,
+                    damage_mult=dmg_mult,
                 )
-                p2_scene = self.maps.get(self.player2.current_map)
-                if p2_scene is not None:
-                    p2_scene.projectiles.append(proj)
-                self.player2.weapon_cooldown = wpn["cooldown"]
+                if scene is not None:
+                    scene.projectiles.append(atk)
+                player.weapon_cooldown = wpn_def.cooldown
+
+    @staticmethod
+    def _find_active_beam(scene: MapScene, player_id: int) -> Attack | None:
+        """Return the active BeamAttack for a player, or None."""
+        from src.entities.attacks.beam import BeamAttack
+        for atk in scene.projectiles:
+            if (
+                isinstance(atk, BeamAttack)
+                and atk.alive
+                and atk.player_id == player_id
+            ):
+                return atk
+        return None
 
     def _update_projectiles(self, dt: float) -> None:
-        """Update all projectiles per-scene and check for hits."""
+        """Update all attacks per-scene and check for hits."""
         for scene in self.maps.values():
-            for proj in scene.projectiles:
-                proj.update(dt)
-                if proj.alive:
-                    proj.check_hits(scene.enemies, scene.particles, scene.floats)
-                if proj.player_id == 1:
-                    xp_mult1 = 1.0 + self.player1.active_effects().get(
+            spawn_queue: list[Attack] = []
+            for atk in scene.projectiles:
+                # Determine which player owns this attack for player_x/y
+                if atk.player_id == 1:
+                    px, py = self.player1.x, self.player1.y
+                else:
+                    px, py = self.player2.x, self.player2.y
+                atk.update(dt, px, py, scene.world)
+                if atk.alive:
+                    atk.check_hits(scene.enemies, scene.particles, scene.floats)
+                # Spawn on-death attacks (e.g. bomb → explosion)
+                if not atk.alive and hasattr(atk, 'weapon') and atk.weapon.on_death_spawn:
+                    child_def = WEAPON_REGISTRY.get(atk.weapon.on_death_spawn)
+                    if child_def is not None:
+                        child = create_attack(
+                            weapon=child_def,
+                            x=atk.x,
+                            y=atk.y,
+                            dir_x=atk.dir_x,
+                            dir_y=atk.dir_y,
+                            player_id=atk.player_id,
+                            map_key=atk.map_key,
+                        )
+                        spawn_queue.append(child)
+                # Award XP
+                if atk.player_id == 1:
+                    xp_mult = 1.0 + self.player1.active_effects().get(
                         AccessoryEffect.XP_BOOST, 0.0
                     )
-                    self.player1.xp += int(proj.xp_earned * xp_mult1)
-                elif proj.player_id == 2:
-                    xp_mult2 = 1.0 + self.player2.active_effects().get(
+                    self.player1.xp += int(atk.xp_earned * xp_mult)
+                elif atk.player_id == 2:
+                    xp_mult = 1.0 + self.player2.active_effects().get(
                         AccessoryEffect.XP_BOOST, 0.0
                     )
-                    self.player2.xp += int(proj.xp_earned * xp_mult2)
-                proj.xp_earned = 0
-            scene.projectiles = [proj for proj in scene.projectiles if proj.alive]
+                    self.player2.xp += int(atk.xp_earned * xp_mult)
+                atk.xp_earned = 0
+            scene.projectiles = [a for a in scene.projectiles if a.alive]
+            scene.projectiles.extend(spawn_queue)
 
     # -- drawing -----------------------------------------------------------
 
@@ -4144,15 +4190,22 @@ class Game:
         )
 
         # Current weapon
-        wpn = WEAPONS[player.weapon_level]
-        pygame.draw.rect(
-            self.screen, wpn["color"], (screen_x + 18, screen_y + 90, 10, 10)
-        )
-        wpn_label = (
-            wpn["name"]
-            if player.weapon_level < len(WEAPONS) - 1
-            else f"{wpn['name']} (MAX)"
-        )
+        wpn_def = WEAPON_REGISTRY.get(player.weapon_id)
+        if wpn_def is not None:
+            pygame.draw.rect(
+                self.screen, wpn_def.color, (screen_x + 18, screen_y + 90, 10, 10)
+            )
+            n_unlocked = len(player.unlocked_weapons)
+            wpn_label = (
+                f"{wpn_def.name} [{n_unlocked}]"
+                if n_unlocked > 1
+                else wpn_def.name
+            )
+        else:
+            pygame.draw.rect(
+                self.screen, (100, 100, 100), (screen_x + 18, screen_y + 90, 10, 10)
+            )
+            wpn_label = "No weapon"
         self.screen.blit(
             font_tiny.render(wpn_label, True, (255, 150, 100)),
             (screen_x + 32, screen_y + 89),
@@ -5163,17 +5216,18 @@ class Game:
 
             # Equipped item icon or progression fill
             if slot_key == "weapon":
-                wpn = WEAPONS[player.weapon_level]
-                icon = self._inv_get_icon(item_sprite_id(wpn["name"]), slot_sz)
-                if icon:
-                    self.screen.blit(icon, (ax, ay))
-                else:
-                    pygame.draw.rect(
-                        self.screen,
-                        wpn["color"],
-                        (ax + 4, ay + 4, slot_sz - 8, slot_sz - 8),
-                        border_radius=2,
-                    )
+                wpn_def = WEAPON_REGISTRY.get(player.weapon_id)
+                if wpn_def is not None:
+                    icon = self._inv_get_icon(item_sprite_id(wpn_def.name), slot_sz)
+                    if icon:
+                        self.screen.blit(icon, (ax, ay))
+                    else:
+                        pygame.draw.rect(
+                            self.screen,
+                            wpn_def.color,
+                            (ax + 4, ay + 4, slot_sz - 8, slot_sz - 8),
+                            border_radius=2,
+                        )
             elif slot_key == "pickaxe":
                 pick = PICKAXES[player.pick_level]
                 icon = self._inv_get_icon(item_sprite_id(pick["name"]), slot_sz)

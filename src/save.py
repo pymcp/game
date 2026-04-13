@@ -178,7 +178,8 @@ def _serialize_player(player: Player) -> dict:
         "player_id": player.player_id,
         "color": list(player.color),
         "pick_level": player.pick_level,
-        "weapon_level": player.weapon_level,
+        "weapon_id": player.weapon_id,
+        "unlocked_weapons": player.unlocked_weapons,
         "inventory": player.inventory,
         "hp": player.hp,
         "max_hp": player.max_hp,
@@ -332,7 +333,20 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     )
     player.color = tuple(data["color"])
     player.pick_level = data["pick_level"]
-    player.weapon_level = data["weapon_level"]
+    # New weapon system: weapon_id + unlocked_weapons
+    if "weapon_id" in data:
+        player.weapon_id = data["weapon_id"]
+        player.unlocked_weapons = data.get("unlocked_weapons", [data["weapon_id"]])
+    elif "weapon_level" in data:
+        # Legacy migration: old integer weapon_level → weapon_id
+        from src.data.attack_patterns import LEGACY_WEAPON_MAP, DEFAULT_WEAPONS
+        old_level = data["weapon_level"]
+        player.weapon_id = LEGACY_WEAPON_MAP.get(old_level, DEFAULT_WEAPONS[0])
+        player.unlocked_weapons = [
+            LEGACY_WEAPON_MAP[i]
+            for i in range(old_level + 1)
+            if i in LEGACY_WEAPON_MAP
+        ]
     player.inventory = data["inventory"]
     player.hp = data["hp"]
     player.max_hp = data["max_hp"]
