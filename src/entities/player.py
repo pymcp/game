@@ -205,6 +205,9 @@ class Player:
         self.boat_col = None  # last water tile column the boat occupied
         self.boat_row = None  # last water tile row the boat occupied
 
+        # Mount state — True while riding a Creature
+        self.on_mount: bool = False
+
         # Map tracking - "overland" or (cave_col, cave_row) or ("island", n)
         self.current_map = "overland"
 
@@ -565,6 +568,8 @@ class Player:
 
         if self.on_boat:
             self._draw_on_boat(surf, psx, psy, body_color)
+        elif self.on_mount:
+            return  # the mounted creature renders the rider figure
         else:
             self._draw_normal(surf, psx, psy, body_color)
 

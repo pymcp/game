@@ -30,3 +30,12 @@ class BaseEnvironment:
                       needs to inspect tile layout.
         """
         raise NotImplementedError
+
+    def spawn_creatures(self, game_map: "GameMap") -> list:
+        """Return a list of Creature instances to populate this environment.
+
+        Default implementation returns an empty list.  Override in subclasses
+        that contain passive NPC animals (e.g. UnderwaterEnvironment for sea
+        creatures, OverlandEnvironment for horses).
+        """
+        return []

@@ -119,7 +119,7 @@ class UnderwaterEnvironment(BaseEnvironment):
 
         return underwater_map
 
-    def spawn_sea_creatures(
+    def spawn_creatures(
         self, game_map: GameMap, rng: random.Random | None = None
     ) -> list:
         """Return a list of SeaCreature instances placed on SAND tiles."""

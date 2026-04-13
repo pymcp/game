@@ -81,8 +81,9 @@ from src.world.environments import (
     UnderwaterEnvironment,
     PortalRealmEnvironment,
     HousingEnvironment,
+    OverlandEnvironment,
 )
-from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature
+from src.entities import Player, Projectile, Worker, Pet, Enemy, SeaCreature, Creature, OverlandCreature
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.save import save_game, load_game, apply_save
@@ -159,7 +160,7 @@ class Game:
         # Entities (shared between players - only on overland map)
         self.workers = []
         self.pets = []
-        self.sea_creatures = []
+        self.creatures: list[Creature] = []
         self.enemies = spawn_enemies(overland_map.world)
         self.projectiles = []
 
@@ -201,6 +202,8 @@ class Game:
         self._biome_warn_timers: dict[int, dict | None] = {1: None, 2: None}
         # Portal lava hurt cooldown: {player_id: int} (counts down frames between damage ticks)
         self._lava_hurt_timers: dict[int, int] = {1: 0, 2: 0}
+        # Mount state: which Creature each player is currently riding (None = none)
+        self._player_mounts: dict[int, Creature | None] = {1: None, 2: None}
         # Set of (sx, sy) sector coordinates the players have ever visited
         self.visited_sectors: set = {(0, 0)}
         # Set of (sx, sy) sector coordinates that contain land (grass tiles)
@@ -972,6 +975,8 @@ class Game:
                     player.x = entrance_col * TILE + TILE // 2
                     player.y = entrance_row * TILE + TILE // 2
                 player.current_map = origin_key
+                if player.on_mount:
+                    self._dismount_player(player)
                 self._snap_camera_to_player(player)
                 self.floats.append(
                     FloatingText(
@@ -1008,6 +1013,8 @@ class Game:
                 player.boat_col = dive_col
                 player.boat_row = dive_row
                 origin_map.set_tile(dive_row, dive_col, WATER)
+                if player.on_mount:
+                    self._dismount_player(player)
                 self._snap_camera_to_player(player)
                 self.floats.append(
                     FloatingText(
@@ -1035,6 +1042,34 @@ class Game:
                 )
             )
             return
+
+        # 3.5. Mount / dismount a nearby rideable creature
+        if player.on_mount:
+            self._dismount_player(player)
+            self.floats.append(
+                FloatingText(
+                    int(player.x), int(player.y) - 30,
+                    "Dismounted!", (180, 220, 100), player.current_map,
+                )
+            )
+            return
+        # Check for a nearby unmounted creature on the same map
+        mount_range = TILE * 1.5
+        for c in self.creatures:
+            if c.home_map != player.current_map:
+                continue
+            if c.rider_id is not None:
+                continue
+            dist = math.hypot(c.x - player.x, c.y - player.y)
+            if dist <= mount_range:
+                self._mount_player(player, c)
+                self.floats.append(
+                    FloatingText(
+                        int(player.x), int(player.y) - 30,
+                        "Mounted!", (100, 220, 180), player.current_map,
+                    )
+                )
+                return
 
         # 4. Adjacent treasure chest
         for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
@@ -1117,6 +1152,28 @@ class Game:
                         )
                     return
 
+    # -- mount helpers -------------------------------------------------------
+
+    def _mount_player(self, player: Player, creature: Creature) -> None:
+        """Mount *player* onto *creature*.  Creature must be un-ridden."""
+        creature.rider_id = player.player_id
+        player.on_mount = True
+        self._player_mounts[player.player_id] = creature
+
+    def _dismount_player(self, player: Player) -> None:
+        """Dismount *player* from their current creature.
+
+        Snaps the player's position to the creature's position so the player
+        appears at the creature's location after dismounting.
+        """
+        mount = self._player_mounts.get(player.player_id)
+        if mount is not None:
+            player.x = mount.x
+            player.y = mount.y
+            mount.rider_id = None
+        player.on_mount = False
+        self._player_mounts[player.player_id] = None
+
     def _try_dive(self, player: Player) -> None:
         """Transition from the boat surface into an underwater map at the current position."""
         dive_col = player.boat_col
@@ -1131,8 +1188,8 @@ class Game:
             underwater_map.origin_map = player.current_map
             self.maps[dive_key] = underwater_map
             # Spawn sea creatures and register them
-            creatures = env.spawn_sea_creatures(underwater_map)
-            self.sea_creatures.extend(creatures)
+            creatures = env.spawn_creatures(underwater_map)
+            self.creatures.extend(creatures)
         else:
             underwater_map = self.maps[dive_key]
             underwater_map.origin_map = player.current_map
@@ -2147,6 +2204,10 @@ class Game:
                 # Assign and place portal quest for this island
                 self._assign_portal_quest(key)
                 self._place_portal_on_map(sector_map, key)
+                # Spawn land creatures (horses) on standard-biome islands only
+                if biome == BiomeType.STANDARD:
+                    land_env = OverlandEnvironment(map_key=key)
+                    self.creatures.extend(land_env.spawn_creatures(sector_map))
         return self.maps[key]
 
     def _evict_distant_sectors(self) -> None:
@@ -2942,13 +3003,24 @@ class Game:
             and self.craft_menus[1] is None
             and self.equip_menus[1] is None
         ):
-            p1_speed_mult = 1.0 + self.player1.active_effects().get(
-                AccessoryEffect.SPEED_BOOST, 0.0
-            )
-            base_speed1 = self.player1.speed
-            self.player1.speed = base_speed1 * p1_speed_mult
-            self.player1.update_movement(keys, dt, map1.world)
-            self.player1.speed = base_speed1
+            if self.player1.on_mount:
+                # Drive the mounted creature with player input
+                mount1 = self._player_mounts[1]
+                if mount1 is not None:
+                    cs1 = self.player1.controls.move_keys
+                    dx1 = (keys[cs1["right"]] - keys[cs1["left"]]) * 1.0
+                    dy1 = (keys[cs1["down"]] - keys[cs1["up"]]) * 1.0
+                    mount1.update_riding(dx1, dy1, dt, map1.world)
+                    self.player1.x = mount1.x
+                    self.player1.y = mount1.y
+            else:
+                p1_speed_mult = 1.0 + self.player1.active_effects().get(
+                    AccessoryEffect.SPEED_BOOST, 0.0
+                )
+                base_speed1 = self.player1.speed
+                self.player1.speed = base_speed1 * p1_speed_mult
+                self.player1.update_movement(keys, dt, map1.world)
+                self.player1.speed = base_speed1
             self.player1.update_mining(
                 keys,
                 mouse_buttons,
@@ -2971,13 +3043,24 @@ class Game:
             and self.craft_menus[2] is None
             and self.equip_menus[2] is None
         ):
-            p2_speed_mult = 1.0 + self.player2.active_effects().get(
-                AccessoryEffect.SPEED_BOOST, 0.0
-            )
-            base_speed2 = self.player2.speed
-            self.player2.speed = base_speed2 * p2_speed_mult
-            self.player2.update_movement(keys, dt, map2.world)
-            self.player2.speed = base_speed2
+            if self.player2.on_mount:
+                # Drive the mounted creature with player input
+                mount2 = self._player_mounts[2]
+                if mount2 is not None:
+                    cs2 = self.player2.controls.move_keys
+                    dx2 = (keys[cs2["right"]] - keys[cs2["left"]]) * 1.0
+                    dy2 = (keys[cs2["down"]] - keys[cs2["up"]]) * 1.0
+                    mount2.update_riding(dx2, dy2, dt, map2.world)
+                    self.player2.x = mount2.x
+                    self.player2.y = mount2.y
+            else:
+                p2_speed_mult = 1.0 + self.player2.active_effects().get(
+                    AccessoryEffect.SPEED_BOOST, 0.0
+                )
+                base_speed2 = self.player2.speed
+                self.player2.speed = base_speed2 * p2_speed_mult
+                self.player2.update_movement(keys, dt, map2.world)
+                self.player2.speed = base_speed2
             self.player2.update_mining(
                 keys,
                 mouse_buttons,
@@ -3062,8 +3145,10 @@ class Game:
                 target = self.player2
             pet.update(dt, target.x, target.y, pet_map.world)
 
-        # Sea creatures — wander their home underwater map
-        for sc in self.sea_creatures:
+        # Creatures — wander their home map when not being ridden
+        for sc in self.creatures:
+            if sc.rider_id is not None:
+                continue  # ridden creatures are driven by player input instead
             sc_map = self.maps.get(sc.home_map)
             if sc_map is None:
                 continue
@@ -4113,10 +4198,15 @@ class Game:
                 if pet.home_map == player.current_map:
                     pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
 
-        # Sea creatures — only in their home underwater map
-        for sc in self.sea_creatures:
-            if sc.home_map == player.current_map:
-                sc.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
+        # Creatures — only draw those in the player's current map
+        for sc in self.creatures:
+            if sc.home_map != player.current_map:
+                continue
+            rider_color: tuple[int, int, int] | None = None
+            if sc.rider_id is not None:
+                rider = self.player1 if sc.rider_id == 1 else self.player2
+                rider_color = rider.color
+            sc.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks, rider_color)
 
         # Overland enemies only on the main island; cave enemies on their specific cave
         if player.current_map == "overland":

@@ -15,13 +15,15 @@ from src.entities.player import (
 from src.entities.worker import Worker
 from src.entities.pet import Pet
 from src.entities.enemy import Enemy
+from src.entities.creature import Creature
 from src.entities.sea_creature import SeaCreature
+from src.entities.overland_creature import OverlandCreature
 
 if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 6
+SAVE_VERSION = 7
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +182,7 @@ def _serialize_player(player: Player) -> dict:
         "is_dead": player.is_dead,
         "equipment": player.equipment,
         "durability": player.durability,
+        "on_mount": False,  # mount state is transient — always cleared on save
     }
 
 
@@ -222,16 +225,19 @@ def _serialize_enemy(enemy: Enemy) -> dict:
     }
 
 
-def _serialize_sea_creature(sc: SeaCreature) -> dict:
+def _serialize_creature(c: Creature) -> dict:
+    """Serialize any Creature subclass.  rider_id is always omitted (transient)."""
+    creature_class = "sea" if isinstance(c, SeaCreature) else "overland"
     return {
-        "x": sc.x,
-        "y": sc.y,
-        "kind": sc.kind,
-        "speed": sc.speed,
-        "size": sc.size,
-        "body_color": list(sc.body_color),
-        "facing_right": sc.facing_right,
-        "home_map": _key_to_str(sc.home_map),
+        "creature_class": creature_class,
+        "x": c.x,
+        "y": c.y,
+        "kind": c.kind,
+        "speed": c.speed,
+        "size": c.size,
+        "body_color": list(c.body_color),
+        "facing_right": c.facing_right,
+        "home_map": _key_to_str(c.home_map),
     }
 
 
@@ -316,6 +322,7 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     saved_equip = data.get("equipment", {})
     player.equipment = {**default_equip, **saved_equip}
     player.durability = data.get("durability", {})
+    player.on_mount = data.get("on_mount", False)
     return player
 
 
@@ -358,6 +365,7 @@ def _deserialize_enemy(data: dict) -> Enemy:
 
 
 def _deserialize_sea_creature(data: dict) -> SeaCreature:
+    """Kept for backward-compat loading of old saves with a 'sea_creatures' key."""
     sc = SeaCreature(
         data["x"],
         data["y"],
@@ -368,7 +376,27 @@ def _deserialize_sea_creature(data: dict) -> SeaCreature:
     sc.size = data["size"]
     sc.body_color = tuple(data["body_color"])
     sc.facing_right = data.get("facing_right", True)
+    sc.rider_id = None
     return sc
+
+
+def _deserialize_creature(data: dict) -> Creature:
+    """Deserialize a Creature from a unified dict (version 7+)."""
+    kind = data["kind"]
+    home_map = _str_to_key(data.get("home_map", "overland"))
+    creature_class = data.get("creature_class", "sea")
+
+    if creature_class == "overland":
+        c: Creature = OverlandCreature(data["x"], data["y"], kind=kind, home_map=home_map)
+    else:
+        c = SeaCreature(data["x"], data["y"], kind=kind, home_map=home_map)
+
+    c.speed = data["speed"]
+    c.size = data["size"]
+    c.body_color = tuple(data["body_color"])  # type: ignore[assignment]
+    c.facing_right = data.get("facing_right", True)
+    c.rider_id = None
+    return c
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +430,7 @@ def save_game(game: "Game") -> None:
         ],
         "workers": [_serialize_worker(w) for w in game.workers],
         "pets": [_serialize_pet(p) for p in game.pets],
-        "sea_creatures": [_serialize_sea_creature(sc) for sc in game.sea_creatures],
+        "creatures": [_serialize_creature(c) for c in game.creatures],
         "visited_sectors": [list(s) for s in game.visited_sectors],
         "land_sectors": [list(s) for s in game.land_sectors],
         "portal_quests": {
@@ -453,9 +481,14 @@ def apply_save(game: "Game", data: dict) -> None:
     # Workers and pets
     game.workers = [_deserialize_worker(w) for w in data["workers"]]
     game.pets = [_deserialize_pet(p) for p in data["pets"]]
-    game.sea_creatures = [
-        _deserialize_sea_creature(sc) for sc in data.get("sea_creatures", [])
-    ]
+    # Creatures — load from the v7+ "creatures" key; fall back to the old
+    # "sea_creatures" key from saves written before version 7.
+    if "creatures" in data:
+        game.creatures = [_deserialize_creature(c) for c in data["creatures"]]
+    else:
+        game.creatures = [
+            _deserialize_sea_creature(sc) for sc in data.get("sea_creatures", [])
+        ]
 
     # Visited sectors
     game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}
