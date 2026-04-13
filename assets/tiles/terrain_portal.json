@@ -1,0 +1,33 @@
+{
+  "cell_size": [
+    64,
+    64
+  ],
+  "cols": 4,
+  "tiles": {
+    "portal_wall": {
+      "start_row": 0,
+      "fps": 0.0
+    },
+    "portal_floor": {
+      "start_row": 16,
+      "fps": 0.0
+    },
+    "portal_ruins": {
+      "start_row": 32,
+      "fps": 0.0
+    },
+    "portal_active": {
+      "start_row": 48,
+      "fps": 2.0
+    },
+    "portal_lava": {
+      "start_row": 64,
+      "fps": 2.0
+    },
+    "ancient_stone": {
+      "start_row": 80,
+      "fps": 0.0
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "cell_size": [
+    64,
+    64
+  ],
+  "cols": 4,
+  "tiles": {
+    "house": {
+      "start_row": 0,
+      "fps": 0.0
+    },
+    "pier": {
+      "start_row": 16,
+      "fps": 0.0
+    },
+    "boat": {
+      "start_row": 32,
+      "fps": 0.0
+    },
+    "treasure_chest": {
+      "start_row": 48,
+      "fps": 0.0
+    },
+    "wood_floor": {
+      "start_row": 64,
+      "fps": 0.0
+    },
+    "wood_wall": {
+      "start_row": 80,
+      "fps": 0.0
+    },
+    "worktable": {
+      "start_row": 96,
+      "fps": 0.0
+    },
+    "house_exit": {
+      "start_row": 112,
+      "fps": 0.0
+    },
+    "settlement_house": {
+      "start_row": 128,
+      "fps": 0.0
+    }
+  }
+}

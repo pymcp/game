@@ -1,0 +1,41 @@
+{
+  "cell_size": [
+    64,
+    64
+  ],
+  "cols": 4,
+  "tiles": {
+    "iron_ore": {
+      "start_row": 0,
+      "fps": 0.0
+    },
+    "gold_ore": {
+      "start_row": 16,
+      "fps": 0.0
+    },
+    "diamond_ore": {
+      "start_row": 32,
+      "fps": 0.0
+    },
+    "frost_crystal_ore": {
+      "start_row": 48,
+      "fps": 0.0
+    },
+    "magma_ore": {
+      "start_row": 64,
+      "fps": 0.0
+    },
+    "desert_crystal_ore": {
+      "start_row": 80,
+      "fps": 0.0
+    },
+    "void_ore": {
+      "start_row": 96,
+      "fps": 0.0
+    },
+    "magma_stone": {
+      "start_row": 112,
+      "fps": 0.0
+    }
+  }
+}

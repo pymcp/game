@@ -154,6 +154,14 @@ class Game:
         )
         SpriteRegistry.get_instance().load_all(_sprites_dir)
 
+        # Load tile atlas sprite sheets
+        from src.rendering.tile_registry import TileSpriteRegistry
+
+        _tiles_dir = _os.path.join(
+            _os.path.dirname(_os.path.dirname(__file__)), "assets", "tiles"
+        )
+        TileSpriteRegistry.get_instance().load_all(_tiles_dir)
+
         # UI fonts — cached once to avoid re-creating every frame
         self.font_ui_sm = pygame.font.Font(None, 22)
         self.font_ui_xs = pygame.font.Font(None, 16)
@@ -3901,498 +3909,84 @@ class Game:
         start_row = max(0, int(cam_y) // TILE)
         end_row = min(world_rows, int(cam_y + view_h) // TILE + 2)
 
+        from src.rendering.tile_registry import (
+            TileSpriteRegistry as _TileReg,
+            TILE_ID_TO_NAME as _TID2N,
+            STANDALONE_TILE_IDS as _STANDALONE_IDS,
+            compute_adjacency as _compute_adj,
+        )
+        _tile_reg = _TileReg.get_instance()
+        _tileset = current_map.tileset
+
         for r in range(start_row, end_row):
             for c in range(start_col, end_col):
                 tid = current_map.get_tile(r, c)
                 if tid is None:
                     continue
-                info = TILE_INFO.get(tid, {})
-                # Use tileset-aware color
-                tile_color = current_map.get_tileset_color(tid)
+
                 sx = c * TILE - int(cam_x) + screen_x
                 sy = r * TILE - int(cam_y) + screen_y
-                pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
 
-                # Scale factor for 32-unit tile detail art → TILE-unit
-                S = TILE // 32
+                tile_name = _TID2N.get(tid)
 
-                if tid == TREE:
-                    pygame.draw.rect(
-                        self.screen, (100, 70, 30), (sx + 12*S, sy + 16*S, 8*S, 16*S)
-                    )
-                    pygame.draw.circle(
-                        self.screen, (30, 130, 30), (sx + 16*S, sy + 12*S), 12*S
-                    )
-                elif tid in (IRON_ORE, GOLD_ORE, DIAMOND_ORE):
-                    for ox, oy in [(8, 8), (20, 12), (14, 22), (24, 24)]:
-                        bright = [min(255, ch + 80) for ch in info["color"]]
-                        pygame.draw.rect(self.screen, bright, (sx + ox*S, sy + oy*S, 3*S, 3*S))
-                elif tid == WATER:
-                    wave_off = int(
-                        math.sin(pygame.time.get_ticks() * 0.003 + c * 0.7) * 3 * S
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        (60, 150, 230),
-                        (sx + 4*S, sy + 14*S + wave_off),
-                        (sx + 28*S, sy + 14*S + wave_off),
-                        2 * S,
-                    )
-                elif tid == MOUNTAIN:
-                    # Check if this is part of a 2x2 mountain group starting from top-left
-                    is_2x2_tl = (
-                        c + 1 < world_cols
-                        and r + 1 < world_rows
-                        and current_map.get_tile(r, c) == MOUNTAIN
-                        and current_map.get_tile(r, c + 1) == MOUNTAIN
-                        and current_map.get_tile(r + 1, c) == MOUNTAIN
-                        and current_map.get_tile(r + 1, c + 1) == MOUNTAIN
-                    )
+                # --- Standalone tiles (sign, ladders) ---
+                if tid in _STANDALONE_IDS and tile_name is not None:
+                    # Draw base color rect first
+                    tile_color = current_map.get_tileset_color(tid)
+                    pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
+                    fps = _tile_reg.get_standalone_fps(tile_name)
+                    fidx = int(ticks * fps / 1000.0) if fps > 0 else 0
+                    result = _tile_reg.get_standalone(tile_name, fidx, _tileset)
+                    if result is not None:
+                        frame_surf, (dx, dy) = result
+                        self.screen.blit(frame_surf, (sx + dx, sy + dy))
+                    continue
 
-                    # Check if current tile is part of a larger 2x2 block
-                    is_part_of_2x2 = False
-                    if is_2x2_tl:
-                        is_part_of_2x2 = True
-                    else:
-                        # Check if we're part of a 2x2 block from other positions
-                        for dc, dr in [(-1, 0), (0, -1), (-1, -1)]:
-                            check_c, check_r = c + dc, r + dr
+                # --- Atlas tiles ---
+                if tile_name is not None:
+                    adj = _compute_adj(current_map, r, c, tid)
+                    fps = _tile_reg.get_fps(tile_name)
+                    fidx = int(ticks * fps / 1000.0) % 4 if fps > 0 else 0
+                    frame = _tile_reg.get_frame(
+                        tile_name, adj, fidx, _tileset
+                    )
+                    if frame is not None:
+                        self.screen.blit(frame, (sx, sy))
+                        # ANCIENT_STONE: pulse overlay if next ritual target
+                        if tid == ANCIENT_STONE:
+                            quest = self.portal_quests.get(player.current_map)
                             if (
-                                check_c >= 0
-                                and check_r >= 0
-                                and check_c + 1 < world_cols
-                                and check_r + 1 < world_rows
+                                quest
+                                and quest["type"] == PortalQuestType.RITUAL
+                                and not quest["restored"]
                             ):
+                                positions = getattr(
+                                    current_map, "ritual_stone_positions", []
+                                )
+                                next_idx = quest["stones_activated"]
                                 if (
-                                    current_map.get_tile(check_r, check_c) == MOUNTAIN
-                                    and current_map.get_tile(check_r, check_c + 1)
-                                    == MOUNTAIN
-                                    and current_map.get_tile(check_r + 1, check_c)
-                                    == MOUNTAIN
-                                    and current_map.get_tile(check_r + 1, check_c + 1)
-                                    == MOUNTAIN
+                                    next_idx < len(positions)
+                                    and positions[next_idx] == (c, r)
                                 ):
-                                    is_part_of_2x2 = True
-                                    break
+                                    S = TILE // 32
+                                    pulse_y = int(
+                                        math.sin(ticks * 0.01) * 3 * S
+                                    )
+                                    pygame.draw.polygon(
+                                        self.screen,
+                                        (240, 210, 50),
+                                        [
+                                            (sx + 10 * S, sy + 11 * S + pulse_y),
+                                            (sx + 22 * S, sy + 11 * S + pulse_y),
+                                            (sx + 16 * S, sy + 5 * S + pulse_y),
+                                        ],
+                                        2,
+                                    )
+                        continue
 
-                    if is_2x2_tl:
-                        # Draw multiple ridge-like peaks for 2x2 mountain groups
-                        base_y = sy + TILE * 2
-                        block_left_x = sx
-                        block_right_x = sx + TILE * 2
-
-                        # Define peaks (x_offset from block_left, height)
-                        peaks = [
-                            (12 * S, sy - TILE // 3),  # Left-center peak
-                            (24 * S, sy - TILE // 5),  # Center-right peak
-                            (36 * S, sy - TILE // 3.5),  # Right peak
-                        ]
-
-                        # Draw background mountain
-                        pygame.draw.polygon(
-                            self.screen,
-                            (80, 70, 60),
-                            [
-                                (block_left_x, base_y),
-                                (block_left_x + 8 * S, sy + TILE // 2),
-                                (block_right_x - 8 * S, sy + TILE // 2),
-                                (block_right_x, base_y),
-                            ],
-                        )
-
-                        # Draw each peak (wider and ridge-like)
-                        for peak_x, peak_y in peaks:
-                            x = block_left_x + peak_x
-                            width = 18 * S  # Width of each ridge peak
-
-                            # Left slope (darker)
-                            pygame.draw.polygon(
-                                self.screen,
-                                (60, 50, 40),
-                                [
-                                    (x - width, base_y),
-                                    (x, peak_y),
-                                    (x, base_y),
-                                ],
-                            )
-                            # Right slope (lighter)
-                            pygame.draw.polygon(
-                                self.screen,
-                                (100, 85, 65),
-                                [
-                                    (x, peak_y),
-                                    (x + width, base_y),
-                                    (x, base_y),
-                                ],
-                            )
-                            # Wide snow cap on ridge
-                            pygame.draw.polygon(
-                                self.screen,
-                                (245, 250, 255),
-                                [
-                                    (x - 8 * S, peak_y + 6 * S),
-                                    (x, peak_y),
-                                    (x + 8 * S, peak_y + 6 * S),
-                                ],
-                            )
-                    elif not is_part_of_2x2:
-                        # Draw regular small mountain triangles (only if not part of a 2x2 block)
-                        pygame.draw.polygon(
-                            self.screen,
-                            (110, 100, 90),
-                            [
-                                (sx + 4 * S, sy + TILE),
-                                (sx + 16 * S, sy + 2 * S),
-                                (sx + TILE - 4 * S, sy + TILE),
-                            ],
-                        )
-                        pygame.draw.polygon(
-                            self.screen,
-                            (230, 230, 240),
-                            [(sx + 12 * S, sy + 8 * S), (sx + 16 * S, sy + 2 * S), (sx + 20 * S, sy + 8 * S)],
-                        )
-                        pygame.draw.line(
-                            self.screen,
-                            (70, 65, 60),
-                            (sx + 10 * S, sy + 18 * S),
-                            (sx + 14 * S, sy + 12 * S),
-                            1,
-                        )
-                        pygame.draw.line(
-                            self.screen,
-                            (70, 65, 60),
-                            (sx + 20 * S, sy + 20 * S),
-                            (sx + 22 * S, sy + 14 * S),
-                            1,
-                        )
-                elif tid == HOUSE:
-                    cluster_size = current_map.town_clusters.get((r, c), 1)
-                    tier, _ = self._get_settlement_tier(cluster_size)
-                    hn = current_map.get_tile(r - 1, c) == HOUSE
-                    hs = current_map.get_tile(r + 1, c) == HOUSE
-                    he = current_map.get_tile(r, c + 1) == HOUSE
-                    hw = current_map.get_tile(r, c - 1) == HOUSE
-                    self._draw_house_tile(sx, sy, tier, hn, hs, he, hw, ticks)
-                elif tid == PIER:
-                    # Wood-plank dock over water
-                    plank_c = (155, 115, 50)
-                    edge_c = (100, 75, 30)
-                    pygame.draw.rect(self.screen, plank_c, (sx + 2*S, sy + 2*S, 28*S, 28*S))
-                    # Plank lines
-                    for lx in range(sx + 6*S, sx + 29*S, 7*S):
-                        pygame.draw.line(
-                            self.screen, edge_c, (lx, sy + 2*S), (lx, sy + 30*S), 1
-                        )
-                    pygame.draw.rect(self.screen, edge_c, (sx + 2*S, sy + 2*S, 28*S, 28*S), 1)
-                elif tid == BOAT:
-                    # Small moored boat
-                    pygame.draw.polygon(
-                        self.screen,
-                        (120, 80, 40),
-                        [
-                            (sx + 4*S, sy + 18*S),
-                            (sx + 28*S, sy + 18*S),
-                            (sx + 24*S, sy + 28*S),
-                            (sx + 8*S, sy + 28*S),
-                        ],
-                    )
-                    # Mast
-                    pygame.draw.line(
-                        self.screen,
-                        (80, 55, 25),
-                        (sx + 16*S, sy + 4*S),
-                        (sx + 16*S, sy + 18*S),
-                        2 * S,
-                    )
-                    # Sail
-                    pygame.draw.polygon(
-                        self.screen,
-                        (235, 225, 195),
-                        [(sx + 17*S, sy + 5*S), (sx + 17*S, sy + 17*S), (sx + 27*S, sy + 11*S)],
-                    )
-                    # Cabin
-                    pygame.draw.rect(
-                        self.screen, (160, 110, 55), (sx + 10*S, sy + 12*S, 8*S, 7*S)
-                    )
-                    pygame.draw.rect(
-                        self.screen, (180, 220, 255), (sx + 12*S, sy + 13*S, 3*S, 3*S)
-                    )
-                elif tid == TREASURE_CHEST:
-                    # Golden chest with lock
-                    chest_body = (185, 130, 40)
-                    chest_band = (230, 180, 60)
-                    chest_dark = (120, 85, 25)
-                    # Body
-                    pygame.draw.rect(self.screen, chest_body, (sx + 4*S, sy + 14*S, 24*S, 14*S))
-                    # Lid
-                    pygame.draw.rect(self.screen, chest_body, (sx + 4*S, sy + 8*S, 24*S, 8*S))
-                    pygame.draw.polygon(
-                        self.screen,
-                        chest_band,
-                        [
-                            (sx + 4*S, sy + 16*S),
-                            (sx + 28*S, sy + 16*S),
-                            (sx + 28*S, sy + 19*S),
-                            (sx + 4*S, sy + 19*S),
-                        ],
-                    )
-                    # Lock
-                    pygame.draw.rect(self.screen, chest_dark, (sx + 13*S, sy + 17*S, 6*S, 5*S))
-                    pygame.draw.ellipse(
-                        self.screen, chest_dark, (sx + 13*S, sy + 14*S, 6*S, 6*S)
-                    )
-                    # Shimmer sparkle
-                    sp = int(math.sin(ticks * 0.006) * 2 * S) + 2 * S
-                    pygame.draw.line(
-                        self.screen,
-                        (255, 240, 130),
-                        (sx + 8*S, sy + 4*S + sp),
-                        (sx + 8*S + 3*S, sy + 4*S + sp - 3*S),
-                        1,
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        (255, 240, 130),
-                        (sx + 8*S, sy + 4*S + sp),
-                        (sx + 8*S - 3*S, sy + 4*S + sp + 3*S),
-                        1,
-                    )
-                elif tid in (CAVE_MOUNTAIN, CAVE_HILL):
-                    # Draw cave entrance
-                    # Darker base color already set by tileset color
-                    # Add cave entrance graphics
-                    cave_color = tile_color
-                    # Draw a shadowy entrance
-                    pygame.draw.rect(self.screen, cave_color, (sx + 4*S, sy + 8*S, 24*S, 20*S))
-                    # Add entrance shadow
-                    shadow = tuple(max(0, c - 30) for c in cave_color)
-                    pygame.draw.polygon(
-                        self.screen,
-                        shadow,
-                        [
-                            (sx + 8*S, sy + 12*S),
-                            (sx + 24*S, sy + 12*S),
-                            (sx + 20*S, sy + 20*S),
-                            (sx + 10*S, sy + 20*S),
-                        ],
-                    )
-                    # Add some rock detail
-                    rock_color = tuple(max(0, min(255, c + 20)) for c in cave_color)
-                    pygame.draw.circle(self.screen, rock_color, (sx + 12*S, sy + 15*S), 2*S)
-                    pygame.draw.circle(self.screen, rock_color, (sx + 20*S, sy + 14*S), 2*S)
-                    pygame.draw.circle(self.screen, rock_color, (sx + 16*S, sy + 20*S), 2*S)
-                elif tid == CAVE_EXIT:
-                    # Draw cave exit - a glowing portal/ladder
-                    # Pulsing glow effect
-                    pulse = int(math.sin(pygame.time.get_ticks() * 0.004) * 20 + 40)
-                    glow_color = (pulse + 40, pulse + 80, pulse + 40)
-                    pygame.draw.rect(self.screen, glow_color, (sx + 4*S, sy + 2*S, 24*S, 28*S))
-                    # Ladder rungs
-                    rung_color = (120, 90, 50)
-                    for ry in range(6*S, 28*S, 6*S):
-                        pygame.draw.line(
-                            self.screen,
-                            rung_color,
-                            (sx + 8*S, sy + ry),
-                            (sx + 24*S, sy + ry),
-                            2 * S,
-                        )
-                    # Vertical rails
-                    pygame.draw.line(
-                        self.screen, rung_color, (sx + 8*S, sy + 4*S), (sx + 8*S, sy + 28*S), 2 * S
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        rung_color,
-                        (sx + 24*S, sy + 4*S),
-                        (sx + 24*S, sy + 28*S),
-                        2 * S,
-                    )
-                elif tid == CORAL:
-                    # Coral formation: branching pink arms
-                    coral_c = info.get("drop_color", (240, 80, 130))
-                    bright_c = tuple(min(255, ch + 60) for ch in coral_c)
-                    # Central stalk
-                    pygame.draw.line(
-                        self.screen, coral_c, (sx + 16*S, sy + 28*S), (sx + 16*S, sy + 14*S), 2*S
-                    )
-                    # Left branch
-                    pygame.draw.line(
-                        self.screen, coral_c, (sx + 16*S, sy + 20*S), (sx + 8*S, sy + 12*S), 2*S
-                    )
-                    pygame.draw.circle(self.screen, bright_c, (sx + 8*S, sy + 11*S), 3*S)
-                    # Right branch
-                    pygame.draw.line(
-                        self.screen, coral_c, (sx + 16*S, sy + 18*S), (sx + 24*S, sy + 10*S), 2*S
-                    )
-                    pygame.draw.circle(self.screen, bright_c, (sx + 24*S, sy + 9*S), 3*S)
-                    # Top tip
-                    pygame.draw.circle(self.screen, bright_c, (sx + 16*S, sy + 13*S), 3*S)
-                elif tid == DIVE_EXIT:
-                    # Upward-floating bubbles and chevron indicating surface
-                    pulse = int(math.sin(ticks * 0.005) * 15 + 40)
-                    glow = (pulse, pulse + 80, min(255, pulse + 120))
-                    pygame.draw.rect(self.screen, glow, (sx + 4*S, sy + 2*S, 24*S, 28*S))
-                    # Upward chevron
-                    arrow_c = (200, 240, 255)
-                    pygame.draw.polygon(
-                        self.screen,
-                        arrow_c,
-                        [(sx + 16*S, sy + 6*S), (sx + 10*S, sy + 14*S), (sx + 22*S, sy + 14*S)],
-                    )
-                    pygame.draw.polygon(
-                        self.screen,
-                        arrow_c,
-                        [(sx + 16*S, sy + 14*S), (sx + 10*S, sy + 22*S), (sx + 22*S, sy + 22*S)],
-                    )
-                    # Bubble
-                    bub_off = int(math.sin(ticks * 0.004 + 1.5) * 3 * S)
-                    pygame.draw.circle(
-                        self.screen, (180, 230, 255), (sx + 24*S, sy + 10*S + bub_off), 2*S
-                    )
-                elif tid == PORTAL_RUINS:
-                    # Crumbled stone ring — partial pillars with gaps and moss tones
-                    stone_c = (90, 80, 95)
-                    moss_c = (60, 80, 55)
-                    # Base slab (worn)
-                    pygame.draw.rect(self.screen, stone_c, (sx + 4*S, sy + 24*S, 24*S, 5*S))
-                    # Four partial pillars at corners (some broken)
-                    pygame.draw.rect(
-                        self.screen, stone_c, (sx + 4*S, sy + 10*S, 5*S, 14*S)
-                    )  # left
-                    pygame.draw.rect(
-                        self.screen, stone_c, (sx + 23*S, sy + 14*S, 5*S, 10*S)
-                    )  # right (shorter — broken)
-                    pygame.draw.rect(
-                        self.screen, stone_c, (sx + 10*S, sy + 6*S, 5*S, 18*S)
-                    )  # back-left
-                    # Moss accent
-                    pygame.draw.rect(self.screen, moss_c, (sx + 4*S, sy + 10*S, 3*S, 3*S))
-                    pygame.draw.rect(self.screen, moss_c, (sx + 23*S, sy + 14*S, 3*S, 2*S))
-                    # Dark center void
-                    pygame.draw.rect(
-                        self.screen, (25, 20, 30), (sx + 10*S, sy + 14*S, 12*S, 10*S)
-                    )
-                elif tid == PORTAL_ACTIVE:
-                    # Glowing portal ring with pulsing inner energy
-                    pulse = math.sin(ticks * 0.006)
-                    stone_c = (110, 95, 125)
-                    # Complete stone ring pillars
-                    pygame.draw.rect(self.screen, stone_c, (sx + 4*S, sy + 24*S, 24*S, 5*S))
-                    pygame.draw.rect(self.screen, stone_c, (sx + 4*S, sy + 6*S, 5*S, 18*S))
-                    pygame.draw.rect(self.screen, stone_c, (sx + 23*S, sy + 6*S, 5*S, 18*S))
-                    pygame.draw.rect(self.screen, stone_c, (sx + 10*S, sy + 4*S, 12*S, 4*S))
-                    # Inner portal energy
-                    energy_r = max(0, min(255, int(140 + pulse * 30)))
-                    energy_g = max(0, min(255, int(50 + pulse * 20)))
-                    energy_b = max(0, min(255, int(220 + pulse * 35)))
-                    pygame.draw.ellipse(
-                        self.screen,
-                        (energy_r, energy_g, energy_b),
-                        (sx + 9*S, sy + 8*S, 14*S, 16*S),
-                    )
-                    # Bright centre shimmer
-                    inner_b = max(0, min(255, int(200 + pulse * 55)))
-                    pygame.draw.ellipse(
-                        self.screen, (255, 200, inner_b), (sx + 12*S, sy + 11*S, 8*S, 10*S)
-                    )
-                elif tid == ANCIENT_STONE:
-                    # Short stone obelisk; pulses yellow if it's the next ritual stone
-                    stone_c = (120, 110, 100)
-                    # Determine if this is the next stone to activate
-                    quest = self.portal_quests.get(player.current_map)
-                    is_next = False
-                    if (
-                        quest
-                        and quest["type"] == PortalQuestType.RITUAL
-                        and not quest["restored"]
-                    ):
-                        positions = getattr(current_map, "ritual_stone_positions", [])
-                        next_idx = quest["stones_activated"]
-                        tile_c_pos = (
-                            int(sx + int(cam_x - screen_x)) // TILE if False else c
-                        )
-                        # c and r are the tile coords from the outer loop
-                        if next_idx < len(positions) and positions[next_idx] == (c, r):
-                            is_next = True
-                    # Obelisk body
-                    pygame.draw.rect(self.screen, stone_c, (sx + 11*S, sy + 12*S, 10*S, 16*S))
-                    # Pointed top
-                    pygame.draw.polygon(
-                        self.screen,
-                        stone_c,
-                        [(sx + 11*S, sy + 12*S), (sx + 21*S, sy + 12*S), (sx + 16*S, sy + 6*S)],
-                    )
-                    if is_next:
-                        pulse_y = int(math.sin(ticks * 0.01) * 3 * S)
-                        pygame.draw.polygon(
-                            self.screen,
-                            (240, 210, 50),
-                            [
-                                (sx + 10*S, sy + 11*S + pulse_y),
-                                (sx + 22*S, sy + 11*S + pulse_y),
-                                (sx + 16*S, sy + 5*S + pulse_y),
-                            ],
-                            2,
-                        )
-                    else:
-                        # Faint rune markings
-                        pygame.draw.line(
-                            self.screen,
-                            (80, 72, 65),
-                            (sx + 14*S, sy + 14*S),
-                            (sx + 18*S, sy + 14*S),
-                            1,
-                        )
-                        pygame.draw.line(
-                            self.screen,
-                            (80, 72, 65),
-                            (sx + 14*S, sy + 18*S),
-                            (sx + 18*S, sy + 18*S),
-                            1,
-                        )
-                elif tid == PORTAL_WALL:
-                    # Ancient stone brick pattern (darker base already set by tileset color)
-                    brick_c = tile_color
-                    mortar_c = tuple(max(0, ch - 20) for ch in brick_c)
-                    # Horizontal mortar lines
-                    pygame.draw.line(
-                        self.screen, mortar_c, (sx, sy + 10*S), (sx + TILE, sy + 10*S), 1
-                    )
-                    pygame.draw.line(
-                        self.screen, mortar_c, (sx, sy + 22*S), (sx + TILE, sy + 22*S), 1
-                    )
-                    # Alternating vertical mortar (brick offset pattern)
-                    pygame.draw.line(
-                        self.screen, mortar_c, (sx + 16*S, sy), (sx + 16*S, sy + 10*S), 1
-                    )
-                    pygame.draw.line(
-                        self.screen, mortar_c, (sx + 8*S, sy + 10*S), (sx + 8*S, sy + 22*S), 1
-                    )
-                    pygame.draw.line(
-                        self.screen, mortar_c, (sx + 24*S, sy + 10*S), (sx + 24*S, sy + 22*S), 1
-                    )
-                    pygame.draw.line(
-                        self.screen,
-                        mortar_c,
-                        (sx + 16*S, sy + 22*S),
-                        (sx + 16*S, sy + TILE),
-                        1,
-                    )
-                elif tid == PORTAL_FLOOR:
-                    # Flat floor with faint engraved cross/circle pattern
-                    etch_c = tuple(max(0, ch - 12) for ch in tile_color)
-                    # Faint circle
-                    pygame.draw.circle(self.screen, etch_c, (sx + 16*S, sy + 16*S), 8*S, 1)
-                    # Cross lines
-                    pygame.draw.line(
-                        self.screen, etch_c, (sx + 16*S, sy + 8*S), (sx + 16*S, sy + 24*S), 1
-                    )
-                    pygame.draw.line(
-                        self.screen, etch_c, (sx + 8*S, sy + 16*S), (sx + 24*S, sy + 16*S), 1
-                    )
-                elif tid in (SIGN, BROKEN_LADDER, SKY_LADDER):
-                    self._draw_world_tile_sprite(tid, sx, sy, ticks)
+                # --- Fallback: flat colored rect ---
+                tile_color = current_map.get_tileset_color(tid)
+                pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
         # Draw all entities that belong to this scene
         scene = self.maps.get(player.current_map)
         if scene is not None:

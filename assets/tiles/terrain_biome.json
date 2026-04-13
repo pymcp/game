@@ -1,0 +1,33 @@
+{
+  "cell_size": [
+    64,
+    64
+  ],
+  "cols": 4,
+  "tiles": {
+    "ice_peak": {
+      "start_row": 0,
+      "fps": 0.0
+    },
+    "frozen_lake": {
+      "start_row": 16,
+      "fps": 0.5
+    },
+    "lava_pool": {
+      "start_row": 32,
+      "fps": 2.0
+    },
+    "ruins_wall": {
+      "start_row": 48,
+      "fps": 0.0
+    },
+    "bone_pile": {
+      "start_row": 64,
+      "fps": 0.0
+    },
+    "grave": {
+      "start_row": 80,
+      "fps": 0.0
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "cell_size": [
+    64,
+    64
+  ],
+  "cols": 4,
+  "tiles": {
+    "tree": {
+      "start_row": 0,
+      "fps": 0.0
+    },
+    "water": {
+      "start_row": 16,
+      "fps": 3.0
+    },
+    "mountain": {
+      "start_row": 32,
+      "fps": 0.0
+    },
+    "cactus": {
+      "start_row": 48,
+      "fps": 0.0
+    }
+  }
+}
