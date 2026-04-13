@@ -31,7 +31,13 @@ def pos_in_bounds(wx: float, wy: float) -> bool:
     return 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS
 
 
-def hits_blocking(world: list[list[int]], cx: float, cy: float, half: float, extra_passable: tuple[int, ...] = ()) -> bool:
+def hits_blocking(
+    world: list[list[int]],
+    cx: float,
+    cy: float,
+    half: float,
+    extra_passable: tuple[int, ...] = (),
+) -> bool:
     """Check if a circle (center cx,cy, radius half) hits any blocking tile.
 
     extra_passable: tile IDs that should be treated as passable even if they
@@ -45,7 +51,9 @@ def hits_blocking(world: list[list[int]], cx: float, cy: float, half: float, ext
     return False
 
 
-def out_of_bounds(cx: float, cy: float, half: float, world: list[list[int]] | None = None) -> bool:
+def out_of_bounds(
+    cx: float, cy: float, half: float, world: list[list[int]] | None = None
+) -> bool:
     """Check if a circle would leave the world bounds."""
     for ox in (-half, half):
         for oy in (-half, half):

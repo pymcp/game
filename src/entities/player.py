@@ -119,7 +119,13 @@ class Player:
 
     COLLISION_HALF = 10
 
-    def __init__(self, x: float, y: float, player_id: int = 1, control_scheme: "ControlScheme | None" = None) -> None:
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        player_id: int = 1,
+        control_scheme: "ControlScheme | None" = None,
+    ) -> None:
         """Initialize player.
 
         Args:
@@ -211,7 +217,9 @@ class Player:
 
     # -- movement / collision ----------------------------------------------
 
-    def update_movement(self, keys: pygame.key.ScancodeWrapper, dt: float, world: list[list[int]]) -> None:
+    def update_movement(
+        self, keys: pygame.key.ScancodeWrapper, dt: float, world: list[list[int]]
+    ) -> None:
         """Handle input and collision using the player's control scheme."""
         from src.config import GRASS, DIRT, MOUNTAIN, WATER
 
@@ -262,7 +270,16 @@ class Player:
     # -- mining ------------------------------------------------------------
 
     def update_mining(
-        self, keys: pygame.key.ScancodeWrapper, mouse_buttons: tuple[bool, bool, bool], dt: float, world: list[list[int]], tile_hp: list[list[int]], cam_x: float, cam_y: float, particles: list, floats: list
+        self,
+        keys: pygame.key.ScancodeWrapper,
+        mouse_buttons: tuple[bool, bool, bool],
+        dt: float,
+        world: list[list[int]],
+        tile_hp: list[list[int]],
+        cam_x: float,
+        cam_y: float,
+        particles: list,
+        floats: list,
     ) -> None:
         """Handle mining input and tile breaking."""
 
@@ -390,7 +407,9 @@ class Player:
         else:
             self._draw_normal(surf, psx, psy, body_color)
 
-    def _draw_normal(self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]) -> None:
+    def _draw_normal(
+        self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]
+    ) -> None:
         """Draw the standard standing player."""
         pygame.draw.rect(
             surf, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4
@@ -402,7 +421,9 @@ class Player:
             surf, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3
         )
 
-    def _draw_on_boat(self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]) -> None:
+    def _draw_on_boat(
+        self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]
+    ) -> None:
         """Draw the player seated in a boat (boat prominent in foreground)."""
         import math
 

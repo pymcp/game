@@ -74,7 +74,9 @@ def generate_world() -> list[list[int]]:
     return world
 
 
-def generate_ocean_sector(sx: int, sy: int, world_seed: int) -> tuple[list[list[int]], bool]:
+def generate_ocean_sector(
+    sx: int, sy: int, world_seed: int
+) -> tuple[list[list[int]], bool]:
     """Generate a deterministic 80×60 ocean sector at grid position (sx, sy).
 
     The result is fully reproducible: calling with the same arguments always
@@ -171,7 +173,9 @@ def _generate_island_mask(rows: int, cols: int) -> list[list[bool]]:
     return mask
 
 
-def _generate_mountain_ranges(world: list[list[int]], land_mask: list[list[bool]] | None = None) -> None:
+def _generate_mountain_ranges(
+    world: list[list[int]], land_mask: list[list[bool]] | None = None
+) -> None:
     """Generate mountains in interconnected ranges for better landscape."""
     # First, place initial mountain clusters
     for _ in range(40):  # More initial clusters than before (was 30)
@@ -225,7 +229,9 @@ def _generate_rivers_and_lakes(world: list[list[int]]) -> None:
         _trace_river(world, start_col, start_row)
 
 
-def _trace_river(world: list[list[int]], start_col: int, start_row: int, max_length: int = 80) -> None:
+def _trace_river(
+    world: list[list[int]], start_col: int, start_row: int, max_length: int = 80
+) -> None:
     """Trace a river from a starting point, creating lakes along the way."""
     col, row = start_col, start_row
     length = 0
@@ -279,7 +285,12 @@ def _trace_river(world: list[list[int]], start_col: int, start_row: int, max_len
         length += 1
 
 
-def _create_lake(world: list[list[int]], center_col: int, center_row: int, radius_range: tuple[int, int] = (1, 2)) -> None:
+def _create_lake(
+    world: list[list[int]],
+    center_col: int,
+    center_row: int,
+    radius_range: tuple[int, int] = (1, 2),
+) -> None:
     """Create a lake (contiguous water area) around a center point."""
     radius = random.randint(*radius_range)
 

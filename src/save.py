@@ -5,7 +5,12 @@ import os
 from typing import TYPE_CHECKING
 
 from src.world.map import GameMap
-from src.entities.player import Player, ControlScheme, CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
+from src.entities.player import (
+    Player,
+    ControlScheme,
+    CONTROL_SCHEME_PLAYER1,
+    CONTROL_SCHEME_PLAYER2,
+)
 from src.entities.worker import Worker
 from src.entities.pet import Pet
 from src.entities.enemy import Enemy

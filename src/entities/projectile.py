@@ -9,7 +9,16 @@ from src.effects.particle import Particle
 class Projectile:
     """A projectile fired in a direction. Configured by a WEAPONS entry."""
 
-    def __init__(self, x: float, y: float, dir_x: float, dir_y: float, weapon: dict, player_id: int = 1, map_key: str | tuple = "overland") -> None:
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        dir_x: float,
+        dir_y: float,
+        weapon: dict,
+        player_id: int = 1,
+        map_key: str | tuple = "overland",
+    ) -> None:
         self.x = float(x)
         self.y = float(y)
         self.dir_x = dir_x

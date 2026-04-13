@@ -69,7 +69,9 @@ class Worker:
             return (pick[1], pick[2])
         return None
 
-    def _move_toward(self, dest_x: float, dest_y: float, dt: float, world: list[list[int]]) -> float:
+    def _move_toward(
+        self, dest_x: float, dest_y: float, dt: float, world: list[list[int]]
+    ) -> float:
         """Move toward destination, reverting if landing on a blocked tile.
         Returns distance remaining."""
         dx = dest_x - self.x
@@ -89,7 +91,15 @@ class Worker:
                     self._pick_wander_dest()
         return dist
 
-    def update(self, dt: float, world: list[list[int]], tile_hp: list[list[int]], inventory: dict[str, int], particles: list, floats: list) -> None:
+    def update(
+        self,
+        dt: float,
+        world: list[list[int]],
+        tile_hp: list[list[int]],
+        inventory: dict[str, int],
+        particles: list,
+        floats: list,
+    ) -> None:
         """Update worker AI and state machine."""
         from src.config import GRASS, DIRT, MOUNTAIN
 

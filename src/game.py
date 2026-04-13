@@ -408,7 +408,9 @@ class Game:
             return self.maps.get(map_key)
         return None
 
-    def _find_grass_spawn(self, game_map: GameMap, prefer_col: int, prefer_row: int) -> tuple[float, float]:
+    def _find_grass_spawn(
+        self, game_map: GameMap, prefer_col: int, prefer_row: int
+    ) -> tuple[float, float]:
         """Return (x, y) pixel centre of the nearest GRASS tile to prefer_col/row."""
         rows = game_map.rows
         cols = game_map.cols
@@ -767,7 +769,9 @@ class Game:
                 return (i, SETTLEMENT_TIER_NAMES[i])
         return (0, SETTLEMENT_TIER_NAMES[0])
 
-    def _update_town_clusters(self, build_col: int, build_row: int, player: Player) -> None:
+    def _update_town_clusters(
+        self, build_col: int, build_row: int, player: Player
+    ) -> None:
         """Recompute town clusters after a house is placed and announce tier upgrades."""
         overland = self.maps["overland"]
         old_clusters = overland.town_clusters
@@ -823,7 +827,17 @@ class Game:
                     FloatingText(tile_cx, tile_cy - 56, res_text, (120, 255, 120))
                 )
 
-    def _draw_house_tile(self, tx: int, ty: int, tier: int, n: bool, s: bool, e: bool, w: bool, ticks: int) -> None:
+    def _draw_house_tile(
+        self,
+        tx: int,
+        ty: int,
+        tier: int,
+        n: bool,
+        s: bool,
+        e: bool,
+        w: bool,
+        ticks: int,
+    ) -> None:
         """Draw a house tile styled to its settlement tier.
 
         Args:
@@ -1051,7 +1065,9 @@ class Game:
                 pygame.draw.ellipse(sc, (40, 32, 22), (tx + 11, ty + 20, 10, 8))
                 pygame.draw.ellipse(sc, gold_c, (tx + 11, ty + 20, 10, 8), 1)
 
-    def _nearest_living_player(self, map_key: str | tuple, enemy: Enemy) -> Player | None:
+    def _nearest_living_player(
+        self, map_key: str | tuple, enemy: Enemy
+    ) -> Player | None:
         """Return the nearest living player on map_key, or None if none present."""
         candidates = [
             p
@@ -1062,7 +1078,9 @@ class Game:
             return None
         return min(candidates, key=lambda p: math.hypot(p.x - enemy.x, p.y - enemy.y))
 
-    def check_cave_transitions(self, player: Player, current_map: GameMap | None) -> None:
+    def check_cave_transitions(
+        self, player: Player, current_map: GameMap | None
+    ) -> None:
         """Check if player stepped on a cave entrance and transition if so."""
         # Cave entry is only possible when on a surface map (not already in a cave)
         if isinstance(player.current_map, tuple) and len(player.current_map) == 2:
@@ -1381,7 +1399,9 @@ class Game:
                 if target_player.hp <= 0 and not target_player.is_dead:
                     self._start_death_challenge(target_player)
 
-    def _draw_sector_wipe_viewport(self, screen_x: int, screen_y: int, view_w: int, view_h: int, progress: float) -> None:
+    def _draw_sector_wipe_viewport(
+        self, screen_x: int, screen_y: int, view_w: int, view_h: int, progress: float
+    ) -> None:
         """Draw a quick scroll-wipe flash when crossing a sector boundary.
 
         The first half of the animation blurs/fades out the old view with a
@@ -1444,7 +1464,12 @@ class Game:
 
             cave_map.enemies = [e for e in cave_map.enemies if e.hp > 0]
 
-    def _update_combat(self, keys: pygame.key.ScancodeWrapper, mouse_buttons: tuple[bool, bool, bool], dt: float) -> None:
+    def _update_combat(
+        self,
+        keys: pygame.key.ScancodeWrapper,
+        mouse_buttons: tuple[bool, bool, bool],
+        dt: float,
+    ) -> None:
         """Handle weapon firing for both players."""
         # Player 1 firing (skipped while dead)
         if self.player1.weapon_cooldown > 0:
@@ -1553,7 +1578,14 @@ class Game:
         pygame.display.flip()
 
     def _draw_player_view(
-        self, player: Player, cam_x: float, cam_y: float, screen_x: int, screen_y: int, view_w: int, view_h: int
+        self,
+        player: Player,
+        cam_x: float,
+        cam_y: float,
+        screen_x: int,
+        screen_y: int,
+        view_w: int,
+        view_h: int,
     ) -> None:
         """Draw a single player's viewport."""
         self.screen.set_clip(pygame.Rect(screen_x, screen_y, view_w, view_h))
@@ -1989,7 +2021,9 @@ class Game:
 
         self.screen.set_clip(None)
 
-    def _draw_player_ui(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
+    def _draw_player_ui(
+        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
         """Draw UI for a single player's viewport."""
         font_small = self.font_ui_sm
         font_tiny = self.font_ui_xs
@@ -2211,7 +2245,9 @@ class Game:
         # Sector minimap (top-right corner)
         self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
 
-    def _draw_sector_minimap(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
+    def _draw_sector_minimap(
+        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
         """Draw a small sector-grid minimap in the top-right corner of the viewport.
 
         Only shown when the player is on the surface (not in a cave).
@@ -2335,7 +2371,9 @@ class Game:
             }
         )
 
-    def _draw_treasure_reveal(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
+    def _draw_treasure_reveal(
+        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
         """Draw the treasure chest loot popup for a player's viewport."""
         reveal = next(
             (r for r in self.treasure_reveals if r["player_id"] == player.player_id),
@@ -2394,7 +2432,9 @@ class Game:
             self.screen.blit(txt, (ix, item_y))
             ix += txt.get_width() + 16
 
-    def _draw_death_challenge(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
+    def _draw_death_challenge(
+        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
         """Draw the death/respawn math challenge overlay for a player's viewport."""
         challenge = self.death_challenges.get(player.player_id)
         if challenge is None:

@@ -8,7 +8,9 @@ class FloatingText:
 
     __slots__ = ("x", "y", "text", "color", "life")
 
-    def __init__(self, x: float, y: float, text: str, color: tuple[int, int, int]) -> None:
+    def __init__(
+        self, x: float, y: float, text: str, color: tuple[int, int, int]
+    ) -> None:
         self.x = x
         self.y = y
         self.text = text
@@ -20,7 +22,9 @@ class FloatingText:
         self.y -= 0.8
         self.life -= 1
 
-    def draw(self, surf: pygame.Surface, font: pygame.font.Font, cam_x: float, cam_y: float) -> None:
+    def draw(
+        self, surf: pygame.Surface, font: pygame.font.Font, cam_x: float, cam_y: float
+    ) -> None:
         """Draw to screen with alpha fade."""
         from src.config import SCREEN_W, SCREEN_H
 

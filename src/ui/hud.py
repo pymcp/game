@@ -5,7 +5,9 @@ from src.config import SCREEN_W, SCREEN_H, TILE, WORLD_COLS, WORLD_ROWS, WHITE
 from src.data import PICKAXES, WEAPONS, WEAPON_UNLOCK_COSTS, UPGRADE_COSTS, TILE_INFO
 
 
-def draw_hud(screen: pygame.Surface, font: pygame.font.Font, player, workers: list, pets: list) -> None:
+def draw_hud(
+    screen: pygame.Surface, font: pygame.font.Font, player, workers: list, pets: list
+) -> None:
     """Draw the HUD panel with inventory, stats, and controls."""
     p = player
     inv = p.inventory
@@ -129,7 +131,14 @@ def draw_hud(screen: pygame.Surface, font: pygame.font.Font, player, workers: li
     screen.blit(hint_surf, (SCREEN_W // 2 - hint_surf.get_width() // 2, SCREEN_H - 26))
 
 
-def draw_tooltip(screen: pygame.Surface, font: pygame.font.Font, cam_x: float, cam_y: float, world: list[list[int]], tile_hp: list[list[int]]) -> None:
+def draw_tooltip(
+    screen: pygame.Surface,
+    font: pygame.font.Font,
+    cam_x: float,
+    cam_y: float,
+    world: list[list[int]],
+    tile_hp: list[list[int]],
+) -> None:
     """Draw tile hover tooltip."""
     from src.data import TILE_INFO
 

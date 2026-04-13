@@ -6,7 +6,9 @@ from src.config import TILE, SCREEN_W, SCREEN_H
 from src.effects import Particle
 
 
-def _clamp_color(base: tuple[int, int, int], offset: tuple[int, int, int]) -> tuple[int, int, int]:
+def _clamp_color(
+    base: tuple[int, int, int], offset: tuple[int, int, int]
+) -> tuple[int, int, int]:
     """Clamp color values to 0-255."""
     return tuple(max(0, min(255, base[i] + offset[i])) for i in range(3))
 
@@ -57,7 +59,16 @@ class Enemy:
             return True
         return world[row][col] in (WATER, MOUNTAIN, HOUSE, CAVE_WALL)
 
-    def update(self, dt: float, px: float, py: float, cam_x: float, cam_y: float, world: list[list[int]], particles: list) -> None:
+    def update(
+        self,
+        dt: float,
+        px: float,
+        py: float,
+        cam_x: float,
+        cam_y: float,
+        world: list[list[int]],
+        particles: list,
+    ) -> None:
         """Update enemy state and position."""
         if self.hp <= 0:
             return
@@ -121,7 +132,9 @@ class Enemy:
             return self.attack
         return 0
 
-    def take_damage(self, amount: int, source_x: float, source_y: float, particles: list) -> None:
+    def take_damage(
+        self, amount: int, source_x: float, source_y: float, particles: list
+    ) -> None:
         """Take damage and create damage-dealing particles."""
         self.hp -= amount
         self.hurt_flash = 8

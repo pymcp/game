@@ -57,7 +57,9 @@ class Pet:
         self.follow_offset_x = random.uniform(-20, 20)
         self.follow_offset_y = random.uniform(10, 30)
 
-    def update(self, dt: float, target_x: float, target_y: float, world: list[list[int]]) -> None:
+    def update(
+        self, dt: float, target_x: float, target_y: float, world: list[list[int]]
+    ) -> None:
         """Update pet position to follow player."""
         dest_x = target_x + self.follow_offset_x
         dest_y = target_y + self.follow_offset_y
@@ -81,7 +83,9 @@ class Pet:
         self.x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x))
         self.y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y))
 
-    def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float, ticks: int) -> None:
+    def draw(
+        self, surf: pygame.Surface, cam_x: float, cam_y: float, ticks: int
+    ) -> None:
         """Draw pet sprite."""
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
