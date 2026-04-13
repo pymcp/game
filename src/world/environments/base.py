@@ -1,5 +1,11 @@
 """Base class for all game environments."""
 
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.world.map import GameMap
+
 
 class BaseEnvironment:
     """Abstract base for environments (overland, cave, etc.).
@@ -8,7 +14,7 @@ class BaseEnvironment:
     are appropriate for that environment.
     """
 
-    def generate(self):
+    def generate(self) -> "GameMap":
         """Generate and return a fully configured GameMap for this environment.
 
         Subclasses must implement this.  The returned GameMap may have
@@ -16,7 +22,7 @@ class BaseEnvironment:
         """
         raise NotImplementedError
 
-    def spawn_enemies(self, game_map):
+    def spawn_enemies(self, game_map: "GameMap") -> list:
         """Return a list of Enemy instances suitable for this environment.
 
         Args:

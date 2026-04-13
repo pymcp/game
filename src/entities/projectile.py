@@ -9,7 +9,7 @@ from src.effects.particle import Particle
 class Projectile:
     """A projectile fired in a direction. Configured by a WEAPONS entry."""
 
-    def __init__(self, x, y, dir_x, dir_y, weapon, player_id=1, map_key="overland"):
+    def __init__(self, x: float, y: float, dir_x: float, dir_y: float, weapon: dict, player_id: int = 1, map_key: str | tuple = "overland") -> None:
         self.x = float(x)
         self.y = float(y)
         self.dir_x = dir_x
@@ -29,7 +29,7 @@ class Projectile:
         self.player_id = player_id
         self.map_key = map_key
 
-    def update(self, dt):
+    def update(self, dt: float) -> None:
         """Move projectile and check distance."""
         from src.config import WORLD_COLS, WORLD_ROWS, TILE
 
@@ -47,7 +47,7 @@ class Projectile:
         ):
             self.alive = False
 
-    def check_hits(self, enemies, particles, floats):
+    def check_hits(self, enemies: list, particles: list, floats: list) -> None:
         """Check collisions with enemies."""
         from src.effects import FloatingText
 
@@ -79,7 +79,7 @@ class Projectile:
                     self.alive = False
                     break
 
-    def draw(self, surf, cam_x, cam_y):
+    def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw projectile to screen."""
         from src.config import SCREEN_W, SCREEN_H
 

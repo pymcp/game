@@ -6,7 +6,7 @@ from src.data import TILE_INFO
 class GameMap:
     """Represents a game map with its world, tileset, and tile HP."""
 
-    def __init__(self, world, tileset="overland"):
+    def __init__(self, world: list[list[int]], tileset: str = "overland") -> None:
         """Initialize a game map.
 
         Args:
@@ -30,30 +30,30 @@ class GameMap:
         # Town cluster cache: maps (row, col) → cluster_size for HOUSE tiles
         self.town_clusters = {}
 
-    def get_tile(self, row, col):
+    def get_tile(self, row: int, col: int) -> int | None:
         """Get tile ID at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:
             return self.world[row][col]
         return None
 
-    def set_tile(self, row, col, tile_id):
+    def set_tile(self, row: int, col: int, tile_id: int) -> None:
         """Set tile ID at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:
             self.world[row][col] = tile_id
             self.tile_hp[row][col] = TILE_INFO.get(tile_id, {}).get("hp", 0)
 
-    def get_tile_hp(self, row, col):
+    def get_tile_hp(self, row: int, col: int) -> int:
         """Get tile HP at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:
             return self.tile_hp[row][col]
         return 0
 
-    def set_tile_hp(self, row, col, hp):
+    def set_tile_hp(self, row: int, col: int, hp: int) -> None:
         """Set tile HP at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:
             self.tile_hp[row][col] = hp
 
-    def get_tileset_color(self, tile_id):
+    def get_tileset_color(self, tile_id: int) -> tuple[int, int, int]:
         """Get the color for a tile based on the current tileset.
 
         This allows different tilesets to render tiles differently.

@@ -44,7 +44,7 @@ from src.world import (
 )
 from src.world.map import GameMap
 from src.world.environments import CaveEnvironment
-from src.entities import Player, Projectile, Worker, Pet
+from src.entities import Player, Projectile, Worker, Pet, Enemy
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.save import save_game, load_game, apply_save
@@ -53,7 +53,7 @@ from src.save import save_game, load_game, apply_save
 class Game:
     """Main game class managing all game state and the main loop (2 players)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.RESIZABLE)
         pygame.display.set_caption("Mining Game - 2 Players (F11 for fullscreen)")
@@ -154,7 +154,7 @@ class Game:
 
     # -- death challenge ---------------------------------------------------
 
-    def _start_death_challenge(self, player):
+    def _start_death_challenge(self, player: Player) -> None:
         """Pause a dead player and present a math problem they must solve to respawn."""
         player.is_dead = True
         player.hurt_timer = 0
@@ -175,7 +175,7 @@ class Game:
             "wrong": False,
         }
 
-    def _submit_death_challenge(self, player):
+    def _submit_death_challenge(self, player: Player) -> None:
         """Check the typed answer; respawn player on correct answer."""
         challenge = self.death_challenges.get(player.player_id)
         if challenge is None:
@@ -198,7 +198,7 @@ class Game:
             challenge["wrong"] = True
             challenge["input"] = ""
 
-    def _respawn_player(self, player):
+    def _respawn_player(self, player: Player) -> None:
         """Teleport a respawning player to a safe grass tile near the world centre."""
         player.current_map = "overland"
         overland = self.maps["overland"]
@@ -219,7 +219,7 @@ class Game:
 
     # -- main loop ---------------------------------------------------------
 
-    def run(self):
+    def run(self) -> None:
         """Main game loop."""
         while self.running:
             dt = self.clock.tick(FPS) / 16.667
@@ -231,7 +231,7 @@ class Game:
 
     # -- events ------------------------------------------------------------
 
-    def handle_events(self):
+    def handle_events(self) -> None:
         """Handle input events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -241,7 +241,7 @@ class Game:
             elif event.type == pygame.VIDEORESIZE:
                 self.screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
 
-    def _handle_keydown(self, key):
+    def _handle_keydown(self, key: int) -> None:
         """Handle key press (for both players based on key)."""
         # --- Death challenge input handling (takes priority over all other keys) ---
         active_player = None
@@ -349,7 +349,7 @@ class Game:
         elif not self.player2.is_dead and key == self.player2.controls.build_pier_key:
             self._try_build_pier(self.player2)
 
-    def _try_build_house(self, player):
+    def _try_build_house(self, player: Player) -> None:
         """Attempt to build a house at player position."""
         if player.current_map != "overland":
             return  # Can only build houses on overland map
@@ -399,7 +399,7 @@ class Game:
 
     # -- helpers -----------------------------------------------------------
 
-    def get_player_current_map(self, player):
+    def get_player_current_map(self, player: Player) -> GameMap | None:
         """Get the GameMap object that the player is currently on."""
         map_key = player.current_map
         if map_key == "overland":
@@ -408,7 +408,7 @@ class Game:
             return self.maps.get(map_key)
         return None
 
-    def _find_grass_spawn(self, game_map, prefer_col, prefer_row):
+    def _find_grass_spawn(self, game_map: GameMap, prefer_col: int, prefer_row: int) -> tuple[float, float]:
         """Return (x, y) pixel centre of the nearest GRASS tile to prefer_col/row."""
         rows = game_map.rows
         cols = game_map.cols
@@ -426,7 +426,7 @@ class Game:
 
     # -- sailing / pier / boat / interaction --------------------------------
 
-    def _try_interact(self, player):
+    def _try_interact(self, player: Player) -> None:
         """Context-sensitive interact key handler.
 
         Priority:
@@ -566,7 +566,7 @@ class Game:
                         self.particles.append(Particle(btx, bty, (80, 160, 220)))
                     return
 
-    def _try_build_pier(self, player):
+    def _try_build_pier(self, player: Player) -> None:
         """Build a 2-tile pier extending from the player's shore tile into water."""
         if player.on_boat:
             return
@@ -631,7 +631,7 @@ class Game:
             FloatingText(tx, ty - 20, "No water to build on!", (255, 100, 100))
         )
 
-    def _get_player_sector(self, player):
+    def _get_player_sector(self, player: Player) -> tuple[int, int] | None:
         """Return the (sx, sy) sector coordinates for a player's current map.
 
         Overland/"overland" maps map to sector (0, 0).
@@ -645,7 +645,7 @@ class Game:
             return (key[1], key[2])
         return None  # cave or unknown
 
-    def _get_or_generate_sector(self, sx, sy):
+    def _get_or_generate_sector(self, sx: int, sy: int) -> GameMap:
         """Return (or lazily generate) the GameMap for sector (sx, sy)."""
         if sx == 0 and sy == 0:
             return self.maps["overland"]
@@ -660,7 +660,7 @@ class Game:
                 self.land_sectors.add((sx, sy))
         return self.maps[key]
 
-    def _evict_distant_sectors(self):
+    def _evict_distant_sectors(self) -> None:
         """Drop sector maps that are more than 2 sectors away from all players."""
         sectors_in_use = set()
         for player in (self.player1, self.player2):
@@ -681,7 +681,7 @@ class Game:
         for key in to_evict:
             del self.maps[key]
 
-    def check_sector_transitions(self, player):
+    def check_sector_transitions(self, player: Player) -> None:
         """Detect when an on-boat player crosses the edge of their current sector
         and teleport them to the adjacent sector with a brief wipe animation."""
         if not player.on_boat:
@@ -750,7 +750,7 @@ class Game:
 
         self._evict_distant_sectors()
 
-    def _snap_camera_to_player(self, player):
+    def _snap_camera_to_player(self, player: Player) -> None:
         """Immediately snap a player's camera to centre on that player."""
         if player.player_id == 1:
             self.cam1_x = player.x - self.viewport_w // 2
@@ -760,14 +760,14 @@ class Game:
             self.cam2_y = player.y - self.viewport_h // 2
 
     @staticmethod
-    def _get_settlement_tier(cluster_size):
+    def _get_settlement_tier(cluster_size: int) -> tuple[int, str]:
         """Return (tier_index, tier_name) for a given cluster size."""
         for i in range(len(SETTLEMENT_TIER_SIZES) - 1, -1, -1):
             if cluster_size >= SETTLEMENT_TIER_SIZES[i]:
                 return (i, SETTLEMENT_TIER_NAMES[i])
         return (0, SETTLEMENT_TIER_NAMES[0])
 
-    def _update_town_clusters(self, build_col, build_row, player):
+    def _update_town_clusters(self, build_col: int, build_row: int, player: Player) -> None:
         """Recompute town clusters after a house is placed and announce tier upgrades."""
         overland = self.maps["overland"]
         old_clusters = overland.town_clusters
@@ -823,7 +823,7 @@ class Game:
                     FloatingText(tile_cx, tile_cy - 56, res_text, (120, 255, 120))
                 )
 
-    def _draw_house_tile(self, tx, ty, tier, n, s, e, w, ticks):
+    def _draw_house_tile(self, tx: int, ty: int, tier: int, n: bool, s: bool, e: bool, w: bool, ticks: int) -> None:
         """Draw a house tile styled to its settlement tier.
 
         Args:
@@ -1051,7 +1051,7 @@ class Game:
                 pygame.draw.ellipse(sc, (40, 32, 22), (tx + 11, ty + 20, 10, 8))
                 pygame.draw.ellipse(sc, gold_c, (tx + 11, ty + 20, 10, 8), 1)
 
-    def _nearest_living_player(self, map_key, enemy):
+    def _nearest_living_player(self, map_key: str | tuple, enemy: Enemy) -> Player | None:
         """Return the nearest living player on map_key, or None if none present."""
         candidates = [
             p
@@ -1062,7 +1062,7 @@ class Game:
             return None
         return min(candidates, key=lambda p: math.hypot(p.x - enemy.x, p.y - enemy.y))
 
-    def check_cave_transitions(self, player, current_map):
+    def check_cave_transitions(self, player: Player, current_map: GameMap | None) -> None:
         """Check if player stepped on a cave entrance and transition if so."""
         # Cave entry is only possible when on a surface map (not already in a cave)
         if isinstance(player.current_map, tuple) and len(player.current_map) == 2:
@@ -1104,7 +1104,7 @@ class Game:
                 FloatingText(player.x, player.y - 30, "Entered cave!", (100, 150, 255))
             )
 
-    def check_cave_exits(self, player, current_map):
+    def check_cave_exits(self, player: Player, current_map: GameMap | None) -> None:
         """Check if player stepped on a cave exit and transition back to their origin map."""
         # Must be in a cave (2-tuple key)
         if not (isinstance(player.current_map, tuple) and len(player.current_map) == 2):
@@ -1168,7 +1168,7 @@ class Game:
 
     # -- update ------------------------------------------------------------
 
-    def update(self, dt):
+    def update(self, dt: float) -> None:
         """Update game state (both players, shared world)."""
         # Update viewport sizes to match actual screen, just like draw() does
         screen_width, screen_height = self.screen.get_size()
@@ -1357,7 +1357,7 @@ class Game:
             rev["timer"] -= dt
         self.treasure_reveals = [r for r in self.treasure_reveals if r["timer"] > 0]
 
-    def _update_enemies(self, dt):
+    def _update_enemies(self, dt: float) -> None:
         """Update all enemies and check for attacks on both players."""
         overland_map = self.maps["overland"]
         avg_cam_x = (self.cam1_x + self.cam2_x) / 2
@@ -1381,7 +1381,7 @@ class Game:
                 if target_player.hp <= 0 and not target_player.is_dead:
                     self._start_death_challenge(target_player)
 
-    def _draw_sector_wipe_viewport(self, screen_x, screen_y, view_w, view_h, progress):
+    def _draw_sector_wipe_viewport(self, screen_x: int, screen_y: int, view_w: int, view_h: int, progress: float) -> None:
         """Draw a quick scroll-wipe flash when crossing a sector boundary.
 
         The first half of the animation blurs/fades out the old view with a
@@ -1398,7 +1398,7 @@ class Game:
         flash.fill((220, 240, 255, alpha))
         self.screen.blit(flash, (screen_x, screen_y))
 
-    def _update_cave_enemies(self, dt):
+    def _update_cave_enemies(self, dt: float) -> None:
         """Update enemies inside caves that currently contain at least one player."""
         active_caves = {
             p.current_map
@@ -1444,7 +1444,7 @@ class Game:
 
             cave_map.enemies = [e for e in cave_map.enemies if e.hp > 0]
 
-    def _update_combat(self, keys, mouse_buttons, dt):
+    def _update_combat(self, keys: pygame.key.ScancodeWrapper, mouse_buttons: tuple[bool, bool, bool], dt: float) -> None:
         """Handle weapon firing for both players."""
         # Player 1 firing (skipped while dead)
         if self.player1.weapon_cooldown > 0:
@@ -1492,7 +1492,7 @@ class Game:
                 )
                 self.player2.weapon_cooldown = wpn["cooldown"]
 
-    def _update_projectiles(self, dt):
+    def _update_projectiles(self, dt: float) -> None:
         """Update all projectiles and check for hits against enemies on the same map."""
         for proj in self.projectiles:
             proj.update(dt)
@@ -1512,7 +1512,7 @@ class Game:
 
     # -- drawing -----------------------------------------------------------
 
-    def draw(self):
+    def draw(self) -> None:
         """Render split-screen for both players."""
         # Get actual screen dimensions and update viewport sizes
         screen_width, screen_height = self.screen.get_size()
@@ -1553,8 +1553,8 @@ class Game:
         pygame.display.flip()
 
     def _draw_player_view(
-        self, player, cam_x, cam_y, screen_x, screen_y, view_w, view_h
-    ):
+        self, player: Player, cam_x: float, cam_y: float, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
         """Draw a single player's viewport."""
         self.screen.set_clip(pygame.Rect(screen_x, screen_y, view_w, view_h))
 
@@ -1989,7 +1989,7 @@ class Game:
 
         self.screen.set_clip(None)
 
-    def _draw_player_ui(self, player, screen_x, screen_y, view_w, view_h):
+    def _draw_player_ui(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
         """Draw UI for a single player's viewport."""
         font_small = self.font_ui_sm
         font_tiny = self.font_ui_xs
@@ -2211,7 +2211,7 @@ class Game:
         # Sector minimap (top-right corner)
         self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
 
-    def _draw_sector_minimap(self, player, screen_x, screen_y, view_w, view_h):
+    def _draw_sector_minimap(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
         """Draw a small sector-grid minimap in the top-right corner of the viewport.
 
         Only shown when the player is on the surface (not in a cave).
@@ -2281,7 +2281,7 @@ class Game:
         dot_y = grid_top + centre_row * (CELL + GAP) + CELL // 2
         pygame.draw.circle(self.screen, (255, 255, 255), (dot_x, dot_y), 2)
 
-    def _open_treasure_chest(self, player, tx, ty):
+    def _open_treasure_chest(self, player: Player, tx: int, ty: int) -> None:
         """Award loot from a treasure chest, spawn particles, and queue a reveal popup."""
         # Loot table: always a Sail + a random bonus
         loot = {"Sail": 1}
@@ -2335,7 +2335,7 @@ class Game:
             }
         )
 
-    def _draw_treasure_reveal(self, player, screen_x, screen_y, view_w, view_h):
+    def _draw_treasure_reveal(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
         """Draw the treasure chest loot popup for a player's viewport."""
         reveal = next(
             (r for r in self.treasure_reveals if r["player_id"] == player.player_id),
@@ -2394,7 +2394,7 @@ class Game:
             self.screen.blit(txt, (ix, item_y))
             ix += txt.get_width() + 16
 
-    def _draw_death_challenge(self, player, screen_x, screen_y, view_w, view_h):
+    def _draw_death_challenge(self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int) -> None:
         """Draw the death/respawn math challenge overlay for a player's viewport."""
         challenge = self.death_challenges.get(player.player_id)
         if challenge is None:

@@ -2,12 +2,16 @@
 
 import json
 import os
+from typing import TYPE_CHECKING
 
 from src.world.map import GameMap
-from src.entities.player import Player, CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
+from src.entities.player import Player, ControlScheme, CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.entities.worker import Worker
 from src.entities.pet import Pet
 from src.entities.enemy import Enemy
+
+if TYPE_CHECKING:
+    from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
 SAVE_VERSION = 1
@@ -18,7 +22,7 @@ SAVE_VERSION = 1
 # ---------------------------------------------------------------------------
 
 
-def _key_to_str(key):
+def _key_to_str(key: str | tuple) -> str:
     """Convert a map dict key to a JSON-safe string."""
     if key == "overland":
         return "overland"
@@ -30,7 +34,7 @@ def _key_to_str(key):
     return str(key)
 
 
-def _str_to_key(s):
+def _str_to_key(s: str) -> str | tuple:
     """Decode a serialized map key string back to the original dict key."""
     if s == "overland":
         return "overland"
@@ -43,12 +47,12 @@ def _str_to_key(s):
     return s
 
 
-def _player_map_key_to_str(key):
+def _player_map_key_to_str(key: str | tuple) -> str:
     """Serialize player.current_map (same encoding as map keys)."""
     return _key_to_str(key)
 
 
-def _str_to_player_map_key(s):
+def _str_to_player_map_key(s: str) -> str | tuple:
     return _str_to_key(s)
 
 
@@ -71,7 +75,7 @@ _CAVE_EXTRA_ATTRS = (
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
 
-def _serialize_map(game_map):
+def _serialize_map(game_map: GameMap) -> dict:
     """Serialize a GameMap to a JSON-serializable dict."""
     # town_clusters uses (row, col) tuple keys — encode as "row:col" strings
     tc = {f"{r}:{c}": v for (r, c), v in game_map.town_clusters.items()}
@@ -92,7 +96,7 @@ def _serialize_map(game_map):
     return data
 
 
-def _serialize_player(player):
+def _serialize_player(player: Player) -> dict:
     return {
         "x": player.x,
         "y": player.y,
@@ -118,7 +122,7 @@ def _serialize_player(player):
     }
 
 
-def _serialize_worker(worker):
+def _serialize_worker(worker: Worker) -> dict:
     return {
         "x": worker.x,
         "y": worker.y,
@@ -131,7 +135,7 @@ def _serialize_worker(worker):
     }
 
 
-def _serialize_pet(pet):
+def _serialize_pet(pet: Pet) -> dict:
     return {
         "x": pet.x,
         "y": pet.y,
@@ -146,7 +150,7 @@ def _serialize_pet(pet):
     }
 
 
-def _serialize_enemy(enemy):
+def _serialize_enemy(enemy: Enemy) -> dict:
     return {
         "x": enemy.x,
         "y": enemy.y,
@@ -160,7 +164,7 @@ def _serialize_enemy(enemy):
 # ---------------------------------------------------------------------------
 
 
-def _deserialize_map(data):
+def _deserialize_map(data: dict) -> GameMap:
     """Reconstruct a GameMap from saved dict."""
     game_map = GameMap(data["world"], tileset=data["tileset"])
     game_map.tile_hp = data["tile_hp"]
@@ -178,7 +182,7 @@ def _deserialize_map(data):
     return game_map
 
 
-def _deserialize_player(data, control_scheme):
+def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     player = Player(
         data["x"], data["y"], player_id=data["player_id"], control_scheme=control_scheme
     )
@@ -203,7 +207,7 @@ def _deserialize_player(data, control_scheme):
     return player
 
 
-def _deserialize_worker(data):
+def _deserialize_worker(data: dict) -> Worker:
     w = Worker(data["x"], data["y"], player_id=data["player_id"])
     w.speed = data["speed"]
     w.body_color = tuple(data["body_color"])
@@ -213,7 +217,7 @@ def _deserialize_worker(data):
     return w
 
 
-def _deserialize_pet(data):
+def _deserialize_pet(data: dict) -> Pet:
     p = Pet(data["x"], data["y"], kind=data["kind"])
     p.speed = data["speed"]
     p.body_color = tuple(data["body_color"])
@@ -225,7 +229,7 @@ def _deserialize_pet(data):
     return p
 
 
-def _deserialize_enemy(data):
+def _deserialize_enemy(data: dict) -> Enemy:
     e = Enemy(data["x"], data["y"], data["type_key"])
     e.hp = data["hp"]
     return e
@@ -236,7 +240,7 @@ def _deserialize_enemy(data):
 # ---------------------------------------------------------------------------
 
 
-def save_game(game):
+def save_game(game: "Game") -> None:
     """Serialize full game state to save.json."""
     maps_data = {}
     for key, game_map in game.maps.items():
@@ -270,7 +274,7 @@ def save_game(game):
         json.dump(save_data, f)
 
 
-def load_game():
+def load_game() -> dict | None:
     """Load save.json and return the raw dict, or None if no save exists."""
     if not os.path.exists(SAVE_PATH):
         return None
@@ -284,7 +288,7 @@ def load_game():
         return None
 
 
-def apply_save(game, data):
+def apply_save(game: "Game", data: dict) -> None:
     """Overwrite game state with the saved data dict."""
     game.world_seed = data["world_seed"]
 

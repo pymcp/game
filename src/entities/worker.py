@@ -11,7 +11,7 @@ from src.effects import Particle, FloatingText
 class Worker:
     """An AI-controlled character that wanders and mines for the player."""
 
-    def __init__(self, x, y, player_id=1):
+    def __init__(self, x: float, y: float, player_id: int = 1) -> None:
         self.x = float(x)
         self.y = float(y)
         self.speed = random.uniform(1.4, 2.2)
@@ -39,7 +39,7 @@ class Worker:
         self.dest_x = self.x
         self.dest_y = self.y
 
-    def _pick_wander_dest(self):
+    def _pick_wander_dest(self) -> None:
         """Pick a new random wander destination."""
         angle = random.uniform(0, 2 * math.pi)
         dist = random.uniform(TILE * 2, TILE * 6)
@@ -51,7 +51,7 @@ class Worker:
         )
         self.state = "wander"
 
-    def _find_mineable(self, world):
+    def _find_mineable(self, world: list[list[int]]) -> tuple[int, int] | None:
         """Find the closest mineable tile nearby."""
         col = int(self.x) // TILE
         row = int(self.y) // TILE
@@ -69,7 +69,7 @@ class Worker:
             return (pick[1], pick[2])
         return None
 
-    def _move_toward(self, dest_x, dest_y, dt, world):
+    def _move_toward(self, dest_x: float, dest_y: float, dt: float, world: list[list[int]]) -> float:
         """Move toward destination, reverting if landing on a blocked tile.
         Returns distance remaining."""
         dx = dest_x - self.x
@@ -89,7 +89,7 @@ class Worker:
                     self._pick_wander_dest()
         return dist
 
-    def update(self, dt, world, tile_hp, inventory, particles, floats):
+    def update(self, dt: float, world: list[list[int]], tile_hp: list[list[int]], inventory: dict[str, int], particles: list, floats: list) -> None:
         """Update worker AI and state machine."""
         from src.config import GRASS, DIRT, MOUNTAIN
 
@@ -161,7 +161,7 @@ class Worker:
         self.x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x))
         self.y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y))
 
-    def draw(self, surf, cam_x, cam_y):
+    def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw worker sprite."""
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)

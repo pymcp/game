@@ -10,11 +10,11 @@ class OverlandEnvironment(BaseEnvironment):
 
     TILESET = "overland"
 
-    def generate(self):
+    def generate(self) -> GameMap:
         """Generate the overland world map."""
         world = generate_world()
         return GameMap(world, tileset=self.TILESET)
 
-    def spawn_enemies(self, game_map):
+    def spawn_enemies(self, game_map: GameMap) -> list:
         """Spawn overland enemies on grass tiles away from spawn."""
         return spawn_enemies(game_map.world)

@@ -26,7 +26,7 @@ from src.config import (
 from src.data import ENEMY_TYPES, EnemyEnvironment
 
 
-def generate_world():
+def generate_world() -> list[list[int]]:
     """Return a 2-D list of tile-type IDs using simple noise-like placement."""
     # Start entirely as ocean; the island mask determines land vs water
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
@@ -74,7 +74,7 @@ def generate_world():
     return world
 
 
-def generate_ocean_sector(sx, sy, world_seed):
+def generate_ocean_sector(sx: int, sy: int, world_seed: int) -> tuple[list[list[int]], bool]:
     """Generate a deterministic 80×60 ocean sector at grid position (sx, sy).
 
     The result is fully reproducible: calling with the same arguments always
@@ -130,7 +130,7 @@ def generate_ocean_sector(sx, sy, world_seed):
     return world, False
 
 
-def _generate_island_mask(rows, cols):
+def _generate_island_mask(rows: int, cols: int) -> list[list[bool]]:
     """Generate a boolean mask (True = land) using a warped radial falloff.
 
     Multiple octaves of sine-wave noise deform the coastline into an organic
@@ -171,7 +171,7 @@ def _generate_island_mask(rows, cols):
     return mask
 
 
-def _generate_mountain_ranges(world, land_mask=None):
+def _generate_mountain_ranges(world: list[list[int]], land_mask: list[list[bool]] | None = None) -> None:
     """Generate mountains in interconnected ranges for better landscape."""
     # First, place initial mountain clusters
     for _ in range(40):  # More initial clusters than before (was 30)
@@ -206,7 +206,7 @@ def _generate_mountain_ranges(world, land_mask=None):
                             world[adj_row][adj_col] = MOUNTAIN
 
 
-def _generate_rivers_and_lakes(world):
+def _generate_rivers_and_lakes(world: list[list[int]]) -> None:
     """Generate rivers flowing from mountain ranges with random lakes."""
     # Find all mountain peaks (isolated mountains or edges of ranges)
     mountain_peaks = []
@@ -225,7 +225,7 @@ def _generate_rivers_and_lakes(world):
         _trace_river(world, start_col, start_row)
 
 
-def _trace_river(world, start_col, start_row, max_length=80):
+def _trace_river(world: list[list[int]], start_col: int, start_row: int, max_length: int = 80) -> None:
     """Trace a river from a starting point, creating lakes along the way."""
     col, row = start_col, start_row
     length = 0
@@ -279,7 +279,7 @@ def _trace_river(world, start_col, start_row, max_length=80):
         length += 1
 
 
-def _create_lake(world, center_col, center_row, radius_range=(1, 2)):
+def _create_lake(world: list[list[int]], center_col: int, center_row: int, radius_range: tuple[int, int] = (1, 2)) -> None:
     """Create a lake (contiguous water area) around a center point."""
     radius = random.randint(*radius_range)
 
@@ -322,7 +322,7 @@ def _create_lake(world, center_col, center_row, radius_range=(1, 2)):
                     lake_tiles.append((new_col, new_row))
 
 
-def spawn_enemies(world):
+def spawn_enemies(world: list[list[int]]) -> list:
     """Scatter overland enemies on walkable tiles."""
     from src.entities import Enemy
 
@@ -353,7 +353,7 @@ def spawn_enemies(world):
     return enemies
 
 
-def _place_pier_and_chest(world):
+def _place_pier_and_chest(world: list[list[int]]) -> None:
     """Place one pier (2 PIER tiles + BOAT tile) and an adjacent TREASURE_CHEST.
 
     Finds a coastal GRASS tile that has at least 2 consecutive WATER tiles in
@@ -411,7 +411,7 @@ def _place_pier_and_chest(world):
             world[br][bc] = TREASURE_CHEST
 
 
-def _is_adjacent_to_mountain(world, col, row):
+def _is_adjacent_to_mountain(world: list[list[int]], col: int, row: int) -> bool:
     """Check if a tile is adjacent to a mountain."""
     for dr in [-1, 0, 1]:
         for dc in [-1, 0, 1]:
@@ -424,7 +424,7 @@ def _is_adjacent_to_mountain(world, col, row):
     return False
 
 
-def _place_cave_entrances(world):
+def _place_cave_entrances(world: list[list[int]]) -> None:
     """Place cave entrances on the world map."""
     # Place caves near and around mountains, and in some hill areas
     cave_count = 0

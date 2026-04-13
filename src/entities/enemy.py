@@ -6,7 +6,7 @@ from src.config import TILE, SCREEN_W, SCREEN_H
 from src.effects import Particle
 
 
-def _clamp_color(base, offset):
+def _clamp_color(base: tuple[int, int, int], offset: tuple[int, int, int]) -> tuple[int, int, int]:
     """Clamp color values to 0-255."""
     return tuple(max(0, min(255, base[i] + offset[i])) for i in range(3))
 
@@ -14,7 +14,7 @@ def _clamp_color(base, offset):
 class Enemy:
     """A data-driven enemy instance. Create with an enemy-type key."""
 
-    def __init__(self, x, y, type_key):
+    def __init__(self, x: float, y: float, type_key: str) -> None:
         from src.data import ENEMY_TYPES
 
         self.x = float(x)
@@ -38,14 +38,14 @@ class Enemy:
         self.knockback_vx = 0.0
         self.knockback_vy = 0.0
 
-    def _on_screen(self, cam_x, cam_y, margin=0):
+    def _on_screen(self, cam_x: float, cam_y: float, margin: int = 0) -> bool:
         """Check if enemy is on screen."""
         return (
             cam_x - margin <= self.x <= cam_x + SCREEN_W + margin
             and cam_y - margin <= self.y <= cam_y + SCREEN_H + margin
         )
 
-    def _blocked(self, wx, wy, world):
+    def _blocked(self, wx: float, wy: float, world: list[list[int]]) -> bool:
         """Check if position is blocked."""
         from src.config import WATER, MOUNTAIN, HOUSE, CAVE_WALL
 
@@ -57,7 +57,7 @@ class Enemy:
             return True
         return world[row][col] in (WATER, MOUNTAIN, HOUSE, CAVE_WALL)
 
-    def update(self, dt, px, py, cam_x, cam_y, world, particles):
+    def update(self, dt: float, px: float, py: float, cam_x: float, cam_y: float, world: list[list[int]], particles: list) -> None:
         """Update enemy state and position."""
         if self.hp <= 0:
             return
@@ -111,7 +111,7 @@ class Enemy:
         self.x = max(TILE, min((world_cols - 1) * TILE, self.x))
         self.y = max(TILE, min((world_rows - 1) * TILE, self.y))
 
-    def try_attack(self, px, py):
+    def try_attack(self, px: float, py: float) -> int:
         """Try to attack player. Returns damage if successful, 0 otherwise."""
         if self.hp <= 0 or self.state != "attack":
             return 0
@@ -121,7 +121,7 @@ class Enemy:
             return self.attack
         return 0
 
-    def take_damage(self, amount, source_x, source_y, particles):
+    def take_damage(self, amount: int, source_x: float, source_y: float, particles: list) -> None:
         """Take damage and create damage-dealing particles."""
         self.hp -= amount
         self.hurt_flash = 8
@@ -133,7 +133,7 @@ class Enemy:
         for _ in range(6):
             particles.append(Particle(self.x, self.y, self.color))
 
-    def draw(self, surf, cam_x, cam_y):
+    def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw enemy using vector draw commands."""
         if self.hp <= 0:
             return

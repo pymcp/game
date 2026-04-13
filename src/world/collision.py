@@ -4,7 +4,7 @@ from src.config import TILE, WORLD_COLS, WORLD_ROWS
 from src.data import BLOCKING_TILES
 
 
-def tile_at(world, wx, wy):
+def tile_at(world: list[list[int]], wx: float, wy: float) -> int:
     """Get tile ID at world position, or -1 if out of bounds."""
     col = int(wx) // TILE
     row = int(wy) // TILE
@@ -15,7 +15,7 @@ def tile_at(world, wx, wy):
     return world[row][col]
 
 
-def pos_in_bounds_world(wx, wy, world):
+def pos_in_bounds_world(wx: float, wy: float, world: list[list[int]]) -> bool:
     """Check if world position is within the given world's bounds."""
     col = int(wx) // TILE
     row = int(wy) // TILE
@@ -24,14 +24,14 @@ def pos_in_bounds_world(wx, wy, world):
     return 0 <= col < world_cols and 0 <= row < world_rows
 
 
-def pos_in_bounds(wx, wy):
+def pos_in_bounds(wx: float, wy: float) -> bool:
     """Check if world position is within default world bounds (overland)."""
     col = int(wx) // TILE
     row = int(wy) // TILE
     return 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS
 
 
-def hits_blocking(world, cx, cy, half, extra_passable=()):
+def hits_blocking(world: list[list[int]], cx: float, cy: float, half: float, extra_passable: tuple[int, ...] = ()) -> bool:
     """Check if a circle (center cx,cy, radius half) hits any blocking tile.
 
     extra_passable: tile IDs that should be treated as passable even if they
@@ -45,7 +45,7 @@ def hits_blocking(world, cx, cy, half, extra_passable=()):
     return False
 
 
-def out_of_bounds(cx, cy, half, world=None):
+def out_of_bounds(cx: float, cy: float, half: float, world: list[list[int]] | None = None) -> bool:
     """Check if a circle would leave the world bounds."""
     for ox in (-half, half):
         for oy in (-half, half):
@@ -58,7 +58,7 @@ def out_of_bounds(cx, cy, half, world=None):
     return False
 
 
-def try_spend(inventory, cost):
+def try_spend(inventory: dict[str, int], cost: dict[str, int]) -> bool:
     """Deduct items from inventory if affordable. Returns True on success."""
     if not all(inventory.get(k, 0) >= v for k, v in cost.items()):
         return False
@@ -69,7 +69,7 @@ def try_spend(inventory, cost):
     return True
 
 
-def has_adjacent_house(world, col, row):
+def has_adjacent_house(world: list[list[int]], col: int, row: int) -> bool:
     """Check if this tile has a HOUSE neighbor."""
     from src.config import HOUSE
 
@@ -81,7 +81,7 @@ def has_adjacent_house(world, col, row):
     return False
 
 
-def compute_town_clusters(world):
+def compute_town_clusters(world: list[list[int]]) -> dict[tuple[int, int], int]:
     """BFS flood-fill to find all connected HOUSE clusters.
 
     Returns a dict mapping (row, col) → cluster_size for every HOUSE tile.
@@ -119,7 +119,7 @@ def compute_town_clusters(world):
     return result
 
 
-def xp_for_level(lvl):
+def xp_for_level(lvl: int) -> int:
     """XP needed per level: 20, 25, 35, 50, 70, ... (+5 more each tier)."""
     base, inc = 20, 5
     return base + inc * (lvl - 1) * lvl // 2

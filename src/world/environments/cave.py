@@ -42,7 +42,7 @@ CAVE_COLS = 50
 # ---------------------------------------------------------------------------
 
 
-def _cellular_automata(rng, rows, cols):
+def _cellular_automata(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
     """Open-cavern layout via 5 rounds of cellular automata."""
     grid = [[1 if rng.random() < 0.45 else 0 for _ in range(cols)] for _ in range(rows)]
 
@@ -71,7 +71,7 @@ def _cellular_automata(rng, rows, cols):
     return grid
 
 
-def _drunkard_walk(rng, rows, cols):
+def _drunkard_walk(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
     """Labyrinth layout via a drunkard's walk with 2 walkers."""
     grid = [[1] * cols for _ in range(rows)]
 
@@ -94,7 +94,7 @@ def _drunkard_walk(rng, rows, cols):
     return grid
 
 
-def _ensure_all_regions_connected(cave_world, rows, cols, spawn_col, spawn_row):
+def _ensure_all_regions_connected(cave_world: list[list[int]], rows: int, cols: int, spawn_col: int, spawn_row: int) -> None:
     """Connect every isolated GRASS/CAVE_EXIT region to the spawn point.
 
     After cellular-automata or drunkard-walk generation, open floor areas can
@@ -183,14 +183,14 @@ class CaveEnvironment(BaseEnvironment):
 
     TILESET = "cave"
 
-    def __init__(self, cave_col, cave_row, cave_type=CAVE_MOUNTAIN):
+    def __init__(self, cave_col: int, cave_row: int, cave_type: int = CAVE_MOUNTAIN) -> None:
         self.cave_col = cave_col
         self.cave_row = cave_row
         self.cave_type = cave_type
 
     # -- public api --------------------------------------------------------
 
-    def generate(self):
+    def generate(self) -> GameMap:
         """Generate and return a fully configured cave GameMap."""
         rng = random.Random(self.cave_col * 10_000 + self.cave_row)
 
@@ -292,7 +292,7 @@ class CaveEnvironment(BaseEnvironment):
 
         return cave_map
 
-    def spawn_enemies(self, game_map, rng=None):
+    def spawn_enemies(self, game_map: GameMap, rng: random.Random | None = None) -> list:
         """Spawn cave-type enemies on floor tiles away from the spawn point."""
         from src.entities import Enemy
 
@@ -337,7 +337,7 @@ class CaveEnvironment(BaseEnvironment):
 
     # -- helpers -----------------------------------------------------------
 
-    def _find_floor_near_row(self, cave_world, rows, cols, rng, target_row):
+    def _find_floor_near_row(self, cave_world: list[list[int]], rows: int, cols: int, rng: random.Random, target_row: int) -> tuple[int, int]:
         """Return (col, row) of a floor tile at or near target_row."""
         for r in range(max(2, target_row - 2), min(rows - 2, target_row + 6)):
             candidates = [c for c in range(2, cols - 2) if cave_world[r][c] == GRASS]
