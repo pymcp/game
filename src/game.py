@@ -514,8 +514,8 @@ class Game:
                         2,
                     )
                 elif tid == MOUNTAIN:
-                    # Check if this is part of a 2x2 mountain group
-                    is_2x2 = (
+                    # Check if this is part of a 2x2 mountain group starting from top-left
+                    is_2x2_tl = (
                         c + 1 < WORLD_COLS and r + 1 < WORLD_ROWS and
                         self.world[r][c] == MOUNTAIN and
                         self.world[r][c + 1] == MOUNTAIN and
@@ -523,47 +523,84 @@ class Game:
                         self.world[r + 1][c + 1] == MOUNTAIN
                     )
                     
-                    if is_2x2 and c % 2 == 0 and r % 2 == 0:
-                        # Draw a large peak for 2x2 mountain groups
-                        # Peak apex centered in middle of 2x2 block
-                        peak_center_x = sx + TILE
-                        peak_center_y = sy + TILE
-                        peak_base_y = sy + TILE * 2
-                        peak_left_x = sx
-                        peak_right_x = sx + TILE * 2
-                        
-                        # Main mountain body (dark)
-                        pygame.draw.polygon(
-                            self.screen,
-                            (90, 80, 70),
-                            [
-                                (peak_left_x, peak_base_y),
-                                (peak_center_x, peak_center_y),
-                                (peak_right_x, peak_base_y),
-                            ],
-                        )
-                        # Left side shadow
-                        pygame.draw.polygon(
-                            self.screen,
-                            (70, 60, 50),
-                            [
-                                (peak_left_x, peak_base_y),
-                                (peak_center_x, peak_center_y),
-                                (peak_center_x, peak_base_y),
-                            ],
-                        )
-                        # Snow-capped peak
-                        pygame.draw.polygon(
-                            self.screen,
-                            (240, 245, 255),
-                            [
-                                (peak_center_x - 6, peak_center_y + 8),
-                                (peak_center_x, peak_center_y),
-                                (peak_center_x + 6, peak_center_y + 8),
-                            ],
-                        )
+                    # Check if current tile is part of a larger 2x2 block
+                    is_part_of_2x2 = False
+                    if is_2x2_tl:
+                        is_part_of_2x2 = True
                     else:
-                        # Draw regular small mountain triangles
+                        # Check if we're part of a 2x2 block from other positions
+                        for dc, dr in [(-1, 0), (0, -1), (-1, -1)]:
+                            check_c, check_r = c + dc, r + dr
+                            if check_c >= 0 and check_r >= 0 and check_c + 1 < WORLD_COLS and check_r + 1 < WORLD_ROWS:
+                                if (self.world[check_r][check_c] == MOUNTAIN and
+                                    self.world[check_r][check_c + 1] == MOUNTAIN and
+                                    self.world[check_r + 1][check_c] == MOUNTAIN and
+                                    self.world[check_r + 1][check_c + 1] == MOUNTAIN):
+                                    is_part_of_2x2 = True
+                                    break
+                    
+                    if is_2x2_tl:
+                        # Draw multiple ridge-like peaks for 2x2 mountain groups
+                        base_y = sy + TILE * 2
+                        block_left_x = sx
+                        block_right_x = sx + TILE * 2
+                        
+                        # Define peaks (x_offset from block_left, height)
+                        peaks = [
+                            (12, sy - TILE // 3),      # Left-center peak
+                            (24, sy - TILE // 5),      # Center-right peak  
+                            (36, sy - TILE // 3.5),    # Right peak
+                        ]
+                        
+                        # Draw background mountain
+                        pygame.draw.polygon(
+                            self.screen,
+                            (80, 70, 60),
+                            [
+                                (block_left_x, base_y),
+                                (block_left_x + 8, sy + TILE // 2),
+                                (block_right_x - 8, sy + TILE // 2),
+                                (block_right_x, base_y),
+                            ],
+                        )
+                        
+                        # Draw each peak (wider and ridge-like)
+                        for peak_x, peak_y in peaks:
+                            x = block_left_x + peak_x
+                            width = 18  # Width of each ridge peak
+                            
+                            # Left slope (darker)
+                            pygame.draw.polygon(
+                                self.screen,
+                                (60, 50, 40),
+                                [
+                                    (x - width, base_y),
+                                    (x, peak_y),
+                                    (x, base_y),
+                                ],
+                            )
+                            # Right slope (lighter)
+                            pygame.draw.polygon(
+                                self.screen,
+                                (100, 85, 65),
+                                [
+                                    (x, peak_y),
+                                    (x + width, base_y),
+                                    (x, base_y),
+                                ],
+                            )
+                            # Wide snow cap on ridge
+                            pygame.draw.polygon(
+                                self.screen,
+                                (245, 250, 255),
+                                [
+                                    (x - 8, peak_y + 6),
+                                    (x, peak_y),
+                                    (x + 8, peak_y + 6),
+                                ],
+                            )
+                    elif not is_part_of_2x2:
+                        # Draw regular small mountain triangles (only if not part of a 2x2 block)
                         pygame.draw.polygon(
                             self.screen,
                             (110, 100, 90),
