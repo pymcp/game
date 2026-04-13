@@ -2,19 +2,18 @@
 
 import pygame
 from src.config import SCREEN_W, SCREEN_H, TILE, WORLD_COLS, WORLD_ROWS, WHITE
-from src.data import PICKAXES, WEAPONS, WEAPON_UNLOCK_COSTS, UPGRADE_COSTS, TILE_INFO
+from src.data import PICKAXES, WEAPONS
 
 
 def draw_hud(
     screen: pygame.Surface, font: pygame.font.Font, player, workers: list, pets: list
 ) -> None:
-    """Draw the HUD panel with inventory, stats, and controls."""
+    """Draw the HUD panel with core stats only. Inventory and equipment are in the menu."""
     p = player
-    inv = p.inventory
 
     # Panel background
     panel_w = 220
-    panel_h = 20 + max(1, len(inv)) * 20 + 200
+    panel_h = 130
     panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
     panel_surf.fill((20, 20, 30, 180))
     screen.blit(panel_surf, (10, 10))
@@ -33,100 +32,45 @@ def draw_hud(
 
     # XP bar
     xp_ratio = p.xp / p.xp_next if p.xp_next > 0 else 0
-    xp_bar_w = 200
-    pygame.draw.rect(screen, (60, 60, 60), (16, 44, xp_bar_w, 8))
-    pygame.draw.rect(screen, (80, 180, 255), (16, 44, int(xp_bar_w * xp_ratio), 8))
+    pygame.draw.rect(screen, (60, 60, 60), (16, 44, hp_bar_w, 8))
+    pygame.draw.rect(screen, (80, 180, 255), (16, 44, int(hp_bar_w * xp_ratio), 8))
     screen.blit(
         font.render(f"Lv {p.level}  XP: {p.xp}/{p.xp_next}", True, (180, 220, 255)),
         (16, 54),
     )
 
-    # Pickaxe
+    y_off = 72
+
+    # Current pickaxe
     pick = PICKAXES[p.pick_level]
-    pygame.draw.rect(screen, pick["color"], (16, 74, 12, 12))
-    screen.blit(font.render(pick["name"], True, WHITE), (34, 72))
+    pygame.draw.rect(screen, pick["color"], (16, y_off + 1, 10, 10))
+    pick_label = pick["name"] if p.pick_level < len(PICKAXES) - 1 else f"{pick['name']} (MAX)"
+    screen.blit(font.render(pick_label, True, WHITE), (32, y_off))
+    y_off += 18
 
-    # Inventory
-    y_off = 96
-    if inv:
-        for item_name, count in sorted(inv.items()):
-            info_color = WHITE
-            for tinfo in TILE_INFO.values():
-                if tinfo["drop"] == item_name and tinfo["drop_color"]:
-                    info_color = tinfo["drop_color"]
-                    break
-            pygame.draw.rect(screen, info_color, (18, y_off + 2, 8, 8))
-            screen.blit(font.render(f"{item_name}: {count}", True, WHITE), (34, y_off))
-            y_off += 20
-    else:
-        screen.blit(font.render("(empty)", True, (150, 150, 150)), (34, y_off))
-        y_off += 20
-
-    # Pickaxe upgrade hint
-    y_off += 6
-    if p.pick_level < len(PICKAXES) - 1:
-        cost = UPGRADE_COSTS[p.pick_level]
-        cost_str = ", ".join(f"{v} {k}" for k, v in cost.items())
-        can = all(inv.get(k, 0) >= v for k, v in cost.items())
-        color = (100, 255, 100) if can else (180, 180, 180)
-        screen.blit(font.render(f"[U] Upgrade: {cost_str}", True, color), (18, y_off))
-    else:
-        screen.blit(font.render("Pick is MAX level!", True, (255, 215, 0)), (18, y_off))
-    y_off += 20
-
-    # Build house hint
-    can_build = inv.get("Dirt", 0) >= 20
-    screen.blit(
-        font.render(
-            "[B] Build House: 20 Dirt",
-            True,
-            (100, 255, 100) if can_build else (180, 180, 180),
-        ),
-        (18, y_off),
-    )
-    y_off += 20
-
-    # Weapon info
+    # Current weapon
     wpn = WEAPONS[p.weapon_level]
-    pygame.draw.rect(screen, wpn["color"], (18, y_off + 2, 8, 8))
-    screen.blit(font.render(f"[F/RClick] {wpn['name']}", True, WHITE), (34, y_off))
-    y_off += 20
-    if p.weapon_level < len(WEAPONS) - 1:
-        wcost = WEAPON_UNLOCK_COSTS[p.weapon_level]
-        wcost_str = ", ".join(f"{v} {k}" for k, v in wcost.items())
-        wcan = all(inv.get(k, 0) >= v for k, v in wcost.items())
-        screen.blit(
-            font.render(
-                f"[N] Next Weapon: {wcost_str}",
-                True,
-                (100, 255, 100) if wcan else (180, 180, 180),
-            ),
-            (18, y_off),
-        )
-    else:
-        screen.blit(
-            font.render("Weapon is MAX level!", True, (255, 215, 0)), (18, y_off)
-        )
-    y_off += 20
+    pygame.draw.rect(screen, wpn["color"], (16, y_off + 1, 10, 10))
+    wpn_label = wpn["name"] if p.weapon_level < len(WEAPONS) - 1 else f"{wpn['name']} (MAX)"
+    screen.blit(font.render(wpn_label, True, WHITE), (32, y_off))
+    y_off += 18
 
-    # Worker & pet count
+    # Workers / pets
+    parts = []
     if workers:
-        screen.blit(
-            font.render(f"Workers: {len(workers)}", True, (100, 220, 255)), (18, y_off)
-        )
-        y_off += 20
+        parts.append(f"Workers: {len(workers)}")
     num_cats = sum(1 for pet in pets if pet.kind == "cat")
     num_dogs = sum(1 for pet in pets if pet.kind == "dog")
-    if num_cats or num_dogs:
-        parts = []
-        if num_cats:
-            parts.append(f"Cats: {num_cats}")
-        if num_dogs:
-            parts.append(f"Dogs: {num_dogs}")
-        screen.blit(font.render("  ".join(parts), True, (255, 200, 100)), (18, y_off))
+    if num_cats:
+        parts.append(f"Cats: {num_cats}")
+    if num_dogs:
+        parts.append(f"Dogs: {num_dogs}")
+    if parts:
+        screen.blit(font.render("  ".join(parts), True, (200, 220, 255)), (16, y_off))
 
     # Controls hint
-    hint = "WASD: Move | Click/Space: Mine | F/RClick: Attack | U/N: Upgrade | B: Build"
+    equip_key_name = pygame.key.name(p.controls.equip_key).upper()
+    hint = f"WASD: Move | Space: Mine | F: Attack | U: Pick  N: Weapon | B: Build | {equip_key_name}: Inventory"
     hint_surf = font.render(hint, True, (180, 180, 180))
     screen.blit(hint_surf, (SCREEN_W // 2 - hint_surf.get_width() // 2, SCREEN_H - 26))
 

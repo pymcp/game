@@ -5,6 +5,17 @@ from src.data.pickaxes import PICKAXES, UPGRADE_COSTS
 from src.data.weapons import WEAPONS, WEAPON_UNLOCK_COSTS
 from src.data.enemies import ENEMY_TYPES, EnemyEnvironment, PortalQuestType
 from src.data.recipes import RECIPES
+from src.data.armor import (
+    ArmorSlot,
+    ArmorMaterial,
+    AccessorySlot,
+    AccessoryEffect,
+    ARMOR_PIECES,
+    ACCESSORY_PIECES,
+    ARMOR_SLOT_ORDER,
+    SLOT_LABELS,
+    item_fits_slot,
+)
 
 __all__ = [
     "TILE_INFO",
@@ -17,4 +28,13 @@ __all__ = [
     "EnemyEnvironment",
     "PortalQuestType",
     "RECIPES",
+    "ArmorSlot",
+    "ArmorMaterial",
+    "AccessorySlot",
+    "AccessoryEffect",
+    "ARMOR_PIECES",
+    "ACCESSORY_PIECES",
+    "ARMOR_SLOT_ORDER",
+    "SLOT_LABELS",
+    "item_fits_slot",
 ]

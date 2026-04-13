@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from src.game import Game
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "save.json")
-SAVE_VERSION = 1
+SAVE_VERSION = 2
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +152,8 @@ def _serialize_player(player: Player) -> dict:
             else None
         ),
         "is_dead": player.is_dead,
+        "equipment": player.equipment,
+        "durability": player.durability,
     }
 
 
@@ -263,6 +265,12 @@ def _deserialize_player(data: dict, control_scheme: ControlScheme) -> Player:
     player.portal_origin_map = (
         _str_to_key(raw_origin) if raw_origin is not None else None
     )
+    # Equipment and durability (backward-compatible: empty if absent)
+    from src.data.armor import ARMOR_SLOT_ORDER
+    default_equip = {slot: None for slot in ARMOR_SLOT_ORDER}
+    saved_equip = data.get("equipment", {})
+    player.equipment = {**default_equip, **saved_equip}
+    player.durability = data.get("durability", {})
     return player
 
 

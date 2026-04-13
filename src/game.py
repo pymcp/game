@@ -51,6 +51,12 @@ from src.data import (
     WEAPON_UNLOCK_COSTS,
     RECIPES,
     PortalQuestType,
+    ARMOR_PIECES,
+    ACCESSORY_PIECES,
+    ARMOR_SLOT_ORDER,
+    SLOT_LABELS,
+    item_fits_slot,
+    AccessoryEffect,
 )
 from src.world import (
     generate_world,
@@ -158,6 +164,9 @@ class Game:
 
         # Crafting menu state: player_id → cursor index (None = closed)
         self.craft_menus: dict[int, int | None] = {1: None, 2: None}
+
+        # Equipment menu state: player_id → {"slot_idx": int, "sub_idx": int|None} or None
+        self.equip_menus: dict[int, dict | None] = {1: None, 2: None}
 
         # Portal quest state: map_key → quest dict
         # {"type": PortalQuestType, "restored": bool, ...type-specific keys}
@@ -472,6 +481,53 @@ class Game:
                 self._submit_death_challenge(active_player)
                 return
 
+        # --- Equipment menu input (takes priority over normal keys while open) ---
+        for player in (self.player1, self.player2):
+            pid = player.player_id
+            if self.equip_menus[pid] is None:
+                continue
+            state = self.equip_menus[pid]
+            up_key = player.controls.move_keys["up"]
+            down_key = player.controls.move_keys["down"]
+            num_slots = len(ARMOR_SLOT_ORDER)
+            if state["sub_idx"] is None:
+                # Navigating the main slot list
+                if key == up_key:
+                    state["slot_idx"] = (state["slot_idx"] - 1) % num_slots
+                elif key == down_key:
+                    state["slot_idx"] = (state["slot_idx"] + 1) % num_slots
+                elif key == player.controls.interact_key:
+                    state["sub_idx"] = 0  # open sub-menu for this slot
+                elif key == pygame.K_ESCAPE or key == player.controls.equip_key:
+                    self.equip_menus[pid] = None
+            else:
+                # Navigating the sub-menu (compatible items + Unequip + Back)
+                slot_key = ARMOR_SLOT_ORDER[state["slot_idx"]]
+                options = self._equip_menu_options(player, slot_key)
+                if key == up_key:
+                    state["sub_idx"] = (state["sub_idx"] - 1) % len(options)
+                elif key == down_key:
+                    state["sub_idx"] = (state["sub_idx"] + 1) % len(options)
+                elif key == player.controls.interact_key:
+                    chosen = options[state["sub_idx"]]
+                    tx, ty = int(player.x), int(player.y) - 20
+                    if chosen == "_unequip":
+                        player.unequip_item(slot_key)
+                        self.floats.append(
+                            FloatingText(tx, ty, "Unequipped", (200, 200, 100))
+                        )
+                    elif chosen == "_back":
+                        pass  # fall through to closing sub-menu
+                    else:
+                        if player.equip_item(slot_key, chosen):
+                            self.floats.append(
+                                FloatingText(tx, ty, f"Equipped {chosen}!", (100, 220, 100))
+                            )
+                    state["sub_idx"] = None
+                elif key == pygame.K_ESCAPE:
+                    state["sub_idx"] = None
+            return
+
         # --- Crafting menu input (takes priority over normal keys while open) ---
         for player in (self.player1, self.player2):
             pid = player.player_id
@@ -533,8 +589,10 @@ class Game:
                     (SCREEN_W, SCREEN_H), pygame.RESIZABLE
                 )
         # DEBUG: F9 instantly restores the portal on whichever island player 1 is on
+        # and fills both players' inventories with all equippable items + materials.
         elif key == pygame.K_F9:
             self._debug_restore_portal(self.player1)
+            self._debug_give_all_items()
         # Player 1 controls (blocked while dead)
         elif not self.player1.is_dead and key == self.player1.controls.upgrade_pick_key:
             self.player1.try_upgrade_pick()
@@ -558,6 +616,9 @@ class Game:
             self._try_interact(self.player1)
         elif not self.player1.is_dead and key == self.player1.controls.build_pier_key:
             self._try_build_pier(self.player1)
+        elif not self.player1.is_dead and key == self.player1.controls.equip_key:
+            pid = self.player1.player_id
+            self.equip_menus[pid] = None if self.equip_menus[pid] else {"slot_idx": 0, "sub_idx": None}
         # Player 2 controls (blocked while dead)
         elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
             self.player2.try_upgrade_pick()
@@ -581,6 +642,9 @@ class Game:
             self._try_interact(self.player2)
         elif not self.player2.is_dead and key == self.player2.controls.build_pier_key:
             self._try_build_pier(self.player2)
+        elif not self.player2.is_dead and key == self.player2.controls.equip_key:
+            pid = self.player2.player_id
+            self.equip_menus[pid] = None if self.equip_menus[pid] else {"slot_idx": 0, "sub_idx": None}
 
     def _try_build_house(self, player: Player) -> None:
         """Attempt to build a house at player position."""
@@ -1277,6 +1341,30 @@ class Game:
         self.floats.append(
             FloatingText(
                 int(player.x), int(player.y) - 30, "Left portal realm!", (180, 160, 220)
+            )
+        )
+
+    def _debug_give_all_items(self) -> None:
+        """DEBUG (F9): Give both players all equippable items and key materials."""
+        from src.data.armor import ARMOR_PIECES, ACCESSORY_PIECES
+
+        equippables = list(ARMOR_PIECES.keys()) + list(ACCESSORY_PIECES.keys())
+        materials = {
+            "Stone": 50, "Iron": 30, "Gold": 20, "Diamond": 10,
+            "Wood": 20, "Dirt": 40, "Coral": 20, "Ancient Stone": 10,
+            "Scuba Gear": 1,
+        }
+
+        for player in (self.player1, self.player2):
+            for item in equippables:
+                player.inventory[item] = player.inventory.get(item, 0) + 2
+            for item, qty in materials.items():
+                player.inventory[item] = player.inventory.get(item, 0) + qty
+
+        self.floats.append(
+            FloatingText(
+                int(self.player1.x), int(self.player1.y) - 52,
+                "[DEBUG] All items granted!", (100, 220, 255),
             )
         )
 
@@ -2053,9 +2141,13 @@ class Game:
                 player.y = pr * TILE + TILE // 2
         # ----------------------------------------------------------------
 
-        # Player 1 movement & mining (skipped while dead or crafting menu open)
-        if not self.player1.is_dead and self.craft_menus[1] is None:
+        # Player 1 movement & mining (skipped while dead or crafting/equip menu open)
+        if not self.player1.is_dead and self.craft_menus[1] is None and self.equip_menus[1] is None:
+            p1_speed_mult = 1.0 + self.player1.active_effects().get(AccessoryEffect.SPEED_BOOST, 0.0)
+            base_speed1 = self.player1.speed
+            self.player1.speed = base_speed1 * p1_speed_mult
             self.player1.update_movement(keys, dt, map1.world)
+            self.player1.speed = base_speed1
             self.player1.update_mining(
                 keys,
                 mouse_buttons,
@@ -2071,9 +2163,13 @@ class Game:
             if self.player1.hurt_timer > 0:
                 self.player1.hurt_timer -= dt
 
-        # Player 2 movement & mining (skipped while dead or crafting menu open)
-        if not self.player2.is_dead and self.craft_menus[2] is None:
+        # Player 2 movement & mining (skipped while dead or crafting/equip menu open)
+        if not self.player2.is_dead and self.craft_menus[2] is None and self.equip_menus[2] is None:
+            p2_speed_mult = 1.0 + self.player2.active_effects().get(AccessoryEffect.SPEED_BOOST, 0.0)
+            base_speed2 = self.player2.speed
+            self.player2.speed = base_speed2 * p2_speed_mult
             self.player2.update_movement(keys, dt, map2.world)
+            self.player2.speed = base_speed2
             self.player2.update_mining(
                 keys,
                 mouse_buttons,
@@ -2128,8 +2224,9 @@ class Game:
                 self.particles,
                 self.floats,
             )
-            # Award XP to the player this worker is assigned to
-            target_player.xp += w.xp_earned
+            # Award XP to the player this worker is assigned to (boosted by accessories)
+            xp_mult = 1.0 + target_player.active_effects().get(AccessoryEffect.XP_BOOST, 0.0)
+            target_player.xp += int(w.xp_earned * xp_mult)
             w.xp_earned = 0
 
         # Pets follow players only when on the same island
@@ -2352,13 +2449,15 @@ class Game:
             )
             if fire_input_p1 and self.player1.weapon_cooldown <= 0:
                 wpn = WEAPONS[self.player1.weapon_level]
+                dmg_mult1 = 1.0 + self.player1.active_effects().get(AccessoryEffect.DAMAGE_BOOST, 0.0)
+                wpn_p1 = {**wpn, "damage": int(wpn["damage"] * dmg_mult1)}
                 self.projectiles.append(
                     Projectile(
                         self.player1.x,
                         self.player1.y,
                         self.player1.facing_dx,
                         self.player1.facing_dy,
-                        wpn,
+                        wpn_p1,
                         player_id=1,
                         map_key=self.player1.current_map,
                     )
@@ -2374,13 +2473,15 @@ class Game:
             )
             if fire_input_p2 and self.player2.weapon_cooldown <= 0:
                 wpn = WEAPONS[self.player2.weapon_level]
+                dmg_mult2 = 1.0 + self.player2.active_effects().get(AccessoryEffect.DAMAGE_BOOST, 0.0)
+                wpn_p2 = {**wpn, "damage": int(wpn["damage"] * dmg_mult2)}
                 self.projectiles.append(
                     Projectile(
                         self.player2.x,
                         self.player2.y,
                         self.player2.facing_dx,
                         self.player2.facing_dy,
-                        wpn,
+                        wpn_p2,
                         player_id=2,
                         map_key=self.player2.current_map,
                     )
@@ -2399,9 +2500,11 @@ class Game:
                     if cave_map:
                         proj.check_hits(cave_map.enemies, self.particles, self.floats)
             if proj.player_id == 1:
-                self.player1.xp += proj.xp_earned
+                xp_mult1 = 1.0 + self.player1.active_effects().get(AccessoryEffect.XP_BOOST, 0.0)
+                self.player1.xp += int(proj.xp_earned * xp_mult1)
             elif proj.player_id == 2:
-                self.player2.xp += proj.xp_earned
+                xp_mult2 = 1.0 + self.player2.active_effects().get(AccessoryEffect.XP_BOOST, 0.0)
+                self.player2.xp += int(proj.xp_earned * xp_mult2)
             proj.xp_earned = 0
         self.projectiles = [proj for proj in self.projectiles if proj.alive]
 
@@ -3076,6 +3179,8 @@ class Game:
         self._draw_treasure_reveal(player, screen_x, screen_y, view_w, view_h)
         if self.craft_menus[player.player_id] is not None:
             self._draw_craft_menu(player, screen_x, screen_y, view_w, view_h)
+        if self.equip_menus[player.player_id] is not None:
+            self._draw_equip_menu(player, screen_x, screen_y, view_w, view_h)
 
         # Sector-wipe flash overlay (drawn last so it appears on top)
         wipe_state = self.sector_wipe.get(player.player_id)
@@ -3093,54 +3198,12 @@ class Game:
         font_small = self.font_ui_sm
         font_tiny = self.font_ui_xs
 
-        # Pre-compute upgrade lines so the combined panel can be sized correctly
-        def _cost_str(cost_dict, inventory):
-            """Format a cost dict as 'Item: need/have' entries."""
-            parts = []
-            for item, needed in cost_dict.items():
-                have = inventory.get(item, 0)
-                color_flag = have >= needed
-                parts.append((f"{item}: {have}/{needed}", color_flag))
-            return parts
-
-        upg_lines = []
-        pick_name = PICKAXES[player.pick_level]["name"]
-        if player.pick_level < len(UPGRADE_COSTS):
-            pick_cost = _cost_str(UPGRADE_COSTS[player.pick_level], player.inventory)
-            upg_lines.append((f"Pick ({pick_name}):", pick_cost))
-        else:
-            upg_lines.append((f"Pick ({pick_name}):", None))
-
-        wpn_name = WEAPONS[player.weapon_level]["name"]
-        if player.weapon_level < len(WEAPON_UNLOCK_COSTS):
-            wpn_cost = _cost_str(
-                WEAPON_UNLOCK_COSTS[player.weapon_level], player.inventory
-            )
-            upg_lines.append((f"Wpn ({wpn_name}):", wpn_cost))
-        else:
-            upg_lines.append((f"Wpn ({wpn_name}):", None))
-
-        house_cost = _cost_str({"Dirt": HOUSE_BUILD_COST}, player.inventory)
-        build_key = pygame.key.name(player.controls.build_house_key).upper()
-        upg_lines.append((f"House ({build_key}):", house_cost))
-
-        pier_key = pygame.key.name(player.controls.build_pier_key).upper()
-        pier_cost = _cost_str({"Wood": PIER_BUILD_COST}, player.inventory)
-        upg_lines.append((f"Pier ({pier_key}):", pier_cost))
-
-        int_key = pygame.key.name(player.controls.interact_key).upper()
-        boat_cost = _cost_str({"Wood": BOAT_BUILD_COST, "Sail": 1}, player.inventory)
-        upg_lines.append((f"Boat ({int_key} at pier):", boat_cost))
-
-        # Top HUD Panel (Stats, Inventory & Upgrades — combined)
+        # Top HUD panel — HP, XP, current gear only; inventory/upgrades are in the modal
         top_panel_w = 240
-        # inv_y = screen_y + 105; upgrades header at inv_y + 100 = screen_y + 205
-        top_panel_h = 197 + 18 + len(upg_lines) * 30 + 10
+        top_panel_h = 148
         top_panel_surf = pygame.Surface((top_panel_w, top_panel_h), pygame.SRCALPHA)
-        top_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
+        top_panel_surf.fill((20, 20, 30, 200))
         self.screen.blit(top_panel_surf, (screen_x + 8, screen_y + 8))
-
-        # Top panel border
         pygame.draw.rect(
             self.screen,
             (150, 150, 150),
@@ -3154,82 +3217,78 @@ class Game:
         pygame.draw.rect(
             self.screen, (50, 50, 50), (screen_x + 18, screen_y + 18, bar_w, bar_h)
         )
+        hp_col = (
+            (50, 200, 50) if hp_ratio > 0.5
+            else (220, 180, 30) if hp_ratio > 0.25
+            else (220, 40, 40)
+        )
         pygame.draw.rect(
             self.screen,
-            (0, 255, 0),
-            (screen_x + 18, screen_y + 18, bar_w * hp_ratio, bar_h),
+            hp_col,
+            (screen_x + 18, screen_y + 18, int(bar_w * hp_ratio), bar_h),
         )
-        hp_text = font_small.render(
-            f"HP: {player.hp:.0f}/{player.max_hp}", True, (255, 255, 255)
+        self.screen.blit(
+            font_small.render(f"HP: {player.hp:.0f}/{player.max_hp}", True, (255, 255, 255)),
+            (screen_x + 25, screen_y + 20),
         )
-        self.screen.blit(hp_text, (screen_x + 25, screen_y + 20))
 
-        # Level & XP
-        level_text = font_small.render(f"Level {player.level}", True, (255, 255, 0))
-        self.screen.blit(level_text, (screen_x + 18, screen_y + 45))
+        # XP bar
         xp_bar_w = 220
         xp_ratio = player.xp / player.xp_next if player.xp_next > 0 else 0
         pygame.draw.rect(
-            self.screen, (50, 50, 0), (screen_x + 18, screen_y + 70, xp_bar_w, 10)
+            self.screen, (50, 50, 0), (screen_x + 18, screen_y + 44, xp_bar_w, 10)
         )
         pygame.draw.rect(
             self.screen,
             (255, 255, 0),
-            (screen_x + 18, screen_y + 70, xp_bar_w * xp_ratio, 10),
+            (screen_x + 18, screen_y + 44, int(xp_bar_w * xp_ratio), 10),
         )
-        xp_text = font_tiny.render(
-            f"XP: {player.xp}/{player.xp_next}", True, (255, 255, 0)
+        self.screen.blit(
+            font_tiny.render(f"Lv {player.level}  XP: {player.xp}/{player.xp_next}", True, (255, 255, 0)),
+            (screen_x + 18, screen_y + 56),
         )
-        self.screen.blit(xp_text, (screen_x + 18, screen_y + 82))
 
-        # Inventory (2-column layout)
-        inv_y = screen_y + 105
-        inv_text = font_small.render("Inventory:", True, (200, 200, 200))
-        self.screen.blit(inv_text, (screen_x + 18, inv_y))
+        # Current pickaxe
+        pick = PICKAXES[player.pick_level]
+        pygame.draw.rect(self.screen, pick["color"], (screen_x + 18, screen_y + 74, 10, 10))
+        pick_label = pick["name"] if player.pick_level < len(PICKAXES) - 1 else f"{pick['name']} (MAX)"
+        self.screen.blit(font_tiny.render(pick_label, True, (255, 255, 255)), (screen_x + 32, screen_y + 73))
 
-        items = list(player.inventory.items())
-        column_widths = [0, 80, 160]
-        num_columns = len(column_widths)
-        items_per_column = max(1, math.ceil(len(items) / num_columns))
-        for idx, (res, qty) in enumerate(items):
-            col = idx // items_per_column
-            row = idx % items_per_column
-            x_offset = column_widths[col]
-            y_offset = inv_y + 22 + row * 18
-            res_text = font_tiny.render(f"{res}: {qty}", True, (180, 180, 180))
-            self.screen.blit(res_text, (screen_x + 18 + x_offset, y_offset))
-
-        # Weapon
+        # Current weapon
         wpn = WEAPONS[player.weapon_level]
-        wpn_text = font_tiny.render(f"Weapon: {wpn['name']}", True, (255, 150, 100))
-        self.screen.blit(wpn_text, (screen_x + 18, inv_y + 82))
+        pygame.draw.rect(self.screen, wpn["color"], (screen_x + 18, screen_y + 90, 10, 10))
+        wpn_label = wpn["name"] if player.weapon_level < len(WEAPONS) - 1 else f"{wpn['name']} (MAX)"
+        self.screen.blit(font_tiny.render(wpn_label, True, (255, 150, 100)), (screen_x + 32, screen_y + 89))
 
-        # Upgrades section — inline inside the combined top panel
-        pygame.draw.line(
-            self.screen,
-            (80, 80, 100),
-            (screen_x + 12, inv_y + 97),
-            (screen_x + 12 + top_panel_w - 8, inv_y + 97),
-            1,
+        # Defense %
+        def_pct = int(player.defense_pct * 100)
+        equip_key_name = pygame.key.name(player.controls.equip_key).upper()
+        self.screen.blit(
+            font_tiny.render(
+                f"Defense: {def_pct}%  [{equip_key_name}] Inventory",
+                True,
+                (160, 220, 160),
+            ),
+            (screen_x + 18, screen_y + 108),
         )
-        upg_header = font_small.render("Upgrades:", True, (200, 200, 200))
-        self.screen.blit(upg_header, (screen_x + 18, inv_y + 100))
 
-        entry_y = inv_y + 116
-        for label, cost_parts in upg_lines:
-            label_surf = font_tiny.render(label, True, (200, 200, 200))
-            self.screen.blit(label_surf, (screen_x + 18, entry_y))
-            if cost_parts is None:
-                max_surf = font_tiny.render("MAX", True, (100, 255, 100))
-                self.screen.blit(max_surf, (screen_x + 18, entry_y + 13))
-            else:
-                cx = screen_x + 18
-                for text, met in cost_parts:
-                    col = (100, 255, 100) if met else (255, 100, 100)
-                    ts = font_tiny.render(text, True, col)
-                    self.screen.blit(ts, (cx, entry_y + 13))
-                    cx += ts.get_width() + 6
-            entry_y += 30
+        # Workers / pets
+        parts = []
+        workers_here = [w for w in self.workers if getattr(w, "player_id", None) == player.player_id]
+        if workers_here:
+            parts.append(f"Workers: {len(workers_here)}")
+        pets_here = [p for p in self.pets if getattr(p, "player_id", None) == player.player_id]
+        num_cats = sum(1 for p in pets_here if p.kind == "cat")
+        num_dogs = sum(1 for p in pets_here if p.kind == "dog")
+        if num_cats:
+            parts.append(f"Cats: {num_cats}")
+        if num_dogs:
+            parts.append(f"Dogs: {num_dogs}")
+        if parts:
+            self.screen.blit(
+                font_tiny.render("  ".join(parts), True, (100, 220, 255)),
+                (screen_x + 18, screen_y + 126),
+            )
 
         # Bottom HUD Panel (Controls + Auto-toggle status)
         bottom_panel_h = 130
@@ -3562,6 +3621,225 @@ class Game:
             )
         close_surf = font_sm.render("Close", True, (180, 180, 180))
         self.screen.blit(close_surf, (px + 10, ry + 4))
+
+    # -- Equipment menu helpers -------------------------------------------
+
+    def _equip_menu_options(self, player: Player, slot_key: str) -> list[str]:
+        """Return the list of option identifiers for the equipment sub-menu.
+
+        Includes compatible items from inventory, '_unequip' if something is
+        currently equipped, and '_back' to cancel.
+        """
+        options: list[str] = []
+        for item_name in sorted(player.inventory):
+            if item_fits_slot(item_name, slot_key) and player.inventory[item_name] > 0:
+                options.append(item_name)
+        if player.equipment.get(slot_key) is not None:
+            options.append("_unequip")
+        options.append("_back")
+        return options
+
+    def _draw_equip_menu(
+        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
+        """Draw the equipment + inventory menu overlay centered in the player's viewport."""
+        state = self.equip_menus[player.player_id]
+        if state is None:
+            return
+
+        font_sm = self.font_ui_sm
+        font_xs = self.font_ui_xs
+
+        row_h = 26
+        num_slots = len(ARMOR_SLOT_ORDER)
+
+        # Left pane: equipment slots; right pane: inventory list
+        equip_w = 320
+        inv_w = 220
+        gap = 8
+        panel_w = equip_w + gap + inv_w
+        panel_h = max(50 + num_slots * row_h + 14, 300)
+
+        px = screen_x + (view_w - panel_w) // 2
+        py = screen_y + (view_h - panel_h) // 2
+
+        # Background panel
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((20, 20, 30, 220))
+        self.screen.blit(panel_surf, (px, py))
+        pygame.draw.rect(self.screen, (150, 130, 200), (px, py, panel_w, panel_h), 2)
+
+        # Divider between panes
+        div_x = px + equip_w + gap // 2
+        pygame.draw.line(self.screen, (80, 70, 120), (div_x, py + 6), (div_x, py + panel_h - 6), 1)
+
+        # --- Left pane: Equipment ---
+        title = font_sm.render(
+            f"Equipment  ({pygame.key.name(player.controls.equip_key).upper()} close)", True, (200, 180, 255)
+        )
+        self.screen.blit(title, (px + 10, py + 10))
+
+        def_pct = int(player.defense_pct * 100)
+        def_surf = font_xs.render(f"Defense: {def_pct}%", True, (160, 220, 160))
+        self.screen.blit(def_surf, (px + equip_w - def_surf.get_width() - 10, py + 12))
+
+        pygame.draw.line(self.screen, (80, 70, 120), (px + 6, py + 32), (px + equip_w - 6, py + 32), 1)
+
+        slot_idx = state["slot_idx"]
+        sub_idx = state["sub_idx"]
+
+        for idx, slot_key in enumerate(ARMOR_SLOT_ORDER):
+            ry = py + 40 + idx * row_h
+            is_selected = idx == slot_idx and sub_idx is None
+
+            if is_selected:
+                pygame.draw.rect(self.screen, (60, 50, 120), (px + 4, ry, equip_w - 8, row_h - 2))
+
+            label = SLOT_LABELS[slot_key]
+            equipped = player.equipment.get(slot_key)
+
+            label_surf = font_sm.render(label, True, (200, 200, 200))
+            self.screen.blit(label_surf, (px + 10, ry + 4))
+
+            if equipped:
+                if equipped in ARMOR_PIECES:
+                    swatch_color = ARMOR_PIECES[equipped]["color"]
+                elif equipped in ACCESSORY_PIECES:
+                    swatch_color = ACCESSORY_PIECES[equipped]["color"]
+                else:
+                    swatch_color = (120, 120, 120)
+
+                pygame.draw.rect(self.screen, swatch_color, (px + 100, ry + 5, 12, 12), border_radius=2)
+
+                name_surf = font_xs.render(equipped, True, (230, 230, 230))
+                self.screen.blit(name_surf, (px + 118, ry + 6))
+
+                if equipped in ARMOR_PIECES:
+                    dur = player.durability.get(equipped, 0)
+                    max_dur = ARMOR_PIECES[equipped]["durability"]
+                    bar_w = 60
+                    bar_x = px + equip_w - bar_w - 10
+                    bar_y = ry + 8
+                    pygame.draw.rect(self.screen, (60, 60, 60), (bar_x, bar_y, bar_w, 8))
+                    fill = int(bar_w * dur / max_dur) if max_dur else 0
+                    bar_color = (
+                        (80, 220, 80) if dur > max_dur * 0.5
+                        else (220, 180, 40) if dur > max_dur * 0.2
+                        else (220, 60, 60)
+                    )
+                    if fill > 0:
+                        pygame.draw.rect(self.screen, bar_color, (bar_x, bar_y, fill, 8))
+                    pygame.draw.rect(self.screen, (120, 120, 120), (bar_x, bar_y, bar_w, 8), 1)
+                elif equipped in ACCESSORY_PIECES:
+                    lbl = ACCESSORY_PIECES[equipped]["label"]
+                    eff_surf = font_xs.render(lbl, True, (180, 255, 180))
+                    self.screen.blit(eff_surf, (px + equip_w - eff_surf.get_width() - 10, ry + 6))
+            else:
+                empty_surf = font_xs.render("—", True, (90, 90, 90))
+                self.screen.blit(empty_surf, (px + 100, ry + 6))
+
+        # --- Right pane: Inventory + Upgrades ---
+        inv_px = px + equip_w + gap
+        self.screen.blit(font_sm.render("Inventory", True, (200, 200, 255)), (inv_px + 6, py + 10))
+        pygame.draw.line(self.screen, (80, 70, 120), (inv_px + 4, py + 32), (inv_px + inv_w - 4, py + 32), 1)
+
+        inv_items = sorted(
+            ((k, v) for k, v in player.inventory.items() if v > 0),
+            key=lambda kv: kv[0],
+        )
+
+        # Reserve space at the bottom for upgrades section (~80px)
+        inv_bottom = py + panel_h - 88
+        iy = py + 38
+        for item_name, count in inv_items:
+            if iy + 14 > inv_bottom:
+                self.screen.blit(font_xs.render("…", True, (150, 150, 150)), (inv_px + 6, iy))
+                break
+            if item_name in ARMOR_PIECES:
+                ic = ARMOR_PIECES[item_name]["color"]
+            elif item_name in ACCESSORY_PIECES:
+                ic = ACCESSORY_PIECES[item_name]["color"]
+            else:
+                ic = (180, 180, 180)
+            pygame.draw.rect(self.screen, ic, (inv_px + 6, iy + 1, 8, 8), border_radius=1)
+            self.screen.blit(font_xs.render(f"{item_name}: {count}", True, (220, 220, 220)), (inv_px + 18, iy))
+            iy += 16
+
+        if not inv_items:
+            self.screen.blit(font_xs.render("(empty)", True, (100, 100, 100)), (inv_px + 6, py + 40))
+
+        # Upgrades divider
+        uy = py + panel_h - 84
+        pygame.draw.line(self.screen, (80, 70, 120), (inv_px + 4, uy), (inv_px + inv_w - 4, uy), 1)
+        self.screen.blit(font_xs.render("Upgrades", True, (200, 200, 200)), (inv_px + 6, uy + 4))
+
+        inv = player.inventory
+        uy += 18
+        # Pickaxe
+        if player.pick_level < len(UPGRADE_COSTS):
+            cost = UPGRADE_COSTS[player.pick_level]
+            can = all(inv.get(k, 0) >= v for k, v in cost.items())
+            cost_str = "  ".join(f"{k}:{inv.get(k,0)}/{v}" for k, v in cost.items())
+            pick_col = (100, 255, 100) if can else (200, 100, 100)
+            self.screen.blit(font_xs.render(f"[U] Pick: {cost_str}", True, pick_col), (inv_px + 6, uy))
+        else:
+            self.screen.blit(font_xs.render("Pick: MAX", True, (255, 215, 0)), (inv_px + 6, uy))
+        uy += 14
+        # Weapon
+        if player.weapon_level < len(WEAPON_UNLOCK_COSTS):
+            cost = WEAPON_UNLOCK_COSTS[player.weapon_level]
+            can = all(inv.get(k, 0) >= v for k, v in cost.items())
+            cost_str = "  ".join(f"{k}:{inv.get(k,0)}/{v}" for k, v in cost.items())
+            wpn_col = (100, 255, 100) if can else (200, 100, 100)
+            self.screen.blit(font_xs.render(f"[N] Wpn: {cost_str}", True, wpn_col), (inv_px + 6, uy))
+        else:
+            self.screen.blit(font_xs.render("Weapon: MAX", True, (255, 215, 0)), (inv_px + 6, uy))
+        uy += 14
+        # Build shortcuts
+        dirt = inv.get("Dirt", 0)
+        house_col = (100, 255, 100) if dirt >= HOUSE_BUILD_COST else (200, 100, 100)
+        self.screen.blit(font_xs.render(f"[B] House: Dirt {dirt}/{HOUSE_BUILD_COST}", True, house_col), (inv_px + 6, uy))
+
+        # Sub-menu overlay (drawn on top of both panes)
+        if sub_idx is not None:
+            slot_key = ARMOR_SLOT_ORDER[slot_idx]
+            options = self._equip_menu_options(player, slot_key)
+
+            sub_row_h = 24
+            sub_w = 260
+            sub_h = 16 + len(options) * sub_row_h
+            sx = px + (panel_w - sub_w) // 2
+            sy = py + (panel_h - sub_h) // 2
+
+            sub_surf = pygame.Surface((sub_w, sub_h), pygame.SRCALPHA)
+            sub_surf.fill((15, 15, 25, 240))
+            self.screen.blit(sub_surf, (sx, sy))
+            pygame.draw.rect(self.screen, (180, 140, 220), (sx, sy, sub_w, sub_h), 2)
+
+            for oidx, opt in enumerate(options):
+                oy = sy + 8 + oidx * sub_row_h
+                if oidx == sub_idx:
+                    pygame.draw.rect(self.screen, (80, 55, 140), (sx + 4, oy, sub_w - 8, sub_row_h - 2))
+
+                if opt == "_unequip":
+                    opt_text = "Unequip"
+                    opt_color = (255, 160, 100)
+                elif opt == "_back":
+                    opt_text = "Back"
+                    opt_color = (160, 160, 160)
+                else:
+                    opt_text = opt
+                    opt_color = (230, 230, 230)
+                    if opt in ARMOR_PIECES:
+                        c = ARMOR_PIECES[opt]["color"]
+                    elif opt in ACCESSORY_PIECES:
+                        c = ACCESSORY_PIECES[opt]["color"]
+                    else:
+                        c = (120, 120, 120)
+                    pygame.draw.rect(self.screen, c, (sx + 8, oy + 5, 10, 10), border_radius=2)
+
+                opt_surf = font_sm.render(opt_text, True, opt_color)
+                self.screen.blit(opt_surf, (sx + 24, oy + 4))
 
     def _draw_death_challenge(
         self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int

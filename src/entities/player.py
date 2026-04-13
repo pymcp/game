@@ -14,6 +14,13 @@ from src.config import (
     MOUNTAIN,
 )
 from src.data import PICKAXES, WEAPONS, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, TILE_INFO
+from src.data.armor import (
+    ARMOR_PIECES,
+    ACCESSORY_PIECES,
+    AccessoryEffect,
+    ARMOR_SLOT_ORDER,
+    item_fits_slot,
+)
 from src.world import try_spend, xp_for_level, hits_blocking, out_of_bounds
 from src.effects import Particle, FloatingText
 
@@ -33,6 +40,7 @@ class ControlScheme:
         toggle_auto_fire_key: int,
         interact_key: int,
         build_pier_key: int,
+        equip_key: int,
         move_description: str = "",
     ) -> None:
         """Initialize control scheme.
@@ -46,6 +54,7 @@ class ControlScheme:
             build_house_key: pygame key constant for building a house
             toggle_auto_mine_key: pygame key constant for toggling auto mine
             toggle_auto_fire_key: pygame key constant for toggling auto fire
+            equip_key: pygame key constant for opening the equipment menu
             move_description: String description of movement controls (e.g., "WASD", "Arrow Keys")
         """
         self.move_keys = move_keys
@@ -58,6 +67,7 @@ class ControlScheme:
         self.toggle_auto_fire_key = toggle_auto_fire_key
         self.interact_key = interact_key
         self.build_pier_key = build_pier_key
+        self.equip_key = equip_key
         self.move_description = move_description
 
     def get_controls_list(self) -> list[str]:
@@ -91,6 +101,7 @@ CONTROL_SCHEME_PLAYER1 = ControlScheme(
     toggle_auto_fire_key=pygame.K_g,
     interact_key=pygame.K_e,
     build_pier_key=pygame.K_h,
+    equip_key=pygame.K_q,
     move_description="WASD",
 )
 
@@ -110,6 +121,7 @@ CONTROL_SCHEME_PLAYER2 = ControlScheme(
     toggle_auto_fire_key=pygame.K_KP_DIVIDE,
     interact_key=pygame.K_KP_5,
     build_pier_key=pygame.K_KP_PLUS,
+    equip_key=pygame.K_RSHIFT,
     move_description="Arrows",
 )
 
@@ -157,6 +169,11 @@ class Player:
         self.weapon_level = 0
         self.weapon_cooldown = 0.0
 
+        # Armor & accessories — None means the slot is empty
+        self.equipment: dict[str, str | None] = {slot: None for slot in ARMOR_SLOT_ORDER}
+        # Remaining durability for each currently-equipped armor piece
+        self.durability: dict[str, int] = {}
+
         # Inventory
         self.inventory = {}
 
@@ -191,6 +208,90 @@ class Player:
 
         # Portal tracking — the map key the player came from when entering portal realm
         self.portal_origin_map: str | tuple | None = None
+
+    # -- properties --------------------------------------------------------
+
+    @property
+    def defense_pct(self) -> float:
+        """Total damage reduction fraction (0.0–1.0) from the four armor body slots."""
+        total = 0.0
+        for slot in ("helmet", "chest", "legs", "boots"):
+            item = self.equipment.get(slot)
+            if item and item in ARMOR_PIECES:
+                total += ARMOR_PIECES[item]["defense_pct"]
+        return min(total, 0.90)  # cap at 90% to always allow at least 1 dmg
+
+    def active_effects(self) -> dict[AccessoryEffect, float]:
+        """Return total accessory effect values (ring1 + ring2 + amulet combined)."""
+        totals: dict[AccessoryEffect, float] = {}
+        for slot in ("ring1", "ring2", "amulet"):
+            item = self.equipment.get(slot)
+            if item and item in ACCESSORY_PIECES:
+                piece = ACCESSORY_PIECES[item]
+                effect = piece["effect"]
+                totals[effect] = totals.get(effect, 0.0) + piece["effect_value"]
+        return totals
+
+    # -- equipment --------------------------------------------------------
+
+    def equip_item(self, slot: str, item_name: str) -> bool:
+        """Equip *item_name* into *slot*, consuming it from inventory.
+
+        Returns True on success, False if the item is not in inventory or
+        doesn't fit the slot.  Any previously-equipped item in that slot is
+        returned to inventory first.
+        """
+        if self.inventory.get(item_name, 0) <= 0:
+            return False
+        if not item_fits_slot(item_name, slot):
+            return False
+        # Return the currently-equipped item before overwriting
+        self.unequip_item(slot)
+        # Remove from inventory
+        self.inventory[item_name] -= 1
+        if self.inventory[item_name] <= 0:
+            del self.inventory[item_name]
+        # Place in equipment slot
+        self.equipment[slot] = item_name
+        if item_name in ARMOR_PIECES:
+            self.durability[item_name] = ARMOR_PIECES[item_name]["durability"]
+        # Recompute max_hp when an HP-boost accessory is equipped
+        self._recalc_max_hp()
+        return True
+
+    def unequip_item(self, slot: str) -> None:
+        """Unequip the item in *slot* and return it to inventory (if not already broken)."""
+        item_name = self.equipment.get(slot)
+        if item_name is None:
+            return
+        self.equipment[slot] = None
+        # Broken armor (durability tracked but already spent) is destroyed
+        still_intact = (
+            item_name not in ARMOR_PIECES
+            or self.durability.get(item_name, 0) > 0
+        )
+        if still_intact:
+            self.inventory[item_name] = self.inventory.get(item_name, 0) + 1
+        self.durability.pop(item_name, None)
+        self._recalc_max_hp()
+
+    def _recalc_max_hp(self) -> None:
+        """Recompute max_hp including any HP-boost amulet effect."""
+        base_max = 100 + (self.level - 1) * 10
+        hp_bonus = 0.0
+        amulet = self.equipment.get("amulet")
+        if amulet and amulet in ACCESSORY_PIECES:
+            piece = ACCESSORY_PIECES[amulet]
+            if piece["effect"] == AccessoryEffect.HP_BOOST:
+                hp_bonus = piece["effect_value"]
+        new_max = int(base_max + hp_bonus)
+        # Preserve current HP ratio when max changes
+        if self.max_hp > 0:
+            ratio = self.hp / self.max_hp
+            self.max_hp = new_max
+            self.hp = min(self.max_hp, max(1, int(self.max_hp * ratio)))
+        else:
+            self.max_hp = new_max
 
     # -- upgrades ----------------------------------------------------------
 
@@ -368,14 +469,34 @@ class Player:
     # -- combat ------------------------------------------------------------
 
     def take_damage(self, amount: int, particles: list, floats: list, map_key: str | tuple | None = None) -> None:
-        """Take damage and trigger hurt effects."""
+        """Take damage (reduced by armor) and trigger hurt effects."""
         if self.hurt_timer > 0:
             return
-        self.hp = max(0, self.hp - amount)
+        effective = max(1, int(amount * (1.0 - self.defense_pct)))
+        self.hp = max(0, self.hp - effective)
         self.hurt_timer = 30
-        floats.append(FloatingText(self.x, self.y - 20, f"-{amount} HP", (255, 60, 60), map_key))
+        floats.append(FloatingText(self.x, self.y - 20, f"-{effective} HP", (255, 60, 60), map_key))
         for _ in range(6):
             particles.append(Particle(self.x, self.y, (255, 60, 60)))
+        self._tick_durability(floats, map_key)
+
+    def _tick_durability(self, floats: list, map_key: str | tuple | None = None) -> None:
+        """Decrement durability on all equipped armor pieces; destroy pieces that reach 0."""
+        for slot in ("helmet", "chest", "legs", "boots"):
+            item = self.equipment.get(slot)
+            if item is None or item not in self.durability:
+                continue
+            self.durability[item] -= 1
+            if self.durability[item] <= 0:
+                slot_label = slot.capitalize()
+                floats.append(
+                    FloatingText(
+                        int(self.x), int(self.y) - 30,
+                        f"{slot_label} broke!", (255, 160, 50), map_key,
+                    )
+                )
+                self.equipment[slot] = None
+                del self.durability[item]
 
     def check_level_up(self, particles: list, floats: list, map_key: str | tuple | None = None) -> None:
         """Check for level ups and apply bonuses."""
@@ -413,11 +534,44 @@ class Player:
     def _draw_normal(
         self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]
     ) -> None:
-        """Draw the standard standing player."""
+        """Draw the standard standing player with any equipped armor overlays."""
+        # Determine chest color: armor replaces the body color if equipped
+        chest_item = self.equipment.get("chest")
+        if chest_item and chest_item in ARMOR_PIECES:
+            torso_color = ARMOR_PIECES[chest_item]["color"]
+        else:
+            torso_color = body_color
+
+        # Body (torso)
         pygame.draw.rect(
-            surf, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4
+            surf, torso_color, (psx - 10, psy - 14, 20, 28), border_radius=4
         )
+
+        # Legs overlay
+        legs_item = self.equipment.get("legs")
+        if legs_item and legs_item in ARMOR_PIECES:
+            pygame.draw.rect(
+                surf, ARMOR_PIECES[legs_item]["color"], (psx - 8, psy + 2, 16, 12), border_radius=2
+            )
+
+        # Boots overlay
+        boots_item = self.equipment.get("boots")
+        if boots_item and boots_item in ARMOR_PIECES:
+            bc = ARMOR_PIECES[boots_item]["color"]
+            pygame.draw.rect(surf, bc, (psx - 9, psy + 12, 8, 4), border_radius=1)
+            pygame.draw.rect(surf, bc, (psx + 1, psy + 12, 8, 4), border_radius=1)
+
+        # Head
         pygame.draw.circle(surf, (240, 200, 160), (psx, psy - 18), 8)
+
+        # Helmet overlay
+        helmet_item = self.equipment.get("helmet")
+        if helmet_item and helmet_item in ARMOR_PIECES:
+            pygame.draw.rect(
+                surf, ARMOR_PIECES[helmet_item]["color"], (psx - 7, psy - 25, 14, 10), border_radius=3
+            )
+
+        # Pickaxe
         pick_color = PICKAXES[self.pick_level]["color"]
         pygame.draw.line(surf, pick_color, (psx + 10, psy - 8), (psx + 18, psy - 16), 3)
         pygame.draw.line(
