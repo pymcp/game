@@ -23,13 +23,20 @@ from src.config import (
     CAVE_MOUNTAIN,
     CAVE_HILL,
     CAVE_EXIT,
+    PIER,
+    BOAT,
+    TREASURE_CHEST,
     SETTLEMENT_TIER_SIZES,
     SETTLEMENT_TIER_NAMES,
     HOUSE_BUILD_COST,
+    PIER_BUILD_COST,
+    BOAT_BUILD_COST,
+    SECTOR_WIPE_DURATION,
 )
 from src.data import TILE_INFO, WEAPONS, PICKAXES, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS
 from src.world import (
     generate_world,
+    generate_ocean_sector,
     spawn_enemies,
     try_spend,
     has_adjacent_house,
@@ -124,6 +131,13 @@ class Game:
 
         # Death challenge state: {player_id: {"question": str, "answer": int, "input": str, "wrong": bool}}
         self.death_challenges = {}
+
+        # Deterministic seed for the ocean sector grid
+        self.world_seed = random.randint(0, 0xFFFF_FFFF)
+        # Alias sector (0,0) as the home overland map so sector logic can use one key type
+        self.maps[("sector", 0, 0)] = self.maps["overland"]
+        # Sector-wipe animation state: {player_id: {"progress": float, "direction": str}}
+        self.sector_wipe = {}
 
     # -- death challenge ---------------------------------------------------
 
@@ -293,6 +307,16 @@ class Game:
             and key == self.player1.controls.toggle_auto_fire_key
         ):
             self.player1.toggle_auto_fire()
+        elif (
+            not self.player1.is_dead
+            and key == self.player1.controls.interact_key
+        ):
+            self._try_interact(self.player1)
+        elif (
+            not self.player1.is_dead
+            and key == self.player1.controls.build_pier_key
+        ):
+            self._try_build_pier(self.player1)
         # Player 2 controls (blocked while dead)
         elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
             self.player2.try_upgrade_pick()
@@ -312,6 +336,16 @@ class Game:
             and key == self.player2.controls.toggle_auto_fire_key
         ):
             self.player2.toggle_auto_fire()
+        elif (
+            not self.player2.is_dead
+            and key == self.player2.controls.interact_key
+        ):
+            self._try_interact(self.player2)
+        elif (
+            not self.player2.is_dead
+            and key == self.player2.controls.build_pier_key
+        ):
+            self._try_build_pier(self.player2)
 
     def _try_build_house(self, player):
         """Attempt to build a house at player position."""
@@ -371,6 +405,258 @@ class Game:
         elif isinstance(map_key, tuple):
             return self.maps.get(map_key)
         return None
+
+    def _find_grass_spawn(self, game_map, prefer_col, prefer_row):
+        """Return (x, y) pixel centre of the nearest GRASS tile to prefer_col/row."""
+        rows = game_map.rows
+        cols = game_map.cols
+        for sd in range(max(rows, cols)):
+            for dc in range(-sd, sd + 1):
+                for dr in range(-sd, sd + 1):
+                    if abs(dc) != sd and abs(dr) != sd:
+                        continue
+                    c = prefer_col + dc
+                    r = prefer_row + dr
+                    if 0 <= c < cols and 0 <= r < rows:
+                        if game_map.get_tile(r, c) == GRASS:
+                            return c * TILE + TILE // 2, r * TILE + TILE // 2
+        return prefer_col * TILE + TILE // 2, prefer_row * TILE + TILE // 2
+
+    # -- sailing / pier / boat / interaction --------------------------------
+
+    def _try_interact(self, player):
+        """Context-sensitive interact key handler.
+
+        Priority:
+          1. If a sail-prompt is pending → confirm sailing.
+          2. If player is on_boat → show sailing prompt.
+          3. If adjacent to a TREASURE_CHEST → open it.
+          4. If standing on a PIER tile with WATER adjacent → build boat (if materials).
+        """
+        pid = player.player_id
+        current_map_obj = self.get_player_current_map(player)
+        if current_map_obj is None:
+            return
+
+        p_col = int(player.x) // TILE
+        p_row = int(player.y) // TILE
+
+        # 1. On boat — show a sailing hint (actual edge-crossing handles transit)
+        if player.on_boat:
+            self.floats.append(
+                FloatingText(
+                    int(player.x), int(player.y) - 36,
+                    "Sail to the edge of the map!",
+                    (100, 200, 255),
+                )
+            )
+            return
+
+        # 2. Adjacent treasure chest
+        for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if current_map_obj.get_tile(rr, cc) == TREASURE_CHEST:
+                current_map_obj.set_tile(rr, cc, GRASS)
+                current_map_obj.set_tile_hp(rr, cc, 0)
+                player.inventory["Sail"] = player.inventory.get("Sail", 0) + 1
+                tx = cc * TILE + TILE // 2
+                ty = rr * TILE + TILE // 2
+                self.floats.append(FloatingText(tx, ty - 20, "Got a Sail!", (255, 220, 80)))
+                for _ in range(15):
+                    self.particles.append(Particle(tx, ty, (255, 200, 60)))
+                return
+
+        # 3. On a PIER tile → try to build a boat in the next water cell
+        if current_map_obj.get_tile(p_row, p_col) == PIER:
+            for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if current_map_obj.get_tile(rr, cc) == WATER:
+                    cost = {"Wood": BOAT_BUILD_COST, "Sail": 1}
+                    tx = p_col * TILE + TILE // 2
+                    ty = p_row * TILE + TILE // 2
+                    if not try_spend(player.inventory, cost):
+                        self.floats.append(
+                            FloatingText(
+                                tx, ty - 20,
+                                f"Need {BOAT_BUILD_COST} Wood + 1 Sail!",
+                                (255, 100, 100),
+                            )
+                        )
+                        return
+                    current_map_obj.set_tile(rr, cc, BOAT)
+                    current_map_obj.set_tile_hp(rr, cc, 0)
+                    btx = cc * TILE + TILE // 2
+                    bty = rr * TILE + TILE // 2
+                    self.floats.append(FloatingText(btx, bty - 20, "Boat built!", (100, 200, 255)))
+                    for _ in range(12):
+                        self.particles.append(Particle(btx, bty, (80, 160, 220)))
+                    return
+
+    def _try_build_pier(self, player):
+        """Build a 2-tile pier extending from the player's shore tile into water."""
+        if player.on_boat:
+            return
+
+        current_map_obj = self.get_player_current_map(player)
+        if current_map_obj is None:
+            return
+
+        p_col = int(player.x) // TILE
+        p_row = int(player.y) // TILE
+        rows = current_map_obj.rows
+        cols = current_map_obj.cols
+        tx = p_col * TILE + TILE // 2
+        ty = p_row * TILE + TILE // 2
+
+        if current_map_obj.get_tile(p_row, p_col) not in (GRASS, DIRT):
+            self.floats.append(FloatingText(tx, ty - 20, "Build on land!", (255, 100, 100)))
+            return
+
+        if not try_spend(player.inventory, {"Wood": PIER_BUILD_COST}):
+            self.floats.append(
+                FloatingText(tx, ty - 20, f"Need {PIER_BUILD_COST} Wood!", (255, 100, 100))
+            )
+            return
+
+        # Prefer facing direction; fall back to all four cardinal directions
+        fdx = player.facing_dx
+        fdy = player.facing_dy
+        if abs(fdx) >= abs(fdy):
+            pref = (1 if fdx > 0 else -1, 0)
+        else:
+            pref = (0, 1 if fdy > 0 else -1)
+        all_dirs = [pref] + [d for d in [(1, 0), (-1, 0), (0, 1), (0, -1)] if d != pref]
+
+        for dc, dr in all_dirs:
+            c1, r1 = p_col + dc, p_row + dr
+            c2, r2 = p_col + dc * 2, p_row + dr * 2
+            if (
+                0 <= c1 < cols and 0 <= r1 < rows
+                and 0 <= c2 < cols and 0 <= r2 < rows
+                and current_map_obj.get_tile(r1, c1) == WATER
+                and current_map_obj.get_tile(r2, c2) == WATER
+            ):
+                current_map_obj.set_tile(r1, c1, PIER)
+                current_map_obj.set_tile_hp(r1, c1, 0)
+                current_map_obj.set_tile(r2, c2, PIER)
+                current_map_obj.set_tile_hp(r2, c2, 0)
+                self.floats.append(FloatingText(tx, ty - 20, "Pier built!", (200, 160, 60)))
+                return
+
+        # Refund
+        player.inventory["Wood"] = player.inventory.get("Wood", 0) + PIER_BUILD_COST
+        self.floats.append(FloatingText(tx, ty - 20, "No water to build on!", (255, 100, 100)))
+
+    def _get_player_sector(self, player):
+        """Return the (sx, sy) sector coordinates for a player's current map.
+
+        Overland/"overland" maps map to sector (0, 0).
+        Sector maps keyed as ("sector", sx, sy) return (sx, sy).
+        Cave maps return None (no sector transitions underground).
+        """
+        key = player.current_map
+        if key == "overland" or key == ("sector", 0, 0):
+            return (0, 0)
+        if isinstance(key, tuple) and len(key) == 3 and key[0] == "sector":
+            return (key[1], key[2])
+        return None  # cave or unknown
+
+    def _get_or_generate_sector(self, sx, sy):
+        """Return (or lazily generate) the GameMap for sector (sx, sy)."""
+        if sx == 0 and sy == 0:
+            return self.maps["overland"]
+        key = ("sector", sx, sy)
+        if key not in self.maps:
+            world_data = generate_ocean_sector(sx, sy, self.world_seed)
+            sector_map = GameMap(world_data, tileset="overland")
+            sector_map.enemies = spawn_enemies(world_data)
+            self.maps[key] = sector_map
+        return self.maps[key]
+
+    def _evict_distant_sectors(self):
+        """Drop sector maps that are more than 2 sectors away from all players."""
+        sectors_in_use = set()
+        for player in (self.player1, self.player2):
+            coords = self._get_player_sector(player)
+            if coords is None:
+                continue
+            sx, sy = coords
+            for dx in range(-2, 3):
+                for dy in range(-2, 3):
+                    sectors_in_use.add((sx + dx, sy + dy))
+
+        to_evict = []
+        for key in self.maps:
+            if isinstance(key, tuple) and len(key) == 3 and key[0] == "sector":
+                if key[1] != 0 or key[2] != 0:  # never evict home island
+                    if (key[1], key[2]) not in sectors_in_use:
+                        to_evict.append(key)
+        for key in to_evict:
+            del self.maps[key]
+
+    def check_sector_transitions(self, player):
+        """Detect when an on-boat player crosses the edge of their current sector
+        and teleport them to the adjacent sector with a brief wipe animation."""
+        if not player.on_boat:
+            return
+        sector_coords = self._get_player_sector(player)
+        if sector_coords is None:
+            return  # underground — no sector transitions
+
+        sx, sy = sector_coords
+        current_map = self._get_or_generate_sector(sx, sy)
+        world_pixel_w = current_map.cols * TILE
+        world_pixel_h = current_map.rows * TILE
+
+        x, y = player.x, player.y
+        pid = player.player_id
+        direction = None
+        new_sx, new_sy = sx, sy
+        new_x, new_y = x, y
+
+        margin = TILE // 2  # cross within half a tile of the edge
+
+        if x < margin:
+            direction = "left"
+            new_sx = sx - 1
+            new_x = float(world_pixel_w - TILE)
+            new_y = y
+        elif x > world_pixel_w - margin:
+            direction = "right"
+            new_sx = sx + 1
+            new_x = float(TILE)
+            new_y = y
+        elif y < margin:
+            direction = "up"
+            new_sy = sy - 1
+            new_x = x
+            new_y = float(world_pixel_h - TILE)
+        elif y > world_pixel_h - margin:
+            direction = "down"
+            new_sy = sy + 1
+            new_x = x
+            new_y = float(TILE)
+
+        if direction is None:
+            return
+
+        # Generate next sector (may be cached)
+        self._get_or_generate_sector(new_sx, new_sy)
+
+        # Move the player to the new sector
+        new_key = ("sector", new_sx, new_sy) if (new_sx != 0 or new_sy != 0) else "overland"
+        player.current_map = new_key
+        player.x = new_x
+        player.y = new_y
+        self._snap_camera_to_player(player)
+
+        # Start the wipe animation
+        self.sector_wipe[pid] = {
+            "progress": 0.0,
+            "direction": direction,
+        }
+
+        self._evict_distant_sectors()
 
     def _snap_camera_to_player(self, player):
         """Immediately snap a player's camera to centre on that player."""
@@ -811,6 +1097,20 @@ class Game:
         map1 = self.get_player_current_map(self.player1)
         map2 = self.get_player_current_map(self.player2)
 
+        # -- Sector-wipe animation tick ------------------------------------
+        for pid in list(self.sector_wipe.keys()):
+            self.sector_wipe[pid]["progress"] += dt / SECTOR_WIPE_DURATION
+            if self.sector_wipe[pid]["progress"] >= 1.0:
+                del self.sector_wipe[pid]
+        # ----------------------------------------------------------------
+
+        # -- Sector transitions for on-boat players -----------------------
+        if not self.player1.is_dead:
+            self.check_sector_transitions(self.player1)
+        if not self.player2.is_dead:
+            self.check_sector_transitions(self.player2)
+        # ----------------------------------------------------------------
+
         # Player 1 movement & mining (skipped while dead)
         if not self.player1.is_dead:
             self.player1.update_movement(keys, dt, map1.world)
@@ -844,6 +1144,24 @@ class Game:
             )
             if self.player2.hurt_timer > 0:
                 self.player2.hurt_timer -= dt
+
+        # -- Boat boarding detection --------------------------------------
+        for player in (self.player1, self.player2):
+            if player.is_dead or player.on_boat:
+                continue
+            cur_map = self.get_player_current_map(player)
+            if cur_map is None:
+                continue
+            pc = int(player.x) // TILE
+            pr = int(player.y) // TILE
+            if cur_map.get_tile(pr, pc) == BOAT:
+                player.on_boat = True
+                cur_map.set_tile(pr, pc, WATER)
+                cur_map.set_tile_hp(pr, pc, 0)
+                self.floats.append(
+                    FloatingText(int(player.x), int(player.y) - 20, "On the boat!", (100, 200, 255))
+                )
+        # ----------------------------------------------------------------
 
         # Workers (each assigned to a specific player) - only on overland map
         overland_map = self.maps["overland"]
@@ -936,6 +1254,23 @@ class Game:
                 target_player.take_damage(dmg, self.particles, self.floats)
                 if target_player.hp <= 0 and not target_player.is_dead:
                     self._start_death_challenge(target_player)
+
+    def _draw_sector_wipe_viewport(self, screen_x, screen_y, view_w, view_h, progress):
+        """Draw a quick scroll-wipe flash when crossing a sector boundary.
+
+        The first half of the animation blurs/fades out the old view with a
+        horizontal or vertical white flash; the second half fades into the new
+        view which is already rendered behind it.  We overlay a white rect
+        whose alpha peaks at midpoint (progress == 0.5) and falls back to 0.
+        """
+        # Compute alpha: 0 → 255 at progress 0.5 → 0
+        alpha = int(255 * (1.0 - abs(progress - 0.5) * 2.0))
+        alpha = max(0, min(255, alpha))
+        if alpha == 0:
+            return
+        flash = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+        flash.fill((220, 240, 255, alpha))
+        self.screen.blit(flash, (screen_x, screen_y))
 
     def _update_cave_enemies(self, dt):
         """Update enemies inside caves that currently contain at least one player."""
@@ -1345,6 +1680,55 @@ class Game:
                     he = current_map.get_tile(r, c + 1) == HOUSE
                     hw = current_map.get_tile(r, c - 1) == HOUSE
                     self._draw_house_tile(sx, sy, tier, hn, hs, he, hw, ticks)
+                elif tid == PIER:
+                    # Wood-plank dock over water
+                    plank_c = (155, 115, 50)
+                    edge_c = (100, 75, 30)
+                    pygame.draw.rect(self.screen, plank_c, (sx + 2, sy + 2, 28, 28))
+                    # Plank lines
+                    for lx in range(sx + 6, sx + 29, 7):
+                        pygame.draw.line(self.screen, edge_c, (lx, sy + 2), (lx, sy + 30), 1)
+                    pygame.draw.rect(self.screen, edge_c, (sx + 2, sy + 2, 28, 28), 1)
+                elif tid == BOAT:
+                    # Small moored boat
+                    pygame.draw.polygon(
+                        self.screen, (120, 80, 40),
+                        [(sx + 4, sy + 18), (sx + 28, sy + 18),
+                         (sx + 24, sy + 28), (sx + 8, sy + 28)],
+                    )
+                    # Mast
+                    pygame.draw.line(self.screen, (80, 55, 25), (sx + 16, sy + 4), (sx + 16, sy + 18), 2)
+                    # Sail
+                    pygame.draw.polygon(
+                        self.screen, (235, 225, 195),
+                        [(sx + 17, sy + 5), (sx + 17, sy + 17), (sx + 27, sy + 11)],
+                    )
+                    # Cabin
+                    pygame.draw.rect(self.screen, (160, 110, 55), (sx + 10, sy + 12, 8, 7))
+                    pygame.draw.rect(self.screen, (180, 220, 255), (sx + 12, sy + 13, 3, 3))
+                elif tid == TREASURE_CHEST:
+                    # Golden chest with lock
+                    chest_body = (185, 130, 40)
+                    chest_band = (230, 180, 60)
+                    chest_dark = (120, 85, 25)
+                    # Body
+                    pygame.draw.rect(self.screen, chest_body, (sx + 4, sy + 14, 24, 14))
+                    # Lid
+                    pygame.draw.rect(self.screen, chest_body, (sx + 4, sy + 8, 24, 8))
+                    pygame.draw.polygon(
+                        self.screen, chest_band,
+                        [(sx + 4, sy + 16), (sx + 28, sy + 16),
+                         (sx + 28, sy + 19), (sx + 4, sy + 19)],
+                    )
+                    # Lock
+                    pygame.draw.rect(self.screen, chest_dark, (sx + 13, sy + 17, 6, 5))
+                    pygame.draw.ellipse(self.screen, chest_dark, (sx + 13, sy + 14, 6, 6))
+                    # Shimmer sparkle
+                    sp = int(math.sin(ticks * 0.006) * 2) + 2
+                    pygame.draw.line(self.screen, (255, 240, 130),
+                                     (sx + 8, sy + 4 + sp), (sx + 8 + 3, sy + 4 + sp - 3), 1)
+                    pygame.draw.line(self.screen, (255, 240, 130),
+                                     (sx + 8, sy + 4 + sp), (sx + 8 - 3, sy + 4 + sp + 3), 1)
                 elif tid in (CAVE_MOUNTAIN, CAVE_HILL):
                     # Draw cave entrance
                     # Darker base color already set by tileset color
@@ -1433,6 +1817,14 @@ class Game:
         self._draw_player_ui(player, screen_x, screen_y, view_w, view_h)
         if player.is_dead:
             self._draw_death_challenge(player, screen_x, screen_y, view_w, view_h)
+
+        # Sector-wipe flash overlay (drawn last so it appears on top)
+        wipe_state = self.sector_wipe.get(player.player_id)
+        if wipe_state:
+            self._draw_sector_wipe_viewport(
+                screen_x, screen_y, view_w, view_h, wipe_state["progress"]
+            )
+
         self.screen.set_clip(None)
 
     def _draw_player_ui(self, player, screen_x, screen_y, view_w, view_h):
@@ -1549,6 +1941,16 @@ class Game:
         house_cost = _cost_str({"Dirt": HOUSE_BUILD_COST}, player.inventory)
         build_key = pygame.key.name(player.controls.build_house_key).upper()
         upg_lines.append((f"House ({build_key}):", house_cost))
+
+        # Pier
+        pier_key = pygame.key.name(player.controls.build_pier_key).upper()
+        pier_cost = _cost_str({"Wood": PIER_BUILD_COST}, player.inventory)
+        upg_lines.append((f"Pier ({pier_key}):", pier_cost))
+
+        # Boat
+        int_key = pygame.key.name(player.controls.interact_key).upper()
+        boat_cost = _cost_str({"Wood": BOAT_BUILD_COST, "Sail": 1}, player.inventory)
+        upg_lines.append((f"Boat ({int_key} at pier):", boat_cost))
 
         # Calculate panel height: header + 2 rows per entry (label + costs)
         upg_panel_h = 14 + len(upg_lines) * 30

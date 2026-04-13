@@ -31,6 +31,8 @@ class ControlScheme:
         build_house_key,
         toggle_auto_mine_key,
         toggle_auto_fire_key,
+        interact_key,
+        build_pier_key,
         move_description="",
     ):
         """Initialize control scheme.
@@ -54,6 +56,8 @@ class ControlScheme:
         self.build_house_key = build_house_key
         self.toggle_auto_mine_key = toggle_auto_mine_key
         self.toggle_auto_fire_key = toggle_auto_fire_key
+        self.interact_key = interact_key
+        self.build_pier_key = build_pier_key
         self.move_description = move_description
 
     def get_controls_list(self):
@@ -65,6 +69,8 @@ class ControlScheme:
             f"{pygame.key.name(self.upgrade_pick_key).upper()}: Upgrade Pickaxe",
             f"{pygame.key.name(self.upgrade_weapon_key).upper()}: Upgrade Weapon",
             f"{pygame.key.name(self.build_house_key).upper()}: Build House",
+            f"{pygame.key.name(self.interact_key).upper()}: Interact / Sail",
+            f"{pygame.key.name(self.build_pier_key).upper()}: Build Pier",
         ]
 
 
@@ -83,6 +89,8 @@ CONTROL_SCHEME_PLAYER1 = ControlScheme(
     build_house_key=pygame.K_b,
     toggle_auto_mine_key=pygame.K_m,
     toggle_auto_fire_key=pygame.K_g,
+    interact_key=pygame.K_e,
+    build_pier_key=pygame.K_h,
     move_description="WASD",
 )
 
@@ -100,6 +108,8 @@ CONTROL_SCHEME_PLAYER2 = ControlScheme(
     build_house_key=pygame.K_v,
     toggle_auto_mine_key=pygame.K_KP_MULTIPLY,
     toggle_auto_fire_key=pygame.K_KP_DIVIDE,
+    interact_key=pygame.K_KP_5,
+    build_pier_key=pygame.K_KP_PLUS,
     move_description="Arrows",
 )
 
@@ -165,7 +175,10 @@ class Player:
         self.auto_mine = False
         self.auto_fire = False
 
-        # Map tracking - "overland" or (cave_col, cave_row) tuple
+        # Sailing / boat state
+        self.on_boat = False
+
+        # Map tracking - "overland" or (cave_col, cave_row) or ("island", n)
         self.current_map = "overland"
 
     # -- upgrades ----------------------------------------------------------
@@ -198,7 +211,7 @@ class Player:
 
     def update_movement(self, keys, dt, world):
         """Handle input and collision using the player's control scheme."""
-        from src.config import GRASS, DIRT, MOUNTAIN
+        from src.config import GRASS, DIRT, MOUNTAIN, WATER
 
         dx = dy = 0
         move_keys = self.controls.move_keys
@@ -226,14 +239,17 @@ class Player:
         new_px = self.x + dx * self.speed * dt
         new_py = self.y + dy * self.speed * dt
 
+        # On a boat, water tiles are passable
+        boat_pass = (WATER,) if self.on_boat else ()
+
         # X axis - stop if blocked, no bouncing
         if not out_of_bounds(new_px, self.y, h, world):
-            if not hits_blocking(world, new_px, self.y, h):
+            if not hits_blocking(world, new_px, self.y, h, boat_pass):
                 self.x = new_px
 
         # Y axis - stop if blocked, no bouncing
         if not out_of_bounds(self.x, new_py, h, world):
-            if not hits_blocking(world, self.x, new_py, h):
+            if not hits_blocking(world, self.x, new_py, h, boat_pass):
                 self.y = new_py
 
         world_cols = len(world[0]) if len(world) > 0 else WORLD_COLS

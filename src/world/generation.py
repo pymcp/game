@@ -18,6 +18,10 @@ from src.config import (
     CAVE_MOUNTAIN,
     CAVE_HILL,
     CAVE_EXIT,
+    PIER,
+    BOAT,
+    TREASURE_CHEST,
+    OCEAN_ISLAND_CHANCE,
 )
 from src.data import ENEMY_TYPES
 
@@ -67,6 +71,63 @@ def generate_world():
 
     # Generate cave entrances
     _place_cave_entrances(world)
+
+    # Place a starting pier + treasure chest for testing
+    _place_pier_and_chest(world)
+
+    return world
+
+
+def generate_ocean_sector(sx, sy, world_seed):
+    """Generate a deterministic 80×60 ocean sector at grid position (sx, sy).
+
+    The result is fully reproducible: calling with the same arguments always
+    returns the same world layout.  Sector (0,0) is the home island and should
+    never be generated here — use the existing generate_world() for that.
+
+    Returns a 2-D list of tile IDs (WORLD_ROWS rows × WORLD_COLS cols).
+    """
+    # Deterministic seed derived from sector coordinates and the world seed
+    sector_seed = hash((world_seed, sx, sy)) & 0xFFFF_FFFF
+    rng = random.Random(sector_seed)
+
+    has_island = rng.random() < OCEAN_ISLAND_CHANCE
+
+    if has_island:
+        # Generate a full island world using the same seeded rng
+        _prev_state = random.getstate()
+        random.setstate(rng.getstate())
+        world = generate_world()
+        # Re-sync rng state in case callers chain calls (not strictly needed)
+        random.setstate(_prev_state)
+        return world
+
+    # --- Ocean-only sector: water + rocks + atolls ---
+    world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+
+    # Rock shoals: tight clusters of MOUNTAIN tiles (impassable, navigable around)
+    num_shoals = rng.randint(2, 6)
+    for _ in range(num_shoals):
+        cx = rng.randint(5, WORLD_COLS - 6)
+        cy = rng.randint(5, WORLD_ROWS - 6)
+        cluster_size = rng.randint(3, 10)
+        for __ in range(cluster_size):
+            nx = cx + rng.randint(-3, 3)
+            ny = cy + rng.randint(-3, 3)
+            if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
+                world[ny][nx] = MOUNTAIN
+
+    # Tiny atolls: small GRASS patches (scenic, players can land briefly)
+    num_atolls = rng.randint(0, 3)
+    for _ in range(num_atolls):
+        cx = rng.randint(8, WORLD_COLS - 9)
+        cy = rng.randint(8, WORLD_ROWS - 9)
+        size = rng.randint(1, 5)
+        for __ in range(size):
+            nx = cx + rng.randint(-2, 2)
+            ny = cy + rng.randint(-2, 2)
+            if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
+                world[ny][nx] = GRASS
 
     return world
 
@@ -287,6 +348,62 @@ def spawn_enemies(world):
                     enemies.append(Enemy(cx, cy, enemy_key))
                     break
     return enemies
+
+
+def _place_pier_and_chest(world):
+    """Place one pier (2 PIER tiles + BOAT tile) and an adjacent TREASURE_CHEST.
+
+    Finds a coastal GRASS tile that has at least 2 consecutive WATER tiles in
+    some cardinal direction, then stamps the pier/boat and a chest on a land
+    tile perpendicular to the pier.
+    """
+    rows = len(world)
+    cols = len(world[0]) if rows > 0 else 0
+
+    # Collect all candidate positions: (col, row, dc, dr)
+    candidates = []
+    for r in range(1, rows - 3):
+        for c in range(1, cols - 3):
+            if world[r][c] not in (GRASS, DIRT):
+                continue
+            for dc, dr in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                c1, r1 = c + dc, r + dr
+                c2, r2 = c + dc * 2, r + dr * 2
+                if (
+                    0 <= c1 < cols and 0 <= r1 < rows
+                    and 0 <= c2 < cols and 0 <= r2 < rows
+                    and world[r1][c1] == WATER
+                    and world[r2][c2] == WATER
+                ):
+                    candidates.append((c, r, dc, dr))
+
+    if not candidates:
+        return
+
+    pc, pr, dc, dr = random.choice(candidates)
+
+    # Stamp pier and boat
+    world[pr + dr][pc + dc] = PIER
+    world[pr + dr * 2][pc + dc * 2] = PIER
+    c3, r3 = pc + dc * 3, pr + dr * 3
+    if 0 <= c3 < cols and 0 <= r3 < rows and world[r3][c3] == WATER:
+        world[r3][c3] = BOAT
+
+    # Place chest on an adjacent land tile perpendicular to pier direction
+    perp_dirs = [(-dr, dc), (dr, -dc)]
+    placed_chest = False
+    for pdc, pdr in perp_dirs:
+        cc, rr = pc + pdc, pr + pdr
+        if 0 <= cc < cols and 0 <= rr < rows and world[rr][cc] in (GRASS, DIRT):
+            world[rr][cc] = TREASURE_CHEST
+            placed_chest = True
+            break
+
+    if not placed_chest:
+        # Fallback: place behind the pier start point
+        bc, br = pc - dc, pr - dr
+        if 0 <= bc < cols and 0 <= br < rows and world[br][bc] in (GRASS, DIRT):
+            world[br][bc] = TREASURE_CHEST
 
 
 def _is_adjacent_to_mountain(world, col, row):

@@ -31,11 +31,16 @@ def pos_in_bounds(wx, wy):
     return 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS
 
 
-def hits_blocking(world, cx, cy, half):
-    """Check if a circle (center cx,cy, radius half) hits any blocking tile."""
+def hits_blocking(world, cx, cy, half, extra_passable=()):
+    """Check if a circle (center cx,cy, radius half) hits any blocking tile.
+
+    extra_passable: tile IDs that should be treated as passable even if they
+    are in BLOCKING_TILES (e.g. WATER for a player on a boat).
+    """
     for ox in (-half, half):
         for oy in (-half, half):
-            if tile_at(world, cx + ox, cy + oy) in BLOCKING_TILES:
+            t = tile_at(world, cx + ox, cy + oy)
+            if t in BLOCKING_TILES and t not in extra_passable:
                 return True
     return False
 

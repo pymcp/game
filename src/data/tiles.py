@@ -15,6 +15,9 @@ from src.config import (
     CAVE_HILL,
     CAVE_EXIT,
     CAVE_WALL,
+    PIER,
+    BOAT,
+    TREASURE_CHEST,
 )
 
 TILE_INFO = {
@@ -130,6 +133,30 @@ TILE_INFO = {
         "drop": None,
         "drop_color": None,
     },
+    PIER: {
+        "name": "Pier",
+        "color": (139, 105, 40),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    BOAT: {
+        "name": "Boat",
+        "color": (100, 75, 30),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    TREASURE_CHEST: {
+        "name": "Treasure Chest",
+        "color": (200, 160, 40),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
 }
 
-BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL)
+BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL, TREASURE_CHEST)
