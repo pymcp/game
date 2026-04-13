@@ -38,7 +38,7 @@ from src.config import (
     BOAT_BUILD_COST,
     SECTOR_WIPE_DURATION,
 )
-from src.data import TILE_INFO, WEAPONS, PICKAXES, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS
+from src.data import TILE_INFO, WEAPONS, PICKAXES, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, RECIPES
 from src.world import (
     generate_world,
     generate_ocean_sector,
@@ -138,6 +138,9 @@ class Game:
 
         # Death challenge state: {player_id: {"question": str, "answer": int, "input": str, "wrong": bool}}
         self.death_challenges = {}
+
+        # Crafting menu state: player_id → cursor index (None = closed)
+        self.craft_menus: dict[int, int | None] = {1: None, 2: None}
 
         # Treasure reveal state: [{"player_id": int, "items": dict, "timer": float}]
         self.treasure_reveals = []
@@ -294,6 +297,52 @@ class Game:
                 return
             elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._submit_death_challenge(active_player)
+                return
+
+        # --- Crafting menu input (takes priority over normal keys while open) ---
+        for player in (self.player1, self.player2):
+            pid = player.player_id
+            if self.craft_menus[pid] is None:
+                continue
+            cursor = self.craft_menus[pid]
+            total_entries = len(RECIPES) + 1  # recipes + "Close"
+            up_key = player.controls.move_keys["up"]
+            down_key = player.controls.move_keys["down"]
+            if key == up_key:
+                self.craft_menus[pid] = (cursor - 1) % total_entries
+                return
+            elif key == down_key:
+                self.craft_menus[pid] = (cursor + 1) % total_entries
+                return
+            elif key == player.controls.interact_key:
+                if cursor < len(RECIPES):
+                    recipe = RECIPES[cursor]
+                    tx = int(player.x)
+                    ty = int(player.y) - 20
+                    if try_spend(player.inventory, recipe["cost"]):
+                        result = recipe["result"]
+                        player.inventory[result["item"]] = (
+                            player.inventory.get(result["item"], 0) + result["qty"]
+                        )
+                        self.floats.append(
+                            FloatingText(tx, ty, f"{result['item']} crafted!", (60, 200, 255))
+                        )
+                        for _ in range(8):
+                            self.particles.append(Particle(tx, ty, (40, 160, 220)))
+                        self.craft_menus[pid] = None
+                    else:
+                        cost_str = ", ".join(
+                            f"{qty} {item}" for item, qty in recipe["cost"].items()
+                        )
+                        self.floats.append(
+                            FloatingText(tx, ty, f"Need {cost_str}!", (255, 100, 100))
+                        )
+                else:
+                    # "Close" entry selected
+                    self.craft_menus[pid] = None
+                return
+            elif key == pygame.K_ESCAPE:
+                self.craft_menus[pid] = None
                 return
 
         if key == pygame.K_ESCAPE:
@@ -458,33 +507,12 @@ class Game:
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
 
-        # 0. Craft Scuba Gear at a house (surface maps only)
+        # 0. Open crafting menu at a house (surface maps only)
         if current_map_obj.tileset == "overland":
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == HOUSE:
-                    tx = p_col * TILE + TILE // 2
-                    ty = p_row * TILE + TILE // 2
-                    if player.inventory.get("Wood", 0) < SCUBA_BUILD_COST:
-                        self.floats.append(
-                            FloatingText(
-                                tx,
-                                ty - 20,
-                                f"Need {SCUBA_BUILD_COST} Wood to craft Scuba Gear!",
-                                (255, 100, 100),
-                            )
-                        )
-                        return
-                    if not try_spend(player.inventory, {"Wood": SCUBA_BUILD_COST}):
-                        return
-                    player.inventory["Scuba Gear"] = (
-                        player.inventory.get("Scuba Gear", 0) + 1
-                    )
-                    self.floats.append(
-                        FloatingText(tx, ty, "Scuba Gear crafted!", (60, 200, 255))
-                    )
-                    for _ in range(8):
-                        self.particles.append(Particle(tx, ty, (40, 160, 220)))
+                    self.craft_menus[player.player_id] = 0
                     return
 
         # 1. Cave entry — standing on a cave entrance tile on a surface map
@@ -1353,8 +1381,8 @@ class Game:
                 player.y = pr * TILE + TILE // 2
         # ----------------------------------------------------------------
 
-        # Player 1 movement & mining (skipped while dead)
-        if not self.player1.is_dead:
+        # Player 1 movement & mining (skipped while dead or crafting menu open)
+        if not self.player1.is_dead and self.craft_menus[1] is None:
             self.player1.update_movement(keys, dt, map1.world)
             self.player1.update_mining(
                 keys,
@@ -1367,11 +1395,12 @@ class Game:
                 self.particles,
                 self.floats,
             )
+        if not self.player1.is_dead:
             if self.player1.hurt_timer > 0:
                 self.player1.hurt_timer -= dt
 
-        # Player 2 movement & mining (skipped while dead)
-        if not self.player2.is_dead:
+        # Player 2 movement & mining (skipped while dead or crafting menu open)
+        if not self.player2.is_dead and self.craft_menus[2] is None:
             self.player2.update_movement(keys, dt, map2.world)
             self.player2.update_mining(
                 keys,
@@ -1384,6 +1413,7 @@ class Game:
                 self.particles,
                 self.floats,
             )
+        if not self.player2.is_dead:
             if self.player2.hurt_timer > 0:
                 self.player2.hurt_timer -= dt
 
@@ -1508,18 +1538,18 @@ class Game:
     def _update_enemies(self, dt: float) -> None:
         """Update all enemies and check for attacks on both players."""
         overland_map = self.maps["overland"]
-        avg_cam_x = (self.cam1_x + self.cam2_x) / 2
-        avg_cam_y = (self.cam1_y + self.cam2_y) / 2
         for enemy in self.enemies:
             target_player = self._nearest_living_player("overland", enemy)
             if target_player is None:
                 continue
+            cam_x = self.cam1_x if target_player is self.player1 else self.cam2_x
+            cam_y = self.cam1_y if target_player is self.player1 else self.cam2_y
             enemy.update(
                 dt,
                 target_player.x,
                 target_player.y,
-                avg_cam_x,
-                avg_cam_y,
+                cam_x,
+                cam_y,
                 overland_map.world,
                 self.particles,
             )
@@ -1560,23 +1590,12 @@ class Game:
             if cave_map is None:
                 continue
 
-            # Camera for on-screen culling: average of players in this cave
-            cave_cams = [
-                (
-                    (self.cam1_x, self.cam1_y)
-                    if p is self.player1
-                    else (self.cam2_x, self.cam2_y)
-                )
-                for p in (self.player1, self.player2)
-                if p.current_map == cave_key and not p.is_dead
-            ]
-            cam_x = sum(c[0] for c in cave_cams) / len(cave_cams)
-            cam_y = sum(c[1] for c in cave_cams) / len(cave_cams)
-
             for enemy in cave_map.enemies:
                 target_player = self._nearest_living_player(cave_key, enemy)
                 if target_player is None:
                     continue
+                cam_x = self.cam1_x if target_player is self.player1 else self.cam2_x
+                cam_y = self.cam1_y if target_player is self.player1 else self.cam2_y
                 enemy.update(
                     dt,
                     target_player.x,
@@ -2194,6 +2213,8 @@ class Game:
         if player.is_dead:
             self._draw_death_challenge(player, screen_x, screen_y, view_w, view_h)
         self._draw_treasure_reveal(player, screen_x, screen_y, view_w, view_h)
+        if self.craft_menus[player.player_id] is not None:
+            self._draw_craft_menu(player, screen_x, screen_y, view_w, view_h)
 
         # Sector-wipe flash overlay (drawn last so it appears on top)
         wipe_state = self.sector_wipe.get(player.player_id)
@@ -2614,6 +2635,68 @@ class Game:
             txt.set_alpha(alpha)
             self.screen.blit(txt, (ix, item_y))
             ix += txt.get_width() + 16
+
+    def _draw_craft_menu(
+        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
+    ) -> None:
+        """Draw the crafting menu overlay centered in the player's viewport."""
+        cursor = self.craft_menus[player.player_id]
+        if cursor is None:
+            return
+
+        font_sm = self.font_ui_sm
+        font_xs = self.font_ui_xs
+
+        row_h = 28
+        total_entries = len(RECIPES) + 1  # recipes + Close
+        panel_w = 280
+        panel_h = 50 + total_entries * row_h + 14
+
+        px = screen_x + (view_w - panel_w) // 2
+        py = screen_y + (view_h - panel_h) // 2
+
+        # Background panel
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((20, 20, 30, 220))
+        self.screen.blit(panel_surf, (px, py))
+        pygame.draw.rect(self.screen, (150, 150, 200), (px, py, panel_w, panel_h), 2)
+
+        # Title
+        title = font_sm.render("Crafting  (E craft · Esc close)", True, (200, 200, 255))
+        self.screen.blit(title, (px + 10, py + 10))
+        pygame.draw.line(
+            self.screen, (80, 80, 120), (px + 6, py + 32), (px + panel_w - 6, py + 32), 1
+        )
+
+        # Recipe rows
+        for idx, recipe in enumerate(RECIPES):
+            ry = py + 40 + idx * row_h
+            if idx == cursor:
+                pygame.draw.rect(
+                    self.screen, (60, 80, 140), (px + 4, ry, panel_w - 8, row_h - 2)
+                )
+            name_surf = font_sm.render(recipe["name"], True, (230, 230, 230))
+            self.screen.blit(name_surf, (px + 10, ry + 4))
+
+            # Cost shown as colored "have/need" pairs
+            cx = px + 140
+            for item, needed in recipe["cost"].items():
+                have = player.inventory.get(item, 0)
+                met = have >= needed
+                color = (100, 255, 100) if met else (255, 100, 100)
+                cost_surf = font_xs.render(f"{item}: {have}/{needed}", True, color)
+                self.screen.blit(cost_surf, (cx, ry + 8))
+                cx += cost_surf.get_width() + 8
+
+        # Close row
+        close_idx = len(RECIPES)
+        ry = py + 40 + close_idx * row_h
+        if close_idx == cursor:
+            pygame.draw.rect(
+                self.screen, (60, 80, 140), (px + 4, ry, panel_w - 8, row_h - 2)
+            )
+        close_surf = font_sm.render("Close", True, (180, 180, 180))
+        self.screen.blit(close_surf, (px + 10, ry + 4))
 
     def _draw_death_challenge(
         self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
