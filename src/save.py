@@ -88,6 +88,9 @@ _MAP_EXTRA_ATTRS = (
     "portal_row",
     "ritual_stone_positions",
     "portal_guardian_spawned",
+    "origin_sx",
+    "origin_sy",
+    "slot_size",
 )
 # origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
@@ -110,6 +113,11 @@ def _serialize_map(game_map: GameMap) -> dict:
             data[attr] = getattr(game_map, attr)
     if hasattr(game_map, "origin_map"):
         data["origin_map"] = _key_to_str(game_map.origin_map)
+    if hasattr(game_map, "portal_exits"):
+        data["portal_exits"] = {
+            f"{c}:{r}": (_key_to_str(v) if v is not None else None)
+            for (c, r), v in game_map.portal_exits.items()
+        }
     return data
 
 
@@ -216,6 +224,13 @@ def _deserialize_map(data: dict) -> GameMap:
             setattr(game_map, attr, data[attr])
     if "origin_map" in data:
         game_map.origin_map = _str_to_key(data["origin_map"])
+    if "portal_exits" in data:
+        game_map.portal_exits = {}
+        for k, v in data["portal_exits"].items():
+            col, row = k.split(":")
+            game_map.portal_exits[(int(col), int(row))] = (
+                _str_to_key(v) if v is not None else None
+            )
     return game_map
 
 

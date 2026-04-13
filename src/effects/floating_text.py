@@ -6,16 +6,18 @@ import pygame
 class FloatingText:
     """Text that floats and fades out."""
 
-    __slots__ = ("x", "y", "text", "color", "life")
+    __slots__ = ("x", "y", "text", "color", "life", "map_key")
 
     def __init__(
-        self, x: float, y: float, text: str, color: tuple[int, int, int]
+        self, x: float, y: float, text: str, color: tuple[int, int, int],
+        map_key: str | tuple | None = None,
     ) -> None:
         self.x = x
         self.y = y
         self.text = text
         self.color = color
         self.life = 45
+        self.map_key = map_key
 
     def update(self) -> None:
         """Float upward and fade."""

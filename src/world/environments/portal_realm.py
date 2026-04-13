@@ -3,17 +3,19 @@
 import collections
 import random
 
-from src.config import TILE, TREASURE_CHEST, GRASS
+from src.config import TREASURE_CHEST
 from src.config import PORTAL_FLOOR, PORTAL_WALL, PORTAL_ACTIVE
 from src.world.environments.base import BaseEnvironment
 from src.world.map import GameMap
 
-REALM_ROWS = 50
-REALM_COLS = 60
+# Each sector maps to a SLOT_SIZE×SLOT_SIZE tile block in the realm.
+# The inner 4×4 floor is the discoverable chamber; 2-tile wall border on each side.
+SLOT_SIZE = 8
+INIT_BUFFER = 2  # slots in every direction from home sector for initial CA generation
 
 
 # ---------------------------------------------------------------------------
-# Layout generator
+# Layout helpers
 # ---------------------------------------------------------------------------
 
 
@@ -105,41 +107,55 @@ def _connect_regions(
         remaining = all_floor - spawn_region
 
 
+def carve_chamber(world: list[list[int]], slot_col: int, slot_row: int) -> None:
+    """Carve a 4×4 PORTAL_FLOOR chamber at the given slot top-left position."""
+    for r in range(slot_row + 2, slot_row + SLOT_SIZE - 2):
+        for c in range(slot_col + 2, slot_col + SLOT_SIZE - 2):
+            world[r][c] = PORTAL_FLOOR
+
+
 # ---------------------------------------------------------------------------
 # Environment class
 # ---------------------------------------------------------------------------
 
 
 class PortalRealmEnvironment(BaseEnvironment):
-    """Shared ancient-ruins portal realm."""
+    """Shared ancient-ruins portal realm — grows dynamically as islands are discovered."""
 
     TILESET = "portal_realm"
 
     def generate(self) -> GameMap:
-        """Generate the portal realm map."""
-        rng = random.Random()  # Uses global random state; caller controls seeding
+        """Generate the initial portal realm map.
 
-        layout = _cellular_automata(rng, REALM_ROWS, REALM_COLS)
+        Creates a cellular-automata ruined layout covering the (2*INIT_BUFFER+1)²
+        slot grid centred on the home sector (0, 0).  Portal tiles are placed
+        dynamically via Game._add_realm_portal() when island portals are restored.
+        """
+        rng = random.Random()
+        init_slots = INIT_BUFFER * 2 + 1   # = 5
+        rows = init_slots * SLOT_SIZE       # = 80
+        cols = init_slots * SLOT_SIZE       # = 80
+
+        layout = _cellular_automata(rng, rows, cols)
 
         world = [
-            [PORTAL_WALL if layout[r][c] else PORTAL_FLOOR for c in range(REALM_COLS)]
-            for r in range(REALM_ROWS)
+            [PORTAL_WALL if layout[r][c] else PORTAL_FLOOR for c in range(cols)]
+            for r in range(rows)
         ]
 
-        # Spawn point: find a floor tile near the map centre
-        cx, cy = REALM_COLS // 2, REALM_ROWS // 2
+        # Connectivity anchor: centre of the home island slot (sector 0,0 = slot index 2,2)
+        cx = INIT_BUFFER * SLOT_SIZE + SLOT_SIZE // 2   # = 40
+        cy = INIT_BUFFER * SLOT_SIZE + SLOT_SIZE // 2   # = 40
         spawn_col, spawn_row = cx, cy
+
+        # Find the nearest actual floor tile to the anchor
         for dist in range(1, 20):
             for dc in range(-dist, dist + 1):
                 for dr in range(-dist, dist + 1):
                     if abs(dc) != dist and abs(dr) != dist:
                         continue
                     c, r = cx + dc, cy + dr
-                    if (
-                        0 <= c < REALM_COLS
-                        and 0 <= r < REALM_ROWS
-                        and world[r][c] == PORTAL_FLOOR
-                    ):
+                    if 0 <= c < cols and 0 <= r < rows and world[r][c] == PORTAL_FLOOR:
                         spawn_col, spawn_row = c, r
                         break
                 else:
@@ -149,36 +165,30 @@ class PortalRealmEnvironment(BaseEnvironment):
                 continue
             break
 
-        _connect_regions(world, REALM_ROWS, REALM_COLS, spawn_col, spawn_row)
+        _connect_regions(world, rows, cols, spawn_col, spawn_row)
 
-        # Scatter TREASURE_CHESTs in floor tiles far from spawn
+        # Single treasure chest somewhere far from centre
         floor_tiles = [
             (c, r)
-            for r in range(REALM_ROWS)
-            for c in range(REALM_COLS)
+            for r in range(rows)
+            for c in range(cols)
             if world[r][c] == PORTAL_FLOOR
-            and abs(c - spawn_col) + abs(r - spawn_row) >= 8
+            and abs(c - cx) + abs(r - cy) >= 12
         ]
         rng.shuffle(floor_tiles)
-        chest_count = rng.randint(8, 12)
-        placed_chests: list[tuple[int, int]] = []
-        for c, r in floor_tiles:
-            if all(abs(c - ec) + abs(r - er) >= 4 for ec, er in placed_chests):
-                world[r][c] = TREASURE_CHEST
-                placed_chests.append((c, r))
-                if len(placed_chests) >= chest_count:
-                    break
-
-        # Place the realm exit portal near the spawn point (south side)
-        exit_col, exit_row = spawn_col, min(REALM_ROWS - 3, spawn_row + 6)
-        while exit_row < REALM_ROWS - 2 and world[exit_row][exit_col] != PORTAL_FLOOR:
-            exit_row -= 1
-        world[exit_row][exit_col] = PORTAL_ACTIVE
+        if floor_tiles:
+            c, r = floor_tiles[0]
+            world[r][c] = TREASURE_CHEST
 
         game_map = GameMap(world, tileset=self.TILESET)
         game_map.spawn_col = spawn_col
         game_map.spawn_row = spawn_row
-        game_map.exit_col = exit_col
-        game_map.exit_row = exit_row
+        game_map.origin_sx = -INIT_BUFFER   # = -2
+        game_map.origin_sy = -INIT_BUFFER   # = -2
+        game_map.slot_size = SLOT_SIZE
+        game_map.portal_exits = {}          # (col, row) → dest map_key
 
         return game_map
+
+
+

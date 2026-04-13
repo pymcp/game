@@ -639,11 +639,9 @@ class Game:
     def get_player_current_map(self, player: Player) -> GameMap | None:
         """Get the GameMap object that the player is currently on."""
         map_key = player.current_map
-        if map_key == "overland":
-            return self.maps["overland"]
-        elif isinstance(map_key, tuple):
+        if isinstance(map_key, tuple):
             return self.maps.get(map_key)
-        return None
+        return self.maps.get(map_key)
 
     def _find_grass_spawn(
         self, game_map: GameMap, prefer_col: int, prefer_row: int
@@ -829,7 +827,7 @@ class Game:
 
         # 4.6. Adjacent PORTAL_RUINS — show quest status or gather delivery
         if current_map_obj.tileset == "overland":
-            for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == PORTAL_RUINS:
                     self._try_interact_portal_ruins(player, player.current_map)
@@ -837,18 +835,18 @@ class Game:
 
         # 4.7. Adjacent PORTAL_ACTIVE on island — enter portal realm
         if current_map_obj.tileset == "overland":
-            for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
                     self._enter_portal_realm(player)
                     return
 
-        # 4.8. PORTAL_ACTIVE tile inside portal realm — exit back to origin
+        # 4.8. PORTAL_ACTIVE tile inside portal realm — exit to linked island
         if player.current_map == "portal_realm":
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
-                    self._exit_portal_realm(player)
+                    self._exit_portal_realm(player, cc, rr)
                     return
 
         # 5. On a PIER tile → try to build a boat in the next water cell
@@ -1023,18 +1021,166 @@ class Game:
             self.particles.append(
                 Particle(int(player.x), int(player.y), (160, 60, 220))
             )
+        # Register this island's portal in the realm (no-op if realm not yet generated)
+        self._add_realm_portal(player.current_map)
+
+    def _get_sector_coords(self, map_key: str | tuple) -> tuple[int, int] | None:
+        """Return (sx, sy) sector coordinates for a surface map key, or None."""
+        if map_key == "overland":
+            return (0, 0)
+        if isinstance(map_key, tuple) and len(map_key) == 3 and map_key[0] == "sector":
+            return (map_key[1], map_key[2])
+        return None
+
+    def _expand_realm(
+        self,
+        realm_map: "GameMap",
+        left: int,
+        right: int,
+        top: int,
+        bottom: int,
+    ) -> None:
+        """Grow the realm's world array by the given number of slots in each direction.
+
+        New areas are filled with PORTAL_WALL.  All positional attrs on realm_map
+        (spawn_col/row, portal_exits coords, origin_sx/sy) are shifted accordingly.
+        """
+        slot_size  = realm_map.slot_size
+        add_left   = left   * slot_size
+        add_right  = right  * slot_size  # noqa: F841
+        add_top    = top    * slot_size
+        add_bottom = bottom * slot_size  # noqa: F841
+        old_rows = realm_map.rows
+        old_cols = realm_map.cols
+        new_rows = old_rows + add_top    + bottom * slot_size
+        new_cols = old_cols + add_left   + right  * slot_size
+
+        world   = [[PORTAL_WALL] * new_cols for _ in range(new_rows)]
+        tile_hp = [[0]           * new_cols for _ in range(new_rows)]
+        for r in range(old_rows):
+            for c in range(old_cols):
+                world  [r + add_top][c + add_left] = realm_map.world  [r][c]
+                tile_hp[r + add_top][c + add_left] = realm_map.tile_hp[r][c]
+
+        realm_map.world    = world
+        realm_map.tile_hp  = tile_hp
+        realm_map.rows     = new_rows
+        realm_map.cols     = new_cols
+        realm_map.origin_sx -= left
+        realm_map.origin_sy -= top
+        realm_map.spawn_col += add_left
+        realm_map.spawn_row += add_top
+        # Shift all existing portal exit positions to match the new coordinate space
+        new_exits: dict = {}
+        for (col, row), mk in realm_map.portal_exits.items():
+            new_exits[(col + add_left, row + add_top)] = mk
+        realm_map.portal_exits = new_exits
+
+    def _ensure_realm_slot(self, sx: int, sy: int) -> tuple[int, int]:
+        """Ensure the realm has a carved chamber for sector (sx, sy).
+
+        Expands the world array in-place if the sector falls outside the current
+        bounds, then carves a 12×12 chamber and connects it via L-corridors.
+        Returns (portal_col, portal_row) — the centre of the chamber.
+        """
+        from src.world.environments.portal_realm import carve_chamber, _connect_regions
+
+        realm_map  = self.maps["portal_realm"]
+        slot_size  = realm_map.slot_size
+        origin_sx  = realm_map.origin_sx
+        origin_sy  = realm_map.origin_sy
+        cur_s_cols = realm_map.cols // slot_size
+        cur_s_rows = realm_map.rows // slot_size
+
+        expand_left   = max(0, origin_sx - sx)
+        expand_right  = max(0, sx - (origin_sx + cur_s_cols - 1))
+        expand_top    = max(0, origin_sy - sy)
+        expand_bottom = max(0, sy - (origin_sy + cur_s_rows - 1))
+
+        if expand_left or expand_right or expand_top or expand_bottom:
+            self._expand_realm(
+                realm_map, expand_left, expand_right, expand_top, expand_bottom
+            )
+            origin_sx = realm_map.origin_sx
+            origin_sy = realm_map.origin_sy
+
+        ix = sx - origin_sx
+        iy = sy - origin_sy
+        slot_col = ix * slot_size
+        slot_row = iy * slot_size
+
+        carve_chamber(realm_map.world, slot_col, slot_row)
+        _connect_regions(
+            realm_map.world, realm_map.rows, realm_map.cols,
+            realm_map.spawn_col, realm_map.spawn_row,
+        )
+
+        portal_col = slot_col + slot_size // 2
+        portal_row = slot_row + slot_size // 2
+        return portal_col, portal_row
+
+    def _add_realm_portal(self, dest_map_key: str | tuple) -> None:
+        """Place a PORTAL_ACTIVE tile in the portal realm linking to dest_map_key.
+
+        No-op if the realm has not been generated yet, if dest_map_key is not a
+        surface island, or if it is already registered.
+        """
+        if "portal_realm" not in self.maps:
+            return
+        coords = self._get_sector_coords(dest_map_key)
+        if coords is None:
+            return
+
+        realm_map = self.maps["portal_realm"]
+        if not hasattr(realm_map, "portal_exits"):
+            realm_map.portal_exits = {}
+        if not hasattr(realm_map, "slot_size"):
+            return  # old-format realm from save — will be regenerated on entry
+        if dest_map_key in realm_map.portal_exits.values():
+            return  # already registered
+
+        sx, sy = coords
+        portal_col, portal_row = self._ensure_realm_slot(sx, sy)
+        realm_map.world[portal_row][portal_col] = PORTAL_ACTIVE
+        realm_map.portal_exits[(portal_col, portal_row)] = dest_map_key
 
     def _enter_portal_realm(self, player: Player) -> None:
-        """Teleport the player into the portal realm."""
+        """Teleport the player into the portal realm, spawning at their origin portal."""
+        origin_key = player.current_map
+
+        # Regenerate if the saved realm lacks the slot-grid attrs (old save compat)
+        if "portal_realm" in self.maps:
+            rm = self.maps["portal_realm"]
+            if not hasattr(rm, "slot_size") or not hasattr(rm, "origin_sx"):
+                del self.maps["portal_realm"]
+
         if "portal_realm" not in self.maps:
             env = PortalRealmEnvironment()
             self.maps["portal_realm"] = env.generate()
+            # Backfill portals for every already-restored island
+            for mk, quest in self.portal_quests.items():
+                if quest.get("restored"):
+                    self._add_realm_portal(mk)
+
+        # Ensure origin island has a portal carved (also handles F9 debug first entry)
+        self._add_realm_portal(origin_key)
 
         realm_map = self.maps["portal_realm"]
-        player.portal_origin_map = player.current_map
+        player.portal_origin_map = origin_key
         player.current_map = "portal_realm"
-        player.x = realm_map.spawn_col * TILE + TILE // 2
-        player.y = realm_map.spawn_row * TILE + TILE // 2
+
+        # Spawn at the origin island's portal tile in the realm
+        origin_portal = next(
+            ((c, r) for (c, r), mk in realm_map.portal_exits.items() if mk == origin_key),
+            None,
+        )
+        if origin_portal is not None:
+            player.x = origin_portal[0] * TILE + TILE // 2
+            player.y = origin_portal[1] * TILE + TILE // 2
+        else:
+            player.x = realm_map.spawn_col * TILE + TILE // 2
+            player.y = realm_map.spawn_row * TILE + TILE // 2
+
         self._snap_camera_to_player(player)
         self.floats.append(
             FloatingText(
@@ -1045,17 +1191,35 @@ class Game:
             )
         )
 
-    def _exit_portal_realm(self, player: Player) -> None:
-        """Return the player from the portal realm to their origin map."""
-        origin_key = player.portal_origin_map or "overland"
-        origin_map = self.maps.get(origin_key)
-        if origin_map is None:
-            origin_key = "overland"
-            origin_map = self.maps["overland"]
+    def _exit_portal_realm(
+        self, player: Player, portal_col: int | None = None, portal_row: int | None = None
+    ) -> None:
+        """Return the player from the portal realm.
 
-        # Place near the portal
-        portal_col = getattr(origin_map, "portal_col", origin_map.cols // 2)
-        portal_row = getattr(origin_map, "portal_row", origin_map.rows // 2)
+        If portal_col/row are given, look up the destination in the realm's
+        portal_exits dict so each portal leads to a specific island.  Falls
+        back to portal_origin_map when the tile is unknown.
+        """
+        realm_map = self.maps.get("portal_realm")
+        dest_key: str | tuple | None = None
+        if (
+            realm_map is not None
+            and portal_col is not None
+            and hasattr(realm_map, "portal_exits")
+        ):
+            dest_key = realm_map.portal_exits.get((portal_col, portal_row))
+
+        if dest_key is None:
+            dest_key = player.portal_origin_map or "overland"
+
+        dest_map = self.maps.get(dest_key)
+        if dest_map is None:
+            dest_key = "overland"
+            dest_map = self.maps["overland"]
+
+        # Place near the portal on the destination island
+        p_col = getattr(dest_map, "portal_col", dest_map.cols // 2)
+        p_row = getattr(dest_map, "portal_row", dest_map.rows // 2)
         placed = False
         for dr, dc in [
             (1, 0),
@@ -1067,19 +1231,19 @@ class Game:
             (0, 2),
             (0, -2),
         ]:
-            adj_c = portal_col + dc
-            adj_r = portal_row + dr
-            if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
-                if origin_map.get_tile(adj_r, adj_c) == GRASS:
+            adj_c = p_col + dc
+            adj_r = p_row + dr
+            if 0 <= adj_c < dest_map.cols and 0 <= adj_r < dest_map.rows:
+                if dest_map.get_tile(adj_r, adj_c) == GRASS:
                     player.x = adj_c * TILE + TILE // 2
                     player.y = adj_r * TILE + TILE // 2
                     placed = True
                     break
         if not placed:
-            player.x = portal_col * TILE + TILE // 2
-            player.y = portal_row * TILE + TILE // 2
+            player.x = p_col * TILE + TILE // 2
+            player.y = p_row * TILE + TILE // 2
 
-        player.current_map = origin_key
+        player.current_map = dest_key
         player.portal_origin_map = None
         self._snap_camera_to_player(player)
         self.floats.append(
@@ -1092,9 +1256,7 @@ class Game:
         """DEBUG (F9): Force-restore the portal on the island player is currently on."""
         map_key = player.current_map
         # Only works on surface maps (overland / sector islands)
-        game_map = (
-            self.maps.get(map_key) if map_key != "overland" else self.maps["overland"]
-        )
+        game_map = self.maps.get(map_key)
         if game_map is None or game_map.tileset not in ("overland",):
             self.floats.append(
                 FloatingText(
@@ -1106,40 +1268,66 @@ class Game:
             )
             return
 
-        # Ensure quest state exists for this map
-        if map_key not in self.portal_quests:
-            self._assign_portal_quest(map_key)
-            self._place_portal_on_map(game_map, map_key)
+        self._debug_force_portal_on_map(map_key, game_map)
+        self._add_realm_portal(map_key)
 
-        quest = self.portal_quests[map_key]
-        # Fast-forward quest to complete state regardless of type
-        if quest["type"] == PortalQuestType.RITUAL:
-            quest["stones_activated"] = quest["stones_total"]
-        elif quest["type"] == PortalQuestType.GATHER:
-            pass  # gather completion is evaluated by _check_portal_restored via the flag below
-        elif quest["type"] == PortalQuestType.COMBAT:
-            quest["guardian_defeated"] = True
-            quest["guardian_spawned"] = True
-
-        # Force the restored flag and flip the tile
-        quest["restored"] = False  # reset so _check_portal_restored can flip it
-        if quest["type"] == PortalQuestType.GATHER:
-            quest["restored"] = True
-            if hasattr(game_map, "portal_col"):
-                game_map.set_tile(
-                    game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE
-                )
-        else:
-            self._check_portal_restored(map_key)
+        # Generate a nearby island and restore its portal too so the realm
+        # has two portals and the player can traverse between them.
+        origin_sx = map_key[1] if isinstance(map_key, tuple) and len(map_key) == 3 else 0
+        origin_sy = map_key[2] if isinstance(map_key, tuple) and len(map_key) == 3 else 0
+        self._debug_ensure_nearby_island(origin_sx, origin_sy)
 
         self.floats.append(
             FloatingText(
                 int(player.x),
                 int(player.y) - 36,
-                "[DEBUG] Portal restored!",
+                "[DEBUG] Portal + nearby island ready!",
                 (160, 60, 220),
             )
         )
+
+    def _debug_force_portal_on_map(
+        self, map_key: str | tuple, game_map: "GameMap"
+    ) -> None:
+        """Force-complete the portal quest for map_key and flip the tile."""
+        if map_key not in self.portal_quests:
+            self._assign_portal_quest(map_key)
+            self._place_portal_on_map(game_map, map_key)
+
+        quest = self.portal_quests[map_key]
+        if quest["type"] == PortalQuestType.RITUAL:
+            quest["stones_activated"] = quest["stones_total"]
+        elif quest["type"] == PortalQuestType.COMBAT:
+            quest["guardian_defeated"] = True
+            quest["guardian_spawned"] = True
+
+        quest["restored"] = False
+        if quest["type"] == PortalQuestType.GATHER:
+            quest["restored"] = True
+            if hasattr(game_map, "portal_col"):
+                game_map.set_tile(game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE)
+        else:
+            self._check_portal_restored(map_key)
+
+    def _debug_ensure_nearby_island(self, origin_sx: int, origin_sy: int) -> None:
+        """Expand outward from origin until a sector with an island is found,
+        generate it if needed, and force-restore its portal."""
+        for dist in range(1, 8):
+            for dx in range(-dist, dist + 1):
+                for dy in range(-dist, dist + 1):
+                    if abs(dx) != dist and abs(dy) != dist:
+                        continue
+                    sx, sy = origin_sx + dx, origin_sy + dy
+                    sector_map = self._get_or_generate_sector(sx, sy)
+                    # Mark all intermediate sectors as visited so the minimap
+                    # shows them rather than leaving gaps in the fog of war
+                    self.visited_sectors.add((sx, sy))
+                    if (sx, sy) not in self.land_sectors:
+                        continue
+                    sector_key = ("sector", sx, sy) if (sx, sy) != (0, 0) else "overland"
+                    self._debug_force_portal_on_map(sector_key, sector_map)
+                    self._add_realm_portal(sector_key)
+                    return  # done — one nearby island is enough
 
     def _on_sentinel_defeated(self, map_key: str | tuple) -> None:
         quest = self.portal_quests.get(map_key)
@@ -1950,8 +2138,8 @@ class Game:
 
         # Projectiles & XP (for both players)
         self._update_projectiles(dt)
-        self.player1.check_level_up(self.particles, self.floats)
-        self.player2.check_level_up(self.particles, self.floats)
+        self.player1.check_level_up(self.particles, self.floats, self.player1.current_map)
+        self.player2.check_level_up(self.particles, self.floats, self.player2.current_map)
 
         # Cull dead enemies; check sentinel defeat for combat portal quests
         dead_overland = [e for e in self.enemies if e.hp <= 0]
@@ -2053,7 +2241,7 @@ class Game:
             )
             dmg = enemy.try_attack(target_player.x, target_player.y)
             if dmg > 0:
-                target_player.take_damage(dmg, self.particles, self.floats)
+                target_player.take_damage(dmg, self.particles, self.floats, target_player.current_map)
                 if target_player.hp <= 0 and not target_player.is_dead:
                     self._start_death_challenge(target_player)
 
@@ -2105,7 +2293,7 @@ class Game:
                 )
                 dmg = enemy.try_attack(target_player.x, target_player.y)
                 if dmg > 0:
-                    target_player.take_damage(dmg, self.particles, self.floats)
+                    target_player.take_damage(dmg, self.particles, self.floats, target_player.current_map)
                     if target_player.hp <= 0 and not target_player.is_dead:
                         self._start_death_challenge(target_player)
 
@@ -2810,7 +2998,8 @@ class Game:
         for par in self.particles:
             par.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         for f in self.floats:
-            f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
+            if f.map_key is None or f.map_key == player.current_map:
+                f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
 
         # Workers and pets: only visible on their home island
         if player.current_map == "overland" or (

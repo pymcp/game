@@ -367,17 +367,17 @@ class Player:
 
     # -- combat ------------------------------------------------------------
 
-    def take_damage(self, amount: int, particles: list, floats: list) -> None:
+    def take_damage(self, amount: int, particles: list, floats: list, map_key: str | tuple | None = None) -> None:
         """Take damage and trigger hurt effects."""
         if self.hurt_timer > 0:
             return
         self.hp = max(0, self.hp - amount)
         self.hurt_timer = 30
-        floats.append(FloatingText(self.x, self.y - 20, f"-{amount} HP", (255, 60, 60)))
+        floats.append(FloatingText(self.x, self.y - 20, f"-{amount} HP", (255, 60, 60), map_key))
         for _ in range(6):
             particles.append(Particle(self.x, self.y, (255, 60, 60)))
 
-    def check_level_up(self, particles: list, floats: list) -> None:
+    def check_level_up(self, particles: list, floats: list, map_key: str | tuple | None = None) -> None:
         """Check for level ups and apply bonuses."""
         while self.xp >= self.xp_next:
             self.xp -= self.xp_next
@@ -387,7 +387,7 @@ class Player:
             self.hp = self.max_hp
             floats.append(
                 FloatingText(
-                    self.x, self.y - 30, f"Level {self.level}!", (255, 255, 100)
+                    self.x, self.y - 30, f"Level {self.level}!", (255, 255, 100), map_key
                 )
             )
             for _ in range(15):
