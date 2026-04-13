@@ -111,6 +111,14 @@ def test_draw_no_crash(mock_game: MockGame) -> None:
     mgr.draw(mock_game.player1, 0, 0, 320, 360)
 
 
+def test_draw_full_screen(mock_game: MockGame) -> None:
+    """Death challenge renders correctly with full-screen dimensions."""
+    mgr = DeathChallengeManager(mock_game)
+    mgr.start(mock_game.player1)
+    # Should not raise with full-screen coords
+    mgr.draw(mock_game.player1, 0, 0, 640, 360)
+
+
 def test_draw_no_challenge(mock_game: MockGame) -> None:
     mgr = DeathChallengeManager(mock_game)
     # Should return silently
@@ -138,3 +146,42 @@ def test_respawn_to_portal_exit(mock_game: MockGame) -> None:
     mgr.submit(mock_game.player1)
     assert mock_game.player1.x == 100.0
     assert mock_game.player1.y == 200.0
+
+
+def test_has_active_false_when_empty(mock_game: MockGame) -> None:
+    mgr = DeathChallengeManager(mock_game)
+    assert mgr.has_active() is False
+
+
+def test_has_active_true_when_challenge(mock_game: MockGame) -> None:
+    mgr = DeathChallengeManager(mock_game)
+    mgr.start(mock_game.player1)
+    assert mgr.has_active() is True
+
+
+def test_has_active_true_for_either_player(mock_game: MockGame) -> None:
+    mgr = DeathChallengeManager(mock_game)
+    mgr.start(mock_game.player2)
+    assert mgr.has_active() is True
+
+
+def test_get_active_player_id_none(mock_game: MockGame) -> None:
+    mgr = DeathChallengeManager(mock_game)
+    assert mgr.get_active_player_id() is None
+
+
+def test_get_active_player_id_returns_lowest(mock_game: MockGame) -> None:
+    mgr = DeathChallengeManager(mock_game)
+    mgr.start(mock_game.player2)
+    assert mgr.get_active_player_id() == 2
+    mgr.start(mock_game.player1)
+    assert mgr.get_active_player_id() == 1
+
+
+def test_has_active_false_after_solve(mock_game: MockGame) -> None:
+    mgr = DeathChallengeManager(mock_game)
+    mgr.start(mock_game.player1)
+    challenge = mgr.challenges[1]
+    challenge["input"] = str(challenge["answer"])
+    mgr.submit(mock_game.player1)
+    assert mgr.has_active() is False

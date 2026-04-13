@@ -35,6 +35,16 @@ class DeathChallengeManager:
     def is_active(self, player_id: int) -> bool:
         return player_id in self.challenges
 
+    def has_active(self) -> bool:
+        """Return True if any player has an active death challenge."""
+        return len(self.challenges) > 0
+
+    def get_active_player_id(self) -> int | None:
+        """Return the player_id of the first active challenge, or None."""
+        for pid in sorted(self.challenges):
+            return pid
+        return None
+
     def start(self, player: "Player") -> None:
         """Pause a dead player and present a math problem they must solve to respawn."""
         player.is_dead = True
@@ -171,7 +181,9 @@ class DeathChallengeManager:
         screen.blit(panel_surf, (panel_x, panel_y))
         pygame.draw.rect(screen, (200, 50, 50), (panel_x, panel_y, panel_w, panel_h), 3)
 
-        died_surf = font_big.render("YOU DIED", True, (255, 50, 50))
+        died_surf = font_big.render(
+            f"Player {player.player_id} Died!", True, (255, 50, 50)
+        )
         screen.blit(died_surf, (cx - died_surf.get_width() // 2, panel_y + 14))
 
         desc_surf = font_small.render(

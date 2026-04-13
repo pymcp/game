@@ -398,6 +398,11 @@ class Game:
 
     # -- main loop ---------------------------------------------------------
 
+    @property
+    def paused(self) -> bool:
+        """True when the game should be fully frozen (death challenge or exit confirmation)."""
+        return self.death_challenge.has_active() or self._confirm_quit
+
     def run(self) -> None:
         """Main game loop."""
         while self.running:
@@ -431,7 +436,16 @@ class Game:
 
     def _handle_keydown(self, key: int) -> None:
         """Handle key press (for both players based on key)."""
-        # --- Death challenge input handling (takes priority over all other keys) ---\n        active_player = None\n        if self.player1.is_dead and self.death_challenge.is_active(self.player1.player_id):\n            active_player = self.player1\n        elif self.player2.is_dead and self.death_challenge.is_active(self.player2.player_id):\n            active_player = self.player2\n\n        if active_player is not None:\n            if self.death_challenge.handle_keydown(key, active_player):\n                return
+        # --- Death challenge input (either player can type; blocks all other keys) ---
+        active_pid = self.death_challenge.get_active_player_id()
+        if active_pid is not None:
+            active_player = (
+                self.player1 if active_pid == self.player1.player_id else self.player2
+            )
+            if self.death_challenge.handle_keydown(key, active_player):
+                return
+            # While a death challenge is active, block everything else
+            return
 
         # --- Inventory overlay input (takes priority over normal keys while open) ---
         inv_consumed = False
@@ -2056,6 +2070,10 @@ class Game:
         self.viewport_w = screen_width // 2
         self.viewport_h = screen_height
 
+        # Full freeze while paused (death challenge or exit confirmation)
+        if self.paused:
+            return
+
         keys = pygame.key.get_pressed()
         mouse_buttons = pygame.mouse.get_pressed()
 
@@ -2692,6 +2710,18 @@ class Game:
             2,
         )
 
+        # Death challenge overlay (full-screen, centered)
+        active_pid = self.death_challenge.get_active_player_id()
+        if active_pid is not None:
+            active_player = (
+                self.player1
+                if active_pid == self.player1.player_id
+                else self.player2
+            )
+            self.death_challenge.draw(
+                active_player, 0, 0, screen_width, screen_height
+            )
+
         # Exit confirmation overlay
         if self._confirm_quit:
             overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
@@ -2934,8 +2964,6 @@ class Game:
                 p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
         self.player_hud.draw(player, screen_x, screen_y, view_w, view_h)
-        if player.is_dead:
-            self.death_challenge.draw(player, screen_x, screen_y, view_w, view_h)
         self.treasure.draw(player, screen_x, screen_y, view_w, view_h)
         if self.inventory.is_open(player.player_id):
             self.inventory.draw(player, screen_x, screen_y, view_w, view_h)
