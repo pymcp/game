@@ -1,6 +1,7 @@
 """Player character class."""
 
 import math
+import random
 import pygame
 from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H
 from src.data import PICKAXES, WEAPONS, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, TILE_INFO
@@ -24,6 +25,13 @@ class Player:
         self.y = float(y)
         self.player_id = player_id
         self.speed = 3.2
+
+        # Random color for this player
+        self.color = (
+            random.randint(100, 255),
+            random.randint(100, 255),
+            random.randint(100, 255),
+        )
 
         # Equipment
         self.pick_level = 0
@@ -72,41 +80,32 @@ class Player:
     def update_movement(self, keys, dt, world):
         """Handle input and collision.
 
-        Player 1: WASD or Arrow keys
-        Player 2: Arrow keys or Numpad
+        Player 1: WASD only
+        Player 2: Arrow keys only
         """
         from src.config import GRASS, DIRT, MOUNTAIN
 
         dx = dy = 0
         if self.player_id == 1:
-            # Player 1: WASD + arrow keys
-            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            # Player 1: WASD
+            if keys[pygame.K_a]:
                 dx -= 1
-            if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            if keys[pygame.K_d]:
                 dx += 1
-            if keys[pygame.K_w] or keys[pygame.K_UP]:
+            if keys[pygame.K_w]:
                 dy -= 1
-            if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            if keys[pygame.K_s]:
                 dy += 1
         else:
-            # Player 2: Arrow keys + Numpad (2,4,6,8 for 4-way, 1/3/7/9 for diagonals)
-            if keys[pygame.K_LEFT] or keys[pygame.K_KP_4]:
+            # Player 2: Arrow keys
+            if keys[pygame.K_LEFT]:
                 dx -= 1
-            if keys[pygame.K_RIGHT] or keys[pygame.K_KP_6]:
+            if keys[pygame.K_RIGHT]:
                 dx += 1
-            if keys[pygame.K_UP] or keys[pygame.K_KP_8]:
+            if keys[pygame.K_UP]:
                 dy -= 1
-            if keys[pygame.K_DOWN] or keys[pygame.K_KP_2]:
+            if keys[pygame.K_DOWN]:
                 dy += 1
-            # Numpad diagonals
-            if keys[pygame.K_KP_7]:
-                dx, dy = -1, -1
-            if keys[pygame.K_KP_9]:
-                dx, dy = 1, -1
-            if keys[pygame.K_KP_1]:
-                dx, dy = -1, 1
-            if keys[pygame.K_KP_3]:
-                dx, dy = 1, 1
 
         if dx and dy:
             dx *= 0.707
@@ -265,7 +264,7 @@ class Player:
         body_color = (
             (230, 80, 80)
             if self.hurt_timer > 0 and int(self.hurt_timer * 4) % 2
-            else (70, 130, 230)
+            else self.color
         )
         pygame.draw.rect(
             surf, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4

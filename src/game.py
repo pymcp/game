@@ -143,12 +143,12 @@ class Game:
             self.player1.try_upgrade_weapon()
         elif key == pygame.K_b:
             self._try_build_house(self.player1)
-        # Player 2 controls (Numpad)
-        elif key == pygame.K_KP_MULTIPLY:  # *
+        # Player 2 controls (Arrow keys area)
+        elif key == pygame.K_i:
             self.player2.try_upgrade_pick()
-        elif key == pygame.K_KP_MINUS:  # -
+        elif key == pygame.K_o:
             self.player2.try_upgrade_weapon()
-        elif key == pygame.K_KP_PLUS:  # +
+        elif key == pygame.K_v:
             self._try_build_house(self.player2)
 
     def _try_build_house(self, player):
@@ -410,6 +410,7 @@ class Game:
         self, player, cam_x, cam_y, screen_x, screen_y, view_w, view_h
     ):
         """Draw a single player's viewport."""
+        self.screen.set_clip(pygame.Rect(screen_x, screen_y, view_w, view_h))
         # Draw border fill for out-of-bounds areas
         world_pixel_w = WORLD_COLS * TILE
         world_pixel_h = WORLD_ROWS * TILE
@@ -664,70 +665,124 @@ class Game:
         for proj in self.projectiles:
             proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
-        # Draw both players in this viewport
+        # Draw both players in this viewport (visible to both players)
         self.player1.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
         self.player2.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
-        # Draw UI for this player (only show UI for the viewport's primary player)
-        if player == self.player1:
-            player1_ui = True
-        else:
-            player1_ui = False
         self._draw_player_ui(player, screen_x, screen_y, view_w, view_h)
+        self.screen.set_clip(None)
 
     def _draw_player_ui(self, player, screen_x, screen_y, view_w, view_h):
         """Draw UI for a single player's viewport."""
-        font_small = pygame.font.Font(None, 24)
+        font_small = pygame.font.Font(None, 22)
+        font_tiny = pygame.font.Font(None, 16)
+
+        # Top HUD Panel (Stats & Inventory)
+        top_panel_h = 170
+        top_panel_w = 240
+        top_panel_surf = pygame.Surface((top_panel_w, top_panel_h), pygame.SRCALPHA)
+        top_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
+        self.screen.blit(top_panel_surf, (screen_x + 8, screen_y + 8))
+        
+        # Top panel border
+        pygame.draw.rect(
+            self.screen,
+            (150, 150, 150),
+            (screen_x + 8, screen_y + 8, top_panel_w, top_panel_h),
+            2,
+        )
 
         # Health bar
-        bar_w, bar_h = 150, 20
+        bar_w, bar_h = 220, 18
         hp_ratio = max(0, player.hp / player.max_hp)
         pygame.draw.rect(
-            self.screen, (50, 50, 50), (screen_x + 10, screen_y + 10, bar_w, bar_h)
+            self.screen, (50, 50, 50), (screen_x + 18, screen_y + 18, bar_w, bar_h)
         )
         pygame.draw.rect(
             self.screen,
             (0, 255, 0),
-            (screen_x + 10, screen_y + 10, bar_w * hp_ratio, bar_h),
-        )
-        pygame.draw.rect(
-            self.screen,
-            (255, 255, 255),
-            (screen_x + 10, screen_y + 10, bar_w, bar_h),
-            2,
+            (screen_x + 18, screen_y + 18, bar_w * hp_ratio, bar_h),
         )
         hp_text = font_small.render(
-            f"{player.hp}/{player.max_hp}", True, (255, 255, 255)
+            f"HP: {player.hp:.0f}/{player.max_hp}", True, (255, 255, 255)
         )
-        self.screen.blit(hp_text, (screen_x + 20, screen_y + 12))
+        self.screen.blit(hp_text, (screen_x + 25, screen_y + 20))
 
         # Level & XP
         level_text = font_small.render(f"Level {player.level}", True, (255, 255, 0))
-        self.screen.blit(level_text, (screen_x + 10, screen_y + 40))
-        xp_bar_w = 150
+        self.screen.blit(level_text, (screen_x + 18, screen_y + 45))
+        xp_bar_w = 220
         xp_ratio = player.xp / player.xp_next if player.xp_next > 0 else 0
         pygame.draw.rect(
-            self.screen, (50, 50, 0), (screen_x + 10, screen_y + 65, xp_bar_w, 10)
+            self.screen, (50, 50, 0), (screen_x + 18, screen_y + 70, xp_bar_w, 10)
         )
         pygame.draw.rect(
             self.screen,
             (255, 255, 0),
-            (screen_x + 10, screen_y + 65, xp_bar_w * xp_ratio, 10),
+            (screen_x + 18, screen_y + 70, xp_bar_w * xp_ratio, 10),
         )
-        xp_text = font_small.render(
+        xp_text = font_tiny.render(
             f"XP: {player.xp}/{player.xp_next}", True, (255, 255, 0)
         )
-        self.screen.blit(xp_text, (screen_x + 10, screen_y + 78))
+        self.screen.blit(xp_text, (screen_x + 18, screen_y + 82))
 
-        # Inventory
-        inv_y = screen_y + 110
+        # Inventory (2-column layout)
+        inv_y = screen_y + 105
         inv_text = font_small.render("Inventory:", True, (200, 200, 200))
-        self.screen.blit(inv_text, (screen_x + 10, inv_y))
-        for idx, (res, qty) in enumerate(player.inventory.items()):
-            res_text = font_small.render(f"{res}: {qty}", True, (150, 150, 150))
-            self.screen.blit(res_text, (screen_x + 10, inv_y + 25 + idx * 22))
+        self.screen.blit(inv_text, (screen_x + 18, inv_y))
+        
+        items = list(player.inventory.items())
+        items_per_column = 2
+        
+        for idx, (res, qty) in enumerate(items):
+            col = idx // items_per_column
+            row = idx % items_per_column
+            x_offset = col * 110  # Column width
+            y_offset = inv_y + 22 + row * 18
+            res_text = font_tiny.render(f"{res}: {qty}", True, (180, 180, 180))
+            self.screen.blit(res_text, (screen_x + 18 + x_offset, y_offset))
 
         # Weapon
         wpn = WEAPONS[player.weapon_level]
-        wpn_text = font_small.render(f"Weapon: {wpn['name']}", True, (255, 100, 100))
-        self.screen.blit(wpn_text, (screen_x + 10, inv_y + 140))
+        wpn_text = font_tiny.render(f"Weapon: {wpn['name']}", True, (255, 150, 100))
+        self.screen.blit(wpn_text, (screen_x + 18, inv_y + 82))
+
+        # Bottom HUD Panel (Controls)
+        ctrl_y_start = screen_y + view_h - 100
+        bottom_panel_h = 92
+        bottom_panel_w = 240
+        bottom_panel_surf = pygame.Surface((bottom_panel_w, bottom_panel_h), pygame.SRCALPHA)
+        bottom_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
+        self.screen.blit(bottom_panel_surf, (screen_x + 8, ctrl_y_start))
+        
+        # Bottom panel border
+        pygame.draw.rect(
+            self.screen,
+            (150, 150, 150),
+            (screen_x + 8, ctrl_y_start, bottom_panel_w, bottom_panel_h),
+            2,
+        )
+
+        # Control scheme
+        if player == self.player1:
+            controls = [
+                "WASD: Move",
+                "U: Upgrade Pickaxe",
+                "N: Upgrade Weapon",
+                "B: Build House",
+            ]
+        else:
+            controls = [
+                "Arrows: Move",
+                "I: Upgrade Pickaxe",
+                "O: Upgrade Weapon",
+                "V: Build House",
+            ]
+        
+        ctrl_y = ctrl_y_start + 8
+        ctrl_header = font_small.render("Controls:", True, (200, 200, 200))
+        self.screen.blit(ctrl_header, (screen_x + 18, ctrl_y))
+        
+        for idx, ctrl_text in enumerate(controls):
+            ctrl_surf = font_tiny.render(ctrl_text, True, (180, 180, 180))
+            self.screen.blit(ctrl_surf, (screen_x + 18, ctrl_y + 24 + idx * 15))
