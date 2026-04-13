@@ -1,4 +1,5 @@
 """AI worker character that mines for the player."""
+
 import random
 import math
 import pygame
@@ -16,10 +17,16 @@ class Worker:
         self.speed = random.uniform(1.4, 2.2)
 
         self.body_color = tuple(random.randint(60, 220) for _ in range(3))
-        self.skin_color = random.choice([
-            (240, 200, 160), (210, 170, 130), (180, 140, 100),
-            (140, 100, 70), (255, 220, 185), (200, 155, 120),
-        ])
+        self.skin_color = random.choice(
+            [
+                (240, 200, 160),
+                (210, 170, 130),
+                (180, 140, 100),
+                (140, 100, 70),
+                (255, 220, 185),
+                (200, 155, 120),
+            ]
+        )
         self.hat_color = tuple(random.randint(40, 255) for _ in range(3))
         self.size_mod = random.uniform(0.8, 1.2)
 
@@ -34,8 +41,12 @@ class Worker:
         """Pick a new random wander destination."""
         angle = random.uniform(0, 2 * math.pi)
         dist = random.uniform(TILE * 2, TILE * 6)
-        self.dest_x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x + math.cos(angle) * dist))
-        self.dest_y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y + math.sin(angle) * dist))
+        self.dest_x = max(
+            TILE, min((WORLD_COLS - 1) * TILE, self.x + math.cos(angle) * dist)
+        )
+        self.dest_y = max(
+            TILE, min((WORLD_ROWS - 1) * TILE, self.y + math.sin(angle) * dist)
+        )
         self.state = "wander"
 
     def _find_mineable(self, world):
@@ -52,7 +63,7 @@ class Worker:
                         candidates.append((abs(dc) + abs(dr), c, r))
         if candidates:
             candidates.sort()
-            pick = random.choice(candidates[:min(5, len(candidates))])
+            pick = random.choice(candidates[: min(5, len(candidates))])
             return (pick[1], pick[2])
         return None
 
@@ -79,7 +90,7 @@ class Worker:
     def update(self, dt, world, tile_hp, inventory, particles, floats):
         """Update worker AI and state machine."""
         from src.config import GRASS, DIRT, MOUNTAIN
-        
+
         if self.state == "wander":
             dist = self._move_toward(self.dest_x, self.dest_y, dt, world)
             self.wander_timer -= dt
@@ -98,8 +109,10 @@ class Worker:
 
         elif self.state == "walk_to":
             tc, tr = self.target_tile
-            if not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS) or \
-               not TILE_INFO[world[tr][tc]]["mineable"]:
+            if (
+                not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS)
+                or not TILE_INFO[world[tr][tc]]["mineable"]
+            ):
                 self._pick_wander_dest()
                 return
             dist = self._move_toward(self.dest_x, self.dest_y, dt, world)
@@ -109,21 +122,31 @@ class Worker:
 
         elif self.state == "mining":
             tc, tr = self.target_tile
-            if not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS) or \
-               not TILE_INFO[world[tr][tc]]["mineable"]:
+            if (
+                not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS)
+                or not TILE_INFO[world[tr][tc]]["mineable"]
+            ):
                 self._pick_wander_dest()
                 return
             tile_cx = tc * TILE + TILE // 2
             tile_cy = tr * TILE + TILE // 2
             self.mine_progress += 5 * dt * 0.15
-            tile_hp[tr][tc] = max(0, TILE_INFO[world[tr][tc]]["hp"] - self.mine_progress)
+            tile_hp[tr][tc] = max(
+                0, TILE_INFO[world[tr][tc]]["hp"] - self.mine_progress
+            )
             if random.random() < 0.25:
-                particles.append(Particle(tile_cx, tile_cy, TILE_INFO[world[tr][tc]]["color"]))
+                particles.append(
+                    Particle(tile_cx, tile_cy, TILE_INFO[world[tr][tc]]["color"])
+                )
             if tile_hp[tr][tc] <= 0:
                 info = TILE_INFO[world[tr][tc]]
                 if info["drop"]:
                     inventory[info["drop"]] = inventory.get(info["drop"], 0) + 1
-                    floats.append(FloatingText(tile_cx, tile_cy, f"+1 {info['drop']}", info["drop_color"]))
+                    floats.append(
+                        FloatingText(
+                            tile_cx, tile_cy, f"+1 {info['drop']}", info["drop_color"]
+                        )
+                    )
                 for _ in range(8):
                     particles.append(Particle(tile_cx, tile_cy, info["color"]))
                 new_tile = DIRT if world[tr][tc] == MOUNTAIN else GRASS
@@ -142,13 +165,22 @@ class Worker:
             return
         s = self.size_mod
         bw, bh = int(16 * s), int(22 * s)
-        pygame.draw.rect(surf, self.body_color,
-                         (sx - bw // 2, sy - int(10 * s), bw, bh), border_radius=3)
+        pygame.draw.rect(
+            surf,
+            self.body_color,
+            (sx - bw // 2, sy - int(10 * s), bw, bh),
+            border_radius=3,
+        )
         head_r = int(7 * s)
         pygame.draw.circle(surf, self.skin_color, (sx, sy - int(14 * s)), head_r)
         hat_w, hat_h = int(14 * s), int(5 * s)
-        pygame.draw.rect(surf, self.hat_color,
-                         (sx - hat_w // 2, sy - int(20 * s), hat_w, hat_h))
-        pygame.draw.line(surf, (160, 120, 60),
-                         (sx + int(8 * s), sy - int(4 * s)),
-                         (sx + int(14 * s), sy - int(12 * s)), 2)
+        pygame.draw.rect(
+            surf, self.hat_color, (sx - hat_w // 2, sy - int(20 * s), hat_w, hat_h)
+        )
+        pygame.draw.line(
+            surf,
+            (160, 120, 60),
+            (sx + int(8 * s), sy - int(4 * s)),
+            (sx + int(14 * s), sy - int(12 * s)),
+            2,
+        )

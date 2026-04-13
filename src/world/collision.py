@@ -1,4 +1,5 @@
 """Collision detection and world queries."""
+
 from src.config import TILE, WORLD_COLS, WORLD_ROWS
 from src.data import BLOCKING_TILES
 
@@ -51,6 +52,7 @@ def try_spend(inventory, cost):
 def has_adjacent_house(world, col, row):
     """Check if this tile has a HOUSE neighbor."""
     from src.config import HOUSE
+
     for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
         nc, nr = col + dc, row + dr
         if 0 <= nc < WORLD_COLS and 0 <= nr < WORLD_ROWS:

@@ -1,4 +1,5 @@
 """Particle effects for animations and visual feedback."""
+
 import random
 import math
 import pygame
@@ -6,6 +7,7 @@ import pygame
 
 class Particle:
     """A physics-based particle with gravity and decay."""
+
     __slots__ = ("x", "y", "vx", "vy", "life", "color", "size")
 
     def __init__(self, x, y, color):
@@ -29,7 +31,7 @@ class Particle:
     def draw(self, surf, cam_x, cam_y):
         """Draw to screen if on-camera."""
         from src.config import SCREEN_W, SCREEN_H
-        
+
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         if 0 <= sx < SCREEN_W and 0 <= sy < SCREEN_H:

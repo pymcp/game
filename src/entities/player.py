@@ -1,4 +1,5 @@
 """Player character class."""
+
 import math
 import pygame
 from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H
@@ -9,12 +10,13 @@ from src.effects import Particle, FloatingText
 
 class Player:
     """The player character."""
+
     COLLISION_HALF = 10
     BOUNCE_DIST = TILE * 2
 
     def __init__(self, x, y, player_id=1):
         """Initialize player.
-        
+
         Args:
             x, y: Starting position
             player_id: 1 for WASD controls, 2 for arrow keys + numpad
@@ -70,12 +72,12 @@ class Player:
 
     def update_movement(self, keys, dt, world):
         """Handle input and collision.
-        
+
         Player 1: WASD or Arrow keys
         Player 2: Arrow keys or Numpad
         """
         from src.config import GRASS, DIRT, MOUNTAIN
-        
+
         dx = dy = 0
         if self.player_id == 1:
             # Player 1: WASD + arrow keys
@@ -125,7 +127,9 @@ class Player:
             if hits_blocking(world, new_px, self.y, h):
                 bounce_dir = -1 if dx > 0 else 1 if dx < 0 else 0
                 bounce_px = self.x + bounce_dir * self.BOUNCE_DIST
-                if not out_of_bounds(bounce_px, self.y, h) and not hits_blocking(world, bounce_px, self.y, h):
+                if not out_of_bounds(bounce_px, self.y, h) and not hits_blocking(
+                    world, bounce_px, self.y, h
+                ):
                     self.x = bounce_px
             else:
                 self.x = new_px
@@ -135,7 +139,9 @@ class Player:
             if hits_blocking(world, self.x, new_py, h):
                 bounce_dir = -1 if dy > 0 else 1 if dy < 0 else 0
                 bounce_py = self.y + bounce_dir * self.BOUNCE_DIST
-                if not out_of_bounds(self.x, bounce_py, h) and not hits_blocking(world, self.x, bounce_py, h):
+                if not out_of_bounds(self.x, bounce_py, h) and not hits_blocking(
+                    world, self.x, bounce_py, h
+                ):
                     self.y = bounce_py
             else:
                 self.y = new_py
@@ -145,14 +151,16 @@ class Player:
 
     # -- mining ------------------------------------------------------------
 
-    def update_mining(self, keys, mouse_buttons, dt, world, tile_hp, cam_x, cam_y, particles, floats):
+    def update_mining(
+        self, keys, mouse_buttons, dt, world, tile_hp, cam_x, cam_y, particles, floats
+    ):
         """Handle mining input and tile breaking.
-        
+
         Player 1: SPACE or mouse click
         Player 2: KP_0 (numpad 0) or KP_Period
         """
         from src.config import GRASS, DIRT, MOUNTAIN
-        
+
         # Determine mining input
         if self.player_id == 1:
             mining_input = keys[pygame.K_SPACE] or mouse_buttons[0]
@@ -164,7 +172,9 @@ class Player:
             mx, my = pygame.mouse.get_pos()
             target_col = int((mx + cam_x) // TILE)
             target_row = int((my + cam_y) // TILE)
-        elif (self.player_id == 1 and keys[pygame.K_SPACE]) or (self.player_id == 2 and mining_input):
+        elif (self.player_id == 1 and keys[pygame.K_SPACE]) or (
+            self.player_id == 2 and mining_input
+        ):
             center_col = int(self.x) // TILE
             center_row = int(self.y) // TILE
             best, best_dist = None, 999
@@ -185,16 +195,23 @@ class Player:
                 tile_cx = target_col * TILE + TILE // 2
                 tile_cy = target_row * TILE + TILE // 2
                 dist = math.hypot(self.x - tile_cx, self.y - tile_cy)
-                if dist < TILE * 2.5 and TILE_INFO[world[target_row][target_col]]["mineable"]:
+                if (
+                    dist < TILE * 2.5
+                    and TILE_INFO[world[target_row][target_col]]["mineable"]
+                ):
                     if self.mining_target != (target_col, target_row):
                         self.mining_target = (target_col, target_row)
                         self.mining_progress = 0
                     pick = PICKAXES[self.pick_level]
                     self.mining_progress += pick["power"] * dt * 0.15
                     tile_hp[target_row][target_col] = max(
-                        0, TILE_INFO[world[target_row][target_col]]["hp"] - self.mining_progress)
+                        0,
+                        TILE_INFO[world[target_row][target_col]]["hp"]
+                        - self.mining_progress,
+                    )
 
                     import random
+
                     if random.random() < 0.4:
                         pcol = TILE_INFO[world[target_row][target_col]]["color"]
                         particles.append(Particle(tile_cx, tile_cy, pcol))
@@ -202,11 +219,22 @@ class Player:
                     if tile_hp[target_row][target_col] <= 0:
                         info = TILE_INFO[world[target_row][target_col]]
                         if info["drop"]:
-                            self.inventory[info["drop"]] = self.inventory.get(info["drop"], 0) + 1
-                            floats.append(FloatingText(tile_cx, tile_cy, f"+1 {info['drop']}", info["drop_color"]))
+                            self.inventory[info["drop"]] = (
+                                self.inventory.get(info["drop"], 0) + 1
+                            )
+                            floats.append(
+                                FloatingText(
+                                    tile_cx,
+                                    tile_cy,
+                                    f"+1 {info['drop']}",
+                                    info["drop_color"],
+                                )
+                            )
                         for _ in range(12):
                             particles.append(Particle(tile_cx, tile_cy, info["color"]))
-                        new_tile = DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
+                        new_tile = (
+                            DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
+                        )
                         world[target_row][target_col] = new_tile
                         tile_hp[target_row][target_col] = TILE_INFO[new_tile]["hp"]
                         self.mining_target = None
@@ -235,7 +263,11 @@ class Player:
             self.xp_next = xp_for_level(self.level)
             self.max_hp += 10
             self.hp = self.max_hp
-            floats.append(FloatingText(self.x, self.y - 30, f"Level {self.level}!", (255, 255, 100)))
+            floats.append(
+                FloatingText(
+                    self.x, self.y - 30, f"Level {self.level}!", (255, 255, 100)
+                )
+            )
             for _ in range(15):
                 particles.append(Particle(self.x, self.y, (255, 255, 100)))
 
@@ -245,11 +277,17 @@ class Player:
         """Draw player sprite."""
         psx = int(self.x - cam_x)
         psy = int(self.y - cam_y)
-        body_color = ((230, 80, 80)
-                      if self.hurt_timer > 0 and int(self.hurt_timer * 4) % 2
-                      else (70, 130, 230))
-        pygame.draw.rect(surf, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4)
+        body_color = (
+            (230, 80, 80)
+            if self.hurt_timer > 0 and int(self.hurt_timer * 4) % 2
+            else (70, 130, 230)
+        )
+        pygame.draw.rect(
+            surf, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4
+        )
         pygame.draw.circle(surf, (240, 200, 160), (psx, psy - 18), 8)
         pick_color = PICKAXES[self.pick_level]["color"]
         pygame.draw.line(surf, pick_color, (psx + 10, psy - 8), (psx + 18, psy - 16), 3)
-        pygame.draw.line(surf, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3)
+        pygame.draw.line(
+            surf, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3
+        )

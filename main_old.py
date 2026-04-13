@@ -33,25 +33,95 @@ HOUSE = 8
 MOUNTAIN = 9
 
 TILE_INFO = {
-    GRASS:       {"name": "Grass",    "color": (76, 153, 0),    "mineable": False, "hp": 0,  "drop": None,       "drop_color": None},
-    DIRT:        {"name": "Dirt",     "color": (139, 90, 43),   "mineable": True,  "hp": 15, "drop": "Dirt",     "drop_color": (139, 90, 43)},
-    STONE:       {"name": "Stone",    "color": (136, 140, 141), "mineable": True,  "hp": 30, "drop": "Stone",    "drop_color": (136, 140, 141)},
-    IRON_ORE:    {"name": "Iron Ore", "color": (180, 130, 100), "mineable": True,  "hp": 45, "drop": "Iron",     "drop_color": (180, 130, 100)},
-    GOLD_ORE:    {"name": "Gold Ore", "color": (230, 200, 50),  "mineable": True,  "hp": 60, "drop": "Gold",     "drop_color": (230, 200, 50)},
-    DIAMOND_ORE: {"name": "Diamond",  "color": (100, 220, 255), "mineable": True,  "hp": 80, "drop": "Diamond",  "drop_color": (100, 220, 255)},
-    TREE:        {"name": "Tree",     "color": (34, 100, 34),   "mineable": True,  "hp": 20, "drop": "Wood",     "drop_color": (139, 105, 60)},
-    WATER:       {"name": "Water",    "color": (28, 100, 180),  "mineable": False, "hp": 0,  "drop": None,       "drop_color": None},
-    HOUSE:       {"name": "House",    "color": (160, 82, 45),   "mineable": False, "hp": 0,  "drop": None,       "drop_color": None},
-    MOUNTAIN:    {"name": "Mountain", "color": (90, 80, 75),    "mineable": True,  "hp": 50, "drop": "Stone",    "drop_color": (136, 140, 141)},
+    GRASS: {
+        "name": "Grass",
+        "color": (76, 153, 0),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    DIRT: {
+        "name": "Dirt",
+        "color": (139, 90, 43),
+        "mineable": True,
+        "hp": 15,
+        "drop": "Dirt",
+        "drop_color": (139, 90, 43),
+    },
+    STONE: {
+        "name": "Stone",
+        "color": (136, 140, 141),
+        "mineable": True,
+        "hp": 30,
+        "drop": "Stone",
+        "drop_color": (136, 140, 141),
+    },
+    IRON_ORE: {
+        "name": "Iron Ore",
+        "color": (180, 130, 100),
+        "mineable": True,
+        "hp": 45,
+        "drop": "Iron",
+        "drop_color": (180, 130, 100),
+    },
+    GOLD_ORE: {
+        "name": "Gold Ore",
+        "color": (230, 200, 50),
+        "mineable": True,
+        "hp": 60,
+        "drop": "Gold",
+        "drop_color": (230, 200, 50),
+    },
+    DIAMOND_ORE: {
+        "name": "Diamond",
+        "color": (100, 220, 255),
+        "mineable": True,
+        "hp": 80,
+        "drop": "Diamond",
+        "drop_color": (100, 220, 255),
+    },
+    TREE: {
+        "name": "Tree",
+        "color": (34, 100, 34),
+        "mineable": True,
+        "hp": 20,
+        "drop": "Wood",
+        "drop_color": (139, 105, 60),
+    },
+    WATER: {
+        "name": "Water",
+        "color": (28, 100, 180),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    HOUSE: {
+        "name": "House",
+        "color": (160, 82, 45),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
+    MOUNTAIN: {
+        "name": "Mountain",
+        "color": (90, 80, 75),
+        "mineable": True,
+        "hp": 50,
+        "drop": "Stone",
+        "drop_color": (136, 140, 141),
+    },
 }
 
 # Pickaxe tiers
 PICKAXES = [
-    {"name": "Wooden Pick",   "power": 5,  "color": (160, 120, 60)},
-    {"name": "Stone Pick",    "power": 10, "color": (150, 150, 150)},
-    {"name": "Iron Pick",     "power": 18, "color": (200, 180, 160)},
-    {"name": "Gold Pick",     "power": 28, "color": (240, 210, 60)},
-    {"name": "Diamond Pick",  "power": 45, "color": (120, 230, 255)},
+    {"name": "Wooden Pick", "power": 5, "color": (160, 120, 60)},
+    {"name": "Stone Pick", "power": 10, "color": (150, 150, 150)},
+    {"name": "Iron Pick", "power": 18, "color": (200, 180, 160)},
+    {"name": "Gold Pick", "power": 28, "color": (240, 210, 60)},
+    {"name": "Diamond Pick", "power": 45, "color": (120, 230, 255)},
 ]
 
 UPGRADE_COSTS = [
@@ -124,6 +194,7 @@ WEAPON_UNLOCK_COSTS = [
 # World Generation
 # ---------------------------------------------------------------------------
 
+
 def generate_world():
     """Return a 2‑D list of tile‑type IDs using simple noise‑like placement."""
     world = [[GRASS for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
@@ -158,6 +229,7 @@ def generate_world():
 # Particles (mining feedback)
 # ---------------------------------------------------------------------------
 
+
 class Particle:
     __slots__ = ("x", "y", "vx", "vy", "life", "color", "size")
 
@@ -189,6 +261,7 @@ class Particle:
 # Floating text (e.g. "+1 Iron")
 # ---------------------------------------------------------------------------
 
+
 class FloatingText:
     __slots__ = ("x", "y", "text", "color", "life")
 
@@ -207,13 +280,19 @@ class FloatingText:
         alpha = max(0, min(255, self.life * 6))
         txt = font.render(self.text, True, self.color)
         txt.set_alpha(alpha)
-        surf.blit(txt, (int(self.x - cam_x) - txt.get_width() // 2,
-                        int(self.y - cam_y) - txt.get_height() // 2))
+        surf.blit(
+            txt,
+            (
+                int(self.x - cam_x) - txt.get_width() // 2,
+                int(self.y - cam_y) - txt.get_height() // 2,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
 # Projectile (thrown weapon attack)
 # ---------------------------------------------------------------------------
+
 
 class Projectile:
     """A projectile fired in a direction.  Configured by a WEAPONS entry."""
@@ -234,7 +313,7 @@ class Projectile:
         self.travelled = 0.0
         self.alive = True
         self.hit_enemies = set()  # track already-hit enemies for pierce
-        self.xp_earned = 0        # accumulated XP from kills this projectile made
+        self.xp_earned = 0  # accumulated XP from kills this projectile made
 
     def update(self, dt):
         step = self.speed * dt
@@ -244,7 +323,12 @@ class Projectile:
         if self.travelled >= self.distance:
             self.alive = False
         # Die if out of world
-        if self.x < 0 or self.x > WORLD_COLS * TILE or self.y < 0 or self.y > WORLD_ROWS * TILE:
+        if (
+            self.x < 0
+            or self.x > WORLD_COLS * TILE
+            or self.y < 0
+            or self.y > WORLD_ROWS * TILE
+        ):
             self.alive = False
 
     def check_hits(self, enemies, particles, floats):
@@ -263,8 +347,14 @@ class Projectile:
                 enemy.knockback_vy += (dy / d) * self.knockback
                 self.hit_enemies.add(id(enemy))
                 if enemy.hp <= 0:
-                    floats.append(FloatingText(enemy.x, enemy.y,
-                                               f"{enemy.name} defeated! (+{enemy.xp} XP)", (255, 220, 50)))
+                    floats.append(
+                        FloatingText(
+                            enemy.x,
+                            enemy.y,
+                            f"{enemy.name} defeated! (+{enemy.xp} XP)",
+                            (255, 220, 50),
+                        )
+                    )
                     self.xp_earned += enemy.xp
                     for _ in range(10):
                         particles.append(Particle(enemy.x, enemy.y, enemy.color))
@@ -294,6 +384,7 @@ class Projectile:
 # AI Worker
 # ---------------------------------------------------------------------------
 
+
 class Worker:
     """An AI-controlled character that wanders and mines for the player."""
 
@@ -308,10 +399,16 @@ class Worker:
             random.randint(60, 220),
             random.randint(60, 220),
         )
-        self.skin_color = random.choice([
-            (240, 200, 160), (210, 170, 130), (180, 140, 100),
-            (140, 100, 70), (255, 220, 185), (200, 155, 120),
-        ])
+        self.skin_color = random.choice(
+            [
+                (240, 200, 160),
+                (210, 170, 130),
+                (180, 140, 100),
+                (140, 100, 70),
+                (255, 220, 185),
+                (200, 155, 120),
+            ]
+        )
         self.hat_color = (
             random.randint(40, 255),
             random.randint(40, 255),
@@ -355,7 +452,7 @@ class Worker:
         if candidates:
             candidates.sort()
             # Pick one of the closest few for variety
-            pick = random.choice(candidates[:min(5, len(candidates))])
+            pick = random.choice(candidates[: min(5, len(candidates))])
             return (pick[1], pick[2])
         return None
 
@@ -396,8 +493,10 @@ class Worker:
         elif self.state == "walk_to":
             tc, tr = self.target_tile
             # Check tile still mineable
-            if not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS) or \
-               not TILE_INFO[world[tr][tc]]["mineable"]:
+            if (
+                not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS)
+                or not TILE_INFO[world[tr][tc]]["mineable"]
+            ):
                 self._pick_wander_dest()
                 return
             dx = self.dest_x - self.x
@@ -420,24 +519,32 @@ class Worker:
 
         elif self.state == "mining":
             tc, tr = self.target_tile
-            if not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS) or \
-               not TILE_INFO[world[tr][tc]]["mineable"]:
+            if (
+                not (0 <= tc < WORLD_COLS and 0 <= tr < WORLD_ROWS)
+                or not TILE_INFO[world[tr][tc]]["mineable"]
+            ):
                 self._pick_wander_dest()
                 return
             tile_cx = tc * TILE + TILE // 2
             tile_cy = tr * TILE + TILE // 2
             power = 5  # workers mine at base speed
             self.mine_progress += power * dt * 0.15
-            tile_hp[tr][tc] = max(0, TILE_INFO[world[tr][tc]]["hp"] - self.mine_progress)
+            tile_hp[tr][tc] = max(
+                0, TILE_INFO[world[tr][tc]]["hp"] - self.mine_progress
+            )
             # Mining particles
             if random.random() < 0.25:
-                particles.append(Particle(tile_cx, tile_cy, TILE_INFO[world[tr][tc]]["color"]))
+                particles.append(
+                    Particle(tile_cx, tile_cy, TILE_INFO[world[tr][tc]]["color"])
+                )
             if tile_hp[tr][tc] <= 0:
                 info = TILE_INFO[world[tr][tc]]
                 drop = info["drop"]
                 if drop:
                     inventory[drop] = inventory.get(drop, 0) + 1
-                    floats.append(FloatingText(tile_cx, tile_cy, f"+1 {drop}", info["drop_color"]))
+                    floats.append(
+                        FloatingText(tile_cx, tile_cy, f"+1 {drop}", info["drop_color"])
+                    )
                 for _ in range(8):
                     particles.append(Particle(tile_cx, tile_cy, info["color"]))
                 # Mountains become dirt paths when mined
@@ -461,20 +568,29 @@ class Worker:
         bw = int(16 * s)
         bh = int(22 * s)
         # Body
-        pygame.draw.rect(surf, self.body_color,
-                         (sx - bw // 2, sy - int(10 * s), bw, bh), border_radius=3)
+        pygame.draw.rect(
+            surf,
+            self.body_color,
+            (sx - bw // 2, sy - int(10 * s), bw, bh),
+            border_radius=3,
+        )
         # Head
         head_r = int(7 * s)
         pygame.draw.circle(surf, self.skin_color, (sx, sy - int(14 * s)), head_r)
         # Hat
         hat_w = int(14 * s)
         hat_h = int(5 * s)
-        pygame.draw.rect(surf, self.hat_color,
-                         (sx - hat_w // 2, sy - int(20 * s), hat_w, hat_h))
+        pygame.draw.rect(
+            surf, self.hat_color, (sx - hat_w // 2, sy - int(20 * s), hat_w, hat_h)
+        )
         # Pick (small)
-        pygame.draw.line(surf, (160, 120, 60),
-                         (sx + int(8 * s), sy - int(4 * s)),
-                         (sx + int(14 * s), sy - int(12 * s)), 2)
+        pygame.draw.line(
+            surf,
+            (160, 120, 60),
+            (sx + int(8 * s), sy - int(4 * s)),
+            (sx + int(14 * s), sy - int(12 * s)),
+            2,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -482,13 +598,25 @@ class Worker:
 # ---------------------------------------------------------------------------
 
 CAT_COLORS = [
-    (255, 165, 0), (80, 80, 80), (220, 220, 220), (180, 120, 50),
-    (50, 50, 50), (255, 200, 150), (100, 100, 100), (200, 160, 80),
+    (255, 165, 0),
+    (80, 80, 80),
+    (220, 220, 220),
+    (180, 120, 50),
+    (50, 50, 50),
+    (255, 200, 150),
+    (100, 100, 100),
+    (200, 160, 80),
 ]
 
 DOG_COLORS = [
-    (180, 130, 70), (100, 70, 40), (220, 200, 170), (60, 60, 60),
-    (200, 180, 150), (140, 100, 60), (90, 60, 30), (170, 150, 130),
+    (180, 130, 70),
+    (100, 70, 40),
+    (220, 200, 170),
+    (60, 60, 60),
+    (200, 180, 150),
+    (140, 100, 60),
+    (90, 60, 30),
+    (170, 150, 130),
 ]
 
 
@@ -503,7 +631,9 @@ class Pet:
 
         if kind == "cat":
             self.body_color = random.choice(CAT_COLORS)
-            self.eye_color = random.choice([(50, 200, 50), (200, 180, 30), (80, 160, 220)])
+            self.eye_color = random.choice(
+                [(50, 200, 50), (200, 180, 30), (80, 160, 220)]
+            )
             self.size = random.uniform(0.7, 1.0)
         else:
             self.body_color = random.choice(DOG_COLORS)
@@ -554,57 +684,96 @@ class Pet:
         if self.kind == "cat":
             # Body (oval-ish rect)
             bw, bh = int(14 * s), int(8 * s)
-            pygame.draw.ellipse(surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh))
+            pygame.draw.ellipse(
+                surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh)
+            )
             # Head
             hr = int(5 * s)
             hx = sx + int(7 * s)
             pygame.draw.circle(surf, self.body_color, (hx, sy - int(2 * s)), hr)
             # Ears (triangles)
             ear_s = int(3 * s)
-            pygame.draw.polygon(surf, self.body_color, [
-                (hx - ear_s, sy - int(6 * s)),
-                (hx - ear_s - 2, sy - int(10 * s)),
-                (hx - ear_s + 3, sy - int(7 * s)),
-            ])
-            pygame.draw.polygon(surf, self.body_color, [
-                (hx + ear_s, sy - int(6 * s)),
-                (hx + ear_s + 2, sy - int(10 * s)),
-                (hx + ear_s - 3, sy - int(7 * s)),
-            ])
+            pygame.draw.polygon(
+                surf,
+                self.body_color,
+                [
+                    (hx - ear_s, sy - int(6 * s)),
+                    (hx - ear_s - 2, sy - int(10 * s)),
+                    (hx - ear_s + 3, sy - int(7 * s)),
+                ],
+            )
+            pygame.draw.polygon(
+                surf,
+                self.body_color,
+                [
+                    (hx + ear_s, sy - int(6 * s)),
+                    (hx + ear_s + 2, sy - int(10 * s)),
+                    (hx + ear_s - 3, sy - int(7 * s)),
+                ],
+            )
             # Eyes
-            pygame.draw.circle(surf, self.eye_color, (hx - 2, sy - int(3 * s)), max(1, int(1.5 * s)))
-            pygame.draw.circle(surf, self.eye_color, (hx + 2, sy - int(3 * s)), max(1, int(1.5 * s)))
+            pygame.draw.circle(
+                surf, self.eye_color, (hx - 2, sy - int(3 * s)), max(1, int(1.5 * s))
+            )
+            pygame.draw.circle(
+                surf, self.eye_color, (hx + 2, sy - int(3 * s)), max(1, int(1.5 * s))
+            )
             # Tail (wavy line)
             tail_wave = math.sin(ticks * 0.008 + self.tail_phase) * 4
-            pygame.draw.line(surf, self.body_color,
-                             (sx - int(7 * s), sy),
-                             (sx - int(14 * s), sy - int(4 * s) + int(tail_wave)), 2)
+            pygame.draw.line(
+                surf,
+                self.body_color,
+                (sx - int(7 * s), sy),
+                (sx - int(14 * s), sy - int(4 * s) + int(tail_wave)),
+                2,
+            )
         else:
             # Dog body (slightly larger, rectangular)
             bw, bh = int(16 * s), int(10 * s)
-            pygame.draw.ellipse(surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh))
+            pygame.draw.ellipse(
+                surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh)
+            )
             # Spots
-            pygame.draw.circle(surf, self.spot_color, (sx - int(3 * s), sy - int(1 * s)), int(2.5 * s))
+            pygame.draw.circle(
+                surf, self.spot_color, (sx - int(3 * s), sy - int(1 * s)), int(2.5 * s)
+            )
             # Head
             hr = int(6 * s)
             hx = sx + int(8 * s)
             pygame.draw.circle(surf, self.body_color, (hx, sy - int(2 * s)), hr)
             # Snout
-            pygame.draw.ellipse(surf, self.spot_color,
-                                (hx + int(2 * s), sy - int(3 * s), int(5 * s), int(4 * s)))
+            pygame.draw.ellipse(
+                surf,
+                self.spot_color,
+                (hx + int(2 * s), sy - int(3 * s), int(5 * s), int(4 * s)),
+            )
             # Ears (floppy)
-            pygame.draw.ellipse(surf, self.body_color,
-                                (hx - int(5 * s), sy - int(6 * s), int(4 * s), int(7 * s)))
-            pygame.draw.ellipse(surf, self.body_color,
-                                (hx + int(2 * s), sy - int(6 * s), int(4 * s), int(7 * s)))
+            pygame.draw.ellipse(
+                surf,
+                self.body_color,
+                (hx - int(5 * s), sy - int(6 * s), int(4 * s), int(7 * s)),
+            )
+            pygame.draw.ellipse(
+                surf,
+                self.body_color,
+                (hx + int(2 * s), sy - int(6 * s), int(4 * s), int(7 * s)),
+            )
             # Eyes
-            pygame.draw.circle(surf, self.eye_color, (hx - 2, sy - int(4 * s)), max(1, int(1.5 * s)))
-            pygame.draw.circle(surf, self.eye_color, (hx + 2, sy - int(4 * s)), max(1, int(1.5 * s)))
+            pygame.draw.circle(
+                surf, self.eye_color, (hx - 2, sy - int(4 * s)), max(1, int(1.5 * s))
+            )
+            pygame.draw.circle(
+                surf, self.eye_color, (hx + 2, sy - int(4 * s)), max(1, int(1.5 * s))
+            )
             # Tail (wagging)
             tail_wag = math.sin(ticks * 0.012 + self.tail_phase) * 6
-            pygame.draw.line(surf, self.body_color,
-                             (sx - int(8 * s), sy - int(2 * s)),
-                             (sx - int(14 * s), sy - int(8 * s) + int(tail_wag)), 3)
+            pygame.draw.line(
+                surf,
+                self.body_color,
+                (sx - int(8 * s), sy - int(2 * s)),
+                (sx - int(14 * s), sy - int(8 * s) + int(tail_wag)),
+                3,
+            )
 
 
 def has_adjacent_house(world, col, row):
@@ -651,13 +820,13 @@ ENEMY_TYPES = {
         "chase_range": 0,  # 0 = use viewport check
         "draw_commands": [
             # body – squat ellipse
-            ("ellipse", (0, 0, 0),       -10, -4, 20, 14),
+            ("ellipse", (0, 0, 0), -10, -4, 20, 14),
             # highlight blob
-            ("ellipse", (40, 40, 40),     -6, -2, 8, 6),
+            ("ellipse", (40, 40, 40), -6, -2, 8, 6),
             # left eye
-            ("circle",  (-80, -80, -80),  -4, -6, 2),
+            ("circle", (-80, -80, -80), -4, -6, 2),
             # right eye
-            ("circle",  (-80, -80, -80),   4, -6, 2),
+            ("circle", (-80, -80, -80), 4, -6, 2),
         ],
     },
     "blocker": {
@@ -674,9 +843,9 @@ ENEMY_TYPES = {
             # Body
             ("rect", (0, 0, 0), -10, -10, 20, 20),
             # Eye
-            ("circle", (-180, -25, -25), -4, -4, 2),   # left eye
-            ("circle", (-180, -25, -25),  4, -4, 2),   # right eye
-        ]
+            ("circle", (-180, -25, -25), -4, -4, 2),  # left eye
+            ("circle", (-180, -25, -25), 4, -4, 2),  # right eye
+        ],
     },
     "boss": {
         "maximum": 1,
@@ -690,10 +859,13 @@ ENEMY_TYPES = {
         "chase_range": 0,
         "draw_commands": [
             # Body
-            ("polygon", (0, 0, 0), [(-12, -10), (0, -14), (12, -10), (10, 10), (-10, 10)]),
+            (
+                "polygon",
+                (0, 0, 0),
+                [(-12, -10), (0, -14), (12, -10), (10, 10), (-10, 10)],
+            ),
         ],
-    }
-
+    },
 }
 
 
@@ -722,16 +894,18 @@ class Enemy:
 
         # State: "idle" | "chase" | "attack"
         self.state = "idle"
-        self.cooldown = 0.0       # frames until next attack
-        self.hurt_flash = 0       # frames of white flash when hit
+        self.cooldown = 0.0  # frames until next attack
+        self.hurt_flash = 0  # frames of white flash when hit
         self.knockback_vx = 0.0
         self.knockback_vy = 0.0
 
     # -- helpers -----------------------------------------------------------
 
     def _on_screen(self, cam_x, cam_y, margin=0):
-        return (cam_x - margin <= self.x <= cam_x + SCREEN_W + margin and
-                cam_y - margin <= self.y <= cam_y + SCREEN_H + margin)
+        return (
+            cam_x - margin <= self.x <= cam_x + SCREEN_W + margin
+            and cam_y - margin <= self.y <= cam_y + SCREEN_H + margin
+        )
 
     def _blocked(self, wx, wy, world):
         col = int(wx) // TILE
@@ -899,6 +1073,7 @@ def spawn_enemies(world):
 # Main Game
 # ---------------------------------------------------------------------------
 
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
@@ -910,7 +1085,10 @@ def main():
     # World state
     world = generate_world()
     # HP per tile instance
-    tile_hp = [[TILE_INFO[world[r][c]]["hp"] for c in range(WORLD_COLS)] for r in range(WORLD_ROWS)]
+    tile_hp = [
+        [TILE_INFO[world[r][c]]["hp"] for c in range(WORLD_COLS)]
+        for r in range(WORLD_ROWS)
+    ]
 
     # Player state
     px = (WORLD_COLS // 2) * TILE + TILE // 2
@@ -925,10 +1103,12 @@ def main():
     player_max_hp = 100
     player_xp = 0
     player_level = 1
+
     # XP needed per level: 20, 45, 80, 125, 180, ... (+5 more each tier)
     def xp_for_level(lvl):
         base, inc = 20, 5
         return base + inc * (lvl - 1) * lvl // 2
+
     player_xp_next = xp_for_level(player_level)
     player_hurt_timer = 0  # invincibility frames after being hit
 
@@ -977,7 +1157,9 @@ def main():
                     # Upgrade pickaxe
                     if pick_level < len(PICKAXES) - 1:
                         cost = UPGRADE_COSTS[pick_level]
-                        can_afford = all(inventory.get(k, 0) >= v for k, v in cost.items())
+                        can_afford = all(
+                            inventory.get(k, 0) >= v for k, v in cost.items()
+                        )
                         if can_afford:
                             for k, v in cost.items():
                                 inventory[k] -= v
@@ -989,7 +1171,10 @@ def main():
                     build_col = int(px) // TILE
                     build_row = int(py) // TILE
                     if 0 <= build_col < WORLD_COLS and 0 <= build_row < WORLD_ROWS:
-                        if world[build_row][build_col] == GRASS and inventory.get("Dirt", 0) >= 20:
+                        if (
+                            world[build_row][build_col] == GRASS
+                            and inventory.get("Dirt", 0) >= 20
+                        ):
                             inventory["Dirt"] -= 20
                             if inventory["Dirt"] <= 0:
                                 del inventory["Dirt"]
@@ -997,27 +1182,56 @@ def main():
                             tile_hp[build_row][build_col] = 0
                             tile_cx = build_col * TILE + TILE // 2
                             tile_cy = build_row * TILE + TILE // 2
-                            floats.append(FloatingText(tile_cx, tile_cy, "House built!", (210, 160, 60)))
+                            floats.append(
+                                FloatingText(
+                                    tile_cx, tile_cy, "House built!", (210, 160, 60)
+                                )
+                            )
                             for _ in range(10):
-                                particles.append(Particle(tile_cx, tile_cy, (160, 82, 45)))
+                                particles.append(
+                                    Particle(tile_cx, tile_cy, (160, 82, 45))
+                                )
 
                             # Random chance: spawn a dog (25%) instead of a worker
                             if random.random() < 0.25:
                                 pets.append(Pet(tile_cx, tile_cy, kind="dog"))
-                                floats.append(FloatingText(tile_cx, tile_cy - 20, "Dog spawned!", (180, 130, 70)))
+                                floats.append(
+                                    FloatingText(
+                                        tile_cx,
+                                        tile_cy - 20,
+                                        "Dog spawned!",
+                                        (180, 130, 70),
+                                    )
+                                )
                             else:
                                 workers.append(Worker(tile_cx, tile_cy))
-                                floats.append(FloatingText(tile_cx, tile_cy - 20, "Worker spawned!", (100, 220, 255)))
+                                floats.append(
+                                    FloatingText(
+                                        tile_cx,
+                                        tile_cy - 20,
+                                        "Worker spawned!",
+                                        (100, 220, 255),
+                                    )
+                                )
 
                             # Check for adjacent houses -> spawn a cat
                             if has_adjacent_house(world, build_col, build_row):
                                 pets.append(Pet(tile_cx, tile_cy, kind="cat"))
-                                floats.append(FloatingText(tile_cx, tile_cy - 36, "Cat appeared!", (255, 165, 0)))
+                                floats.append(
+                                    FloatingText(
+                                        tile_cx,
+                                        tile_cy - 36,
+                                        "Cat appeared!",
+                                        (255, 165, 0),
+                                    )
+                                )
                 elif event.key == pygame.K_n:
                     # Upgrade weapon
                     if weapon_level < len(WEAPONS) - 1:
                         cost = WEAPON_UNLOCK_COSTS[weapon_level]
-                        can_afford = all(inventory.get(k, 0) >= v for k, v in cost.items())
+                        can_afford = all(
+                            inventory.get(k, 0) >= v for k, v in cost.items()
+                        )
                         if can_afford:
                             for k, v in cost.items():
                                 inventory[k] -= v
@@ -1089,7 +1303,9 @@ def main():
                 # Bounce back opposite to movement direction
                 bounce_dir = -1 if dx > 0 else 1 if dx < 0 else 0
                 bounce_px = px + bounce_dir * bounce_dist
-                if not out_of_bounds(bounce_px, py, half) and not hits_blocking(bounce_px, py, half):
+                if not out_of_bounds(bounce_px, py, half) and not hits_blocking(
+                    bounce_px, py, half
+                ):
                     px = bounce_px
                 # else: stay in place
             else:
@@ -1100,7 +1316,9 @@ def main():
             if hits_blocking(px, new_py, half):
                 bounce_dir = -1 if dy > 0 else 1 if dy < 0 else 0
                 bounce_py = py + bounce_dir * bounce_dist
-                if not out_of_bounds(px, bounce_py, half) and not hits_blocking(px, bounce_py, half):
+                if not out_of_bounds(px, bounce_py, half) and not hits_blocking(
+                    px, bounce_py, half
+                ):
                     py = bounce_py
             else:
                 py = new_py
@@ -1144,13 +1362,20 @@ def main():
                 tile_cx = target_col * TILE + TILE // 2
                 tile_cy = target_row * TILE + TILE // 2
                 dist = math.hypot(px - tile_cx, py - tile_cy)
-                if dist < TILE * 2.5 and TILE_INFO[world[target_row][target_col]]["mineable"]:
+                if (
+                    dist < TILE * 2.5
+                    and TILE_INFO[world[target_row][target_col]]["mineable"]
+                ):
                     if mining_target != (target_col, target_row):
                         mining_target = (target_col, target_row)
                         mining_progress = 0
                     pick = PICKAXES[pick_level]
                     mining_progress += pick["power"] * dt * 0.15
-                    tile_hp[target_row][target_col] = max(0, TILE_INFO[world[target_row][target_col]]["hp"] - mining_progress)
+                    tile_hp[target_row][target_col] = max(
+                        0,
+                        TILE_INFO[world[target_row][target_col]]["hp"]
+                        - mining_progress,
+                    )
 
                     # Particles while mining
                     if random.random() < 0.4:
@@ -1162,12 +1387,18 @@ def main():
                         drop = info["drop"]
                         if drop:
                             inventory[drop] = inventory.get(drop, 0) + 1
-                            floats.append(FloatingText(tile_cx, tile_cy, f"+1 {drop}", info["drop_color"]))
+                            floats.append(
+                                FloatingText(
+                                    tile_cx, tile_cy, f"+1 {drop}", info["drop_color"]
+                                )
+                            )
                         # Burst of particles
                         for _ in range(12):
                             particles.append(Particle(tile_cx, tile_cy, info["color"]))
                         # Mountains become dirt paths when mined
-                        new_tile = DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
+                        new_tile = (
+                            DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
+                        )
                         world[target_row][target_col] = new_tile
                         tile_hp[target_row][target_col] = TILE_INFO[new_tile]["hp"]
                         mining_target = None
@@ -1204,7 +1435,7 @@ def main():
         if weapon_cooldown > 0:
             weapon_cooldown -= dt
         mouse_buttons_r = pygame.mouse.get_pressed()
-        #fire_input = keys[pygame.K_f] or mouse_buttons_r[2]
+        # fire_input = keys[pygame.K_f] or mouse_buttons_r[2]
         fire_input = True
         if fire_input and weapon_cooldown <= 0:
             wpn = WEAPONS[weapon_level]
@@ -1227,7 +1458,9 @@ def main():
             player_xp_next = xp_for_level(player_level)
             player_max_hp += 10
             player_hp = player_max_hp
-            floats.append(FloatingText(px, py - 30, f"Level {player_level}!", (255, 255, 100)))
+            floats.append(
+                FloatingText(px, py - 30, f"Level {player_level}!", (255, 255, 100))
+            )
             for _ in range(15):
                 particles.append(Particle(px, py, (255, 255, 100)))
 
@@ -1277,30 +1510,53 @@ def main():
 
                 # Water wave
                 if tid == WATER:
-                    wave_off = int(math.sin(pygame.time.get_ticks() * 0.003 + c * 0.7) * 3)
-                    pygame.draw.line(screen, (60, 150, 230),
-                                     (sx + 4, sy + 14 + wave_off),
-                                     (sx + 28, sy + 14 + wave_off), 2)
+                    wave_off = int(
+                        math.sin(pygame.time.get_ticks() * 0.003 + c * 0.7) * 3
+                    )
+                    pygame.draw.line(
+                        screen,
+                        (60, 150, 230),
+                        (sx + 4, sy + 14 + wave_off),
+                        (sx + 28, sy + 14 + wave_off),
+                        2,
+                    )
 
                 # Mountain
                 if tid == MOUNTAIN:
                     # Dark craggy peak
-                    pygame.draw.polygon(screen, (110, 100, 90), [
-                        (sx + 4, sy + TILE), (sx + 16, sy + 2), (sx + TILE - 4, sy + TILE)])
+                    pygame.draw.polygon(
+                        screen,
+                        (110, 100, 90),
+                        [
+                            (sx + 4, sy + TILE),
+                            (sx + 16, sy + 2),
+                            (sx + TILE - 4, sy + TILE),
+                        ],
+                    )
                     # Snow cap
-                    pygame.draw.polygon(screen, (230, 230, 240), [
-                        (sx + 12, sy + 8), (sx + 16, sy + 2), (sx + 20, sy + 8)])
+                    pygame.draw.polygon(
+                        screen,
+                        (230, 230, 240),
+                        [(sx + 12, sy + 8), (sx + 16, sy + 2), (sx + 20, sy + 8)],
+                    )
                     # Cracks / texture lines
-                    pygame.draw.line(screen, (70, 65, 60), (sx + 10, sy + 18), (sx + 14, sy + 12), 1)
-                    pygame.draw.line(screen, (70, 65, 60), (sx + 20, sy + 20), (sx + 22, sy + 14), 1)
+                    pygame.draw.line(
+                        screen, (70, 65, 60), (sx + 10, sy + 18), (sx + 14, sy + 12), 1
+                    )
+                    pygame.draw.line(
+                        screen, (70, 65, 60), (sx + 20, sy + 20), (sx + 22, sy + 14), 1
+                    )
 
                 # House
                 if tid == HOUSE:
                     # Walls
                     pygame.draw.rect(screen, (180, 120, 60), (sx + 4, sy + 12, 24, 18))
                     # Roof
-                    pygame.draw.polygon(screen, (160, 40, 40), [
-                        (sx + 2, sy + 12), (sx + 16, sy + 2), (sx + 30, sy + 12)])
+                    pygame.draw.polygon(
+                        screen,
+                        (160, 40, 40),
+                        [(sx + 2, sy + 12), (sx + 16, sy + 2), (sx + 30, sy + 12)],
+                    )
                     # Door
                     pygame.draw.rect(screen, (100, 60, 30), (sx + 12, sy + 19, 8, 11))
                     # Window
@@ -1349,14 +1605,24 @@ def main():
         psx = int(px - cam_x)
         psy = int(py - cam_y)
         # Body (flashes red when hurt)
-        body_color = (230, 80, 80) if player_hurt_timer > 0 and int(player_hurt_timer * 4) % 2 else (70, 130, 230)
-        pygame.draw.rect(screen, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4)
+        body_color = (
+            (230, 80, 80)
+            if player_hurt_timer > 0 and int(player_hurt_timer * 4) % 2
+            else (70, 130, 230)
+        )
+        pygame.draw.rect(
+            screen, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4
+        )
         # Head
         pygame.draw.circle(screen, (240, 200, 160), (psx, psy - 18), 8)
         # Pick icon
         pick_color = PICKAXES[pick_level]["color"]
-        pygame.draw.line(screen, pick_color, (psx + 10, psy - 8), (psx + 18, psy - 16), 3)
-        pygame.draw.line(screen, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3)
+        pygame.draw.line(
+            screen, pick_color, (psx + 10, psy - 8), (psx + 18, psy - 16), 3
+        )
+        pygame.draw.line(
+            screen, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3
+        )
 
         # --- HUD ----------------------------------------------------------
         # Inventory panel
@@ -1370,7 +1636,11 @@ def main():
         hp_ratio = max(0, player_hp / player_max_hp)
         hp_bar_w = 200
         pygame.draw.rect(screen, (60, 60, 60), (16, 16, hp_bar_w, 10))
-        bar_col = (50, 200, 50) if hp_ratio > 0.5 else (220, 180, 30) if hp_ratio > 0.25 else (220, 40, 40)
+        bar_col = (
+            (50, 200, 50)
+            if hp_ratio > 0.5
+            else (220, 180, 30) if hp_ratio > 0.25 else (220, 40, 40)
+        )
         pygame.draw.rect(screen, bar_col, (16, 16, int(hp_bar_w * hp_ratio), 10))
         hp_text = font.render(f"HP: {player_hp:.0f}/{player_max_hp}", True, WHITE)
         screen.blit(hp_text, (16, 28))
@@ -1380,7 +1650,11 @@ def main():
         xp_bar_w = 200
         pygame.draw.rect(screen, (60, 60, 60), (16, 44, xp_bar_w, 8))
         pygame.draw.rect(screen, (80, 180, 255), (16, 44, int(xp_bar_w * xp_ratio), 8))
-        xp_text = font.render(f"Lv {player_level}  XP: {player_xp}/{player_xp_next}", True, (180, 220, 255))
+        xp_text = font.render(
+            f"Lv {player_level}  XP: {player_xp}/{player_xp_next}",
+            True,
+            (180, 220, 255),
+        )
         screen.blit(xp_text, (16, 54))
 
         # Pickaxe info
@@ -1398,7 +1672,9 @@ def main():
                         info_color = tinfo["drop_color"]
                         break
                 pygame.draw.rect(screen, info_color, (18, y_off + 2, 8, 8))
-                screen.blit(font.render(f"{item_name}: {count}", True, WHITE), (34, y_off))
+                screen.blit(
+                    font.render(f"{item_name}: {count}", True, WHITE), (34, y_off)
+                )
                 y_off += 20
         else:
             screen.blit(font.render("(empty)", True, (150, 150, 150)), (34, y_off))
@@ -1411,15 +1687,21 @@ def main():
             cost_str = ", ".join(f"{v} {k}" for k, v in cost.items())
             can = all(inventory.get(k, 0) >= v for k, v in cost.items())
             color = (100, 255, 100) if can else (180, 180, 180)
-            screen.blit(font.render(f"[U] Upgrade: {cost_str}", True, color), (18, y_off))
+            screen.blit(
+                font.render(f"[U] Upgrade: {cost_str}", True, color), (18, y_off)
+            )
         else:
-            screen.blit(font.render("Pick is MAX level!", True, (255, 215, 0)), (18, y_off))
+            screen.blit(
+                font.render("Pick is MAX level!", True, (255, 215, 0)), (18, y_off)
+            )
         y_off += 20
 
         # Build house hint
         can_build = inventory.get("Dirt", 0) >= 20
         build_color = (100, 255, 100) if can_build else (180, 180, 180)
-        screen.blit(font.render("[B] Build House: 20 Dirt", True, build_color), (18, y_off))
+        screen.blit(
+            font.render("[B] Build House: 20 Dirt", True, build_color), (18, y_off)
+        )
         y_off += 20
 
         # Weapon info
@@ -1432,14 +1714,21 @@ def main():
             wcost_str = ", ".join(f"{v} {k}" for k, v in wcost.items())
             wcan = all(inventory.get(k, 0) >= v for k, v in wcost.items())
             wcolor = (100, 255, 100) if wcan else (180, 180, 180)
-            screen.blit(font.render(f"[N] Next Weapon: {wcost_str}", True, wcolor), (18, y_off))
+            screen.blit(
+                font.render(f"[N] Next Weapon: {wcost_str}", True, wcolor), (18, y_off)
+            )
         else:
-            screen.blit(font.render("Weapon is MAX level!", True, (255, 215, 0)), (18, y_off))
+            screen.blit(
+                font.render("Weapon is MAX level!", True, (255, 215, 0)), (18, y_off)
+            )
         y_off += 20
 
         # Worker & pet count
         if workers:
-            screen.blit(font.render(f"Workers: {len(workers)}", True, (100, 220, 255)), (18, y_off))
+            screen.blit(
+                font.render(f"Workers: {len(workers)}", True, (100, 220, 255)),
+                (18, y_off),
+            )
             y_off += 20
         num_cats = sum(1 for p in pets if p.kind == "cat")
         num_dogs = sum(1 for p in pets if p.kind == "dog")
@@ -1449,12 +1738,16 @@ def main():
                 pet_parts.append(f"Cats: {num_cats}")
             if num_dogs:
                 pet_parts.append(f"Dogs: {num_dogs}")
-            screen.blit(font.render("  ".join(pet_parts), True, (255, 200, 100)), (18, y_off))
+            screen.blit(
+                font.render("  ".join(pet_parts), True, (255, 200, 100)), (18, y_off)
+            )
 
         # Controls hint (bottom)
         hint = "WASD: Move | Click/Space: Mine | F/RClick: Attack | U/N: Upgrade | B: Build"
         hint_surf = font.render(hint, True, (180, 180, 180))
-        screen.blit(hint_surf, (SCREEN_W // 2 - hint_surf.get_width() // 2, SCREEN_H - 26))
+        screen.blit(
+            hint_surf, (SCREEN_W // 2 - hint_surf.get_width() // 2, SCREEN_H - 26)
+        )
 
         # Tile tooltip on hover
         mx, my = pygame.mouse.get_pos()
@@ -1467,7 +1760,9 @@ def main():
             if info["mineable"]:
                 tip += f"  (HP: {tile_hp[hover_row][hover_col]:.0f}/{info['hp']})"
             tip_surf = font.render(tip, True, WHITE)
-            tip_bg = pygame.Surface((tip_surf.get_width() + 10, tip_surf.get_height() + 6), pygame.SRCALPHA)
+            tip_bg = pygame.Surface(
+                (tip_surf.get_width() + 10, tip_surf.get_height() + 6), pygame.SRCALPHA
+            )
             tip_bg.fill((0, 0, 0, 160))
             screen.blit(tip_bg, (mx + 14, my + 2))
             screen.blit(tip_surf, (mx + 19, my + 5))

@@ -1,4 +1,5 @@
 """Projectile weapons fired by the player."""
+
 import math
 import pygame
 
@@ -27,20 +28,25 @@ class Projectile:
     def update(self, dt):
         """Move projectile and check distance."""
         from src.config import WORLD_COLS, WORLD_ROWS, TILE
-        
+
         step = self.speed * dt
         self.x += self.dir_x * step
         self.y += self.dir_y * step
         self.travelled += step
         if self.travelled >= self.distance:
             self.alive = False
-        if self.x < 0 or self.x > WORLD_COLS * TILE or self.y < 0 or self.y > WORLD_ROWS * TILE:
+        if (
+            self.x < 0
+            or self.x > WORLD_COLS * TILE
+            or self.y < 0
+            or self.y > WORLD_ROWS * TILE
+        ):
             self.alive = False
 
     def check_hits(self, enemies, particles, floats):
         """Check collisions with enemies."""
         from src.effects import FloatingText
-        
+
         for enemy in enemies:
             if enemy.hp <= 0 or id(enemy) in self.hit_enemies:
                 continue
@@ -54,9 +60,14 @@ class Projectile:
                 enemy.knockback_vy += (dy / d) * self.knockback
                 self.hit_enemies.add(id(enemy))
                 if enemy.hp <= 0:
-                    floats.append(FloatingText(
-                        enemy.x, enemy.y,
-                        f"{enemy.name} defeated! (+{enemy.xp} XP)", (255, 220, 50)))
+                    floats.append(
+                        FloatingText(
+                            enemy.x,
+                            enemy.y,
+                            f"{enemy.name} defeated! (+{enemy.xp} XP)",
+                            (255, 220, 50),
+                        )
+                    )
                     self.xp_earned += enemy.xp
                     for _ in range(10):
                         particles.append(Particle(enemy.x, enemy.y, enemy.color))
@@ -67,7 +78,7 @@ class Projectile:
     def draw(self, surf, cam_x, cam_y):
         """Draw projectile to screen."""
         from src.config import SCREEN_W, SCREEN_H
-        
+
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         if sx < -20 or sx > SCREEN_W + 20 or sy < -20 or sy > SCREEN_H + 20:

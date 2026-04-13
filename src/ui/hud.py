@@ -1,4 +1,5 @@
 """HUD rendering functions."""
+
 import pygame
 from src.config import SCREEN_W, SCREEN_H, TILE, WORLD_COLS, WORLD_ROWS, WHITE
 from src.data import PICKAXES, WEAPONS, WEAPON_UNLOCK_COSTS, UPGRADE_COSTS, TILE_INFO
@@ -20,9 +21,11 @@ def draw_hud(screen, font, player, workers, pets):
     hp_ratio = max(0, p.hp / p.max_hp)
     hp_bar_w = 200
     pygame.draw.rect(screen, (60, 60, 60), (16, 16, hp_bar_w, 10))
-    bar_col = ((50, 200, 50) if hp_ratio > 0.5
-               else (220, 180, 30) if hp_ratio > 0.25
-               else (220, 40, 40))
+    bar_col = (
+        (50, 200, 50)
+        if hp_ratio > 0.5
+        else (220, 180, 30) if hp_ratio > 0.25 else (220, 40, 40)
+    )
     pygame.draw.rect(screen, bar_col, (16, 16, int(hp_bar_w * hp_ratio), 10))
     screen.blit(font.render(f"HP: {p.hp:.0f}/{p.max_hp}", True, WHITE), (16, 28))
 
@@ -31,7 +34,10 @@ def draw_hud(screen, font, player, workers, pets):
     xp_bar_w = 200
     pygame.draw.rect(screen, (60, 60, 60), (16, 44, xp_bar_w, 8))
     pygame.draw.rect(screen, (80, 180, 255), (16, 44, int(xp_bar_w * xp_ratio), 8))
-    screen.blit(font.render(f"Lv {p.level}  XP: {p.xp}/{p.xp_next}", True, (180, 220, 255)), (16, 54))
+    screen.blit(
+        font.render(f"Lv {p.level}  XP: {p.xp}/{p.xp_next}", True, (180, 220, 255)),
+        (16, 54),
+    )
 
     # Pickaxe
     pick = PICKAXES[p.pick_level]
@@ -68,8 +74,14 @@ def draw_hud(screen, font, player, workers, pets):
 
     # Build house hint
     can_build = inv.get("Dirt", 0) >= 20
-    screen.blit(font.render("[B] Build House: 20 Dirt", True,
-                            (100, 255, 100) if can_build else (180, 180, 180)), (18, y_off))
+    screen.blit(
+        font.render(
+            "[B] Build House: 20 Dirt",
+            True,
+            (100, 255, 100) if can_build else (180, 180, 180),
+        ),
+        (18, y_off),
+    )
     y_off += 20
 
     # Weapon info
@@ -81,15 +93,25 @@ def draw_hud(screen, font, player, workers, pets):
         wcost = WEAPON_UNLOCK_COSTS[p.weapon_level]
         wcost_str = ", ".join(f"{v} {k}" for k, v in wcost.items())
         wcan = all(inv.get(k, 0) >= v for k, v in wcost.items())
-        screen.blit(font.render(f"[N] Next Weapon: {wcost_str}", True,
-                                (100, 255, 100) if wcan else (180, 180, 180)), (18, y_off))
+        screen.blit(
+            font.render(
+                f"[N] Next Weapon: {wcost_str}",
+                True,
+                (100, 255, 100) if wcan else (180, 180, 180),
+            ),
+            (18, y_off),
+        )
     else:
-        screen.blit(font.render("Weapon is MAX level!", True, (255, 215, 0)), (18, y_off))
+        screen.blit(
+            font.render("Weapon is MAX level!", True, (255, 215, 0)), (18, y_off)
+        )
     y_off += 20
 
     # Worker & pet count
     if workers:
-        screen.blit(font.render(f"Workers: {len(workers)}", True, (100, 220, 255)), (18, y_off))
+        screen.blit(
+            font.render(f"Workers: {len(workers)}", True, (100, 220, 255)), (18, y_off)
+        )
         y_off += 20
     num_cats = sum(1 for pet in pets if pet.kind == "cat")
     num_dogs = sum(1 for pet in pets if pet.kind == "dog")
@@ -110,7 +132,7 @@ def draw_hud(screen, font, player, workers, pets):
 def draw_tooltip(screen, font, cam_x, cam_y, world, tile_hp):
     """Draw tile hover tooltip."""
     from src.data import TILE_INFO
-    
+
     mx, my = pygame.mouse.get_pos()
     hover_col = int((mx + cam_x) // TILE)
     hover_row = int((my + cam_y) // TILE)
@@ -121,7 +143,9 @@ def draw_tooltip(screen, font, cam_x, cam_y, world, tile_hp):
         if info["mineable"]:
             tip += f"  (HP: {tile_hp[hover_row][hover_col]:.0f}/{info['hp']})"
         tip_surf = font.render(tip, True, WHITE)
-        tip_bg = pygame.Surface((tip_surf.get_width() + 10, tip_surf.get_height() + 6), pygame.SRCALPHA)
+        tip_bg = pygame.Surface(
+            (tip_surf.get_width() + 10, tip_surf.get_height() + 6), pygame.SRCALPHA
+        )
         tip_bg.fill((0, 0, 0, 160))
         screen.blit(tip_bg, (mx + 14, my + 2))
         screen.blit(tip_surf, (mx + 19, my + 5))

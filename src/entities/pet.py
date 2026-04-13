@@ -1,4 +1,5 @@
 """Pet companion class (cat/dog)."""
+
 import random
 import math
 import pygame
@@ -7,13 +8,25 @@ from src.data import BLOCKING_TILES
 
 # Pet color palettes
 CAT_COLORS = [
-    (255, 165, 0), (80, 80, 80), (220, 220, 220), (180, 120, 50),
-    (50, 50, 50), (255, 200, 150), (100, 100, 100), (200, 160, 80),
+    (255, 165, 0),
+    (80, 80, 80),
+    (220, 220, 220),
+    (180, 120, 50),
+    (50, 50, 50),
+    (255, 200, 150),
+    (100, 100, 100),
+    (200, 160, 80),
 ]
 
 DOG_COLORS = [
-    (180, 130, 70), (100, 70, 40), (220, 200, 170), (60, 60, 60),
-    (200, 180, 150), (140, 100, 60), (90, 60, 30), (170, 150, 130),
+    (180, 130, 70),
+    (100, 70, 40),
+    (220, 200, 170),
+    (60, 60, 60),
+    (200, 180, 150),
+    (140, 100, 60),
+    (90, 60, 30),
+    (170, 150, 130),
 ]
 
 
@@ -28,7 +41,9 @@ class Pet:
 
         if kind == "cat":
             self.body_color = random.choice(CAT_COLORS)
-            self.eye_color = random.choice([(50, 200, 50), (200, 180, 30), (80, 160, 220)])
+            self.eye_color = random.choice(
+                [(50, 200, 50), (200, 180, 30), (80, 160, 220)]
+            )
             self.size = random.uniform(0.7, 1.0)
         else:
             self.body_color = random.choice(DOG_COLORS)
@@ -76,43 +91,82 @@ class Pet:
 
         if self.kind == "cat":
             bw, bh = int(14 * s), int(8 * s)
-            pygame.draw.ellipse(surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh))
+            pygame.draw.ellipse(
+                surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh)
+            )
             hr = int(5 * s)
             hx = sx + int(7 * s)
             pygame.draw.circle(surf, self.body_color, (hx, sy - int(2 * s)), hr)
             ear_s = int(3 * s)
-            pygame.draw.polygon(surf, self.body_color, [
-                (hx - ear_s, sy - int(6 * s)),
-                (hx - ear_s - 2, sy - int(10 * s)),
-                (hx - ear_s + 3, sy - int(7 * s)),
-            ])
-            pygame.draw.polygon(surf, self.body_color, [
-                (hx + ear_s, sy - int(6 * s)),
-                (hx + ear_s + 2, sy - int(10 * s)),
-                (hx + ear_s - 3, sy - int(7 * s)),
-            ])
-            pygame.draw.circle(surf, self.eye_color, (hx - 2, sy - int(3 * s)), max(1, int(1.5 * s)))
-            pygame.draw.circle(surf, self.eye_color, (hx + 2, sy - int(3 * s)), max(1, int(1.5 * s)))
+            pygame.draw.polygon(
+                surf,
+                self.body_color,
+                [
+                    (hx - ear_s, sy - int(6 * s)),
+                    (hx - ear_s - 2, sy - int(10 * s)),
+                    (hx - ear_s + 3, sy - int(7 * s)),
+                ],
+            )
+            pygame.draw.polygon(
+                surf,
+                self.body_color,
+                [
+                    (hx + ear_s, sy - int(6 * s)),
+                    (hx + ear_s + 2, sy - int(10 * s)),
+                    (hx + ear_s - 3, sy - int(7 * s)),
+                ],
+            )
+            pygame.draw.circle(
+                surf, self.eye_color, (hx - 2, sy - int(3 * s)), max(1, int(1.5 * s))
+            )
+            pygame.draw.circle(
+                surf, self.eye_color, (hx + 2, sy - int(3 * s)), max(1, int(1.5 * s))
+            )
             tail_wave = math.sin(ticks * 0.008 + self.tail_phase) * 4
-            pygame.draw.line(surf, self.body_color,
-                             (sx - int(7 * s), sy),
-                             (sx - int(14 * s), sy - int(4 * s) + int(tail_wave)), 2)
+            pygame.draw.line(
+                surf,
+                self.body_color,
+                (sx - int(7 * s), sy),
+                (sx - int(14 * s), sy - int(4 * s) + int(tail_wave)),
+                2,
+            )
         else:
             bw, bh = int(16 * s), int(10 * s)
-            pygame.draw.ellipse(surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh))
-            pygame.draw.circle(surf, self.spot_color, (sx - int(3 * s), sy - int(1 * s)), int(2.5 * s))
+            pygame.draw.ellipse(
+                surf, self.body_color, (sx - bw // 2, sy - bh // 2, bw, bh)
+            )
+            pygame.draw.circle(
+                surf, self.spot_color, (sx - int(3 * s), sy - int(1 * s)), int(2.5 * s)
+            )
             hr = int(6 * s)
             hx = sx + int(8 * s)
             pygame.draw.circle(surf, self.body_color, (hx, sy - int(2 * s)), hr)
-            pygame.draw.ellipse(surf, self.spot_color,
-                                (hx + int(2 * s), sy - int(3 * s), int(5 * s), int(4 * s)))
-            pygame.draw.ellipse(surf, self.body_color,
-                                (hx - int(5 * s), sy - int(6 * s), int(4 * s), int(7 * s)))
-            pygame.draw.ellipse(surf, self.body_color,
-                                (hx + int(2 * s), sy - int(6 * s), int(4 * s), int(7 * s)))
-            pygame.draw.circle(surf, self.eye_color, (hx - 2, sy - int(4 * s)), max(1, int(1.5 * s)))
-            pygame.draw.circle(surf, self.eye_color, (hx + 2, sy - int(4 * s)), max(1, int(1.5 * s)))
+            pygame.draw.ellipse(
+                surf,
+                self.spot_color,
+                (hx + int(2 * s), sy - int(3 * s), int(5 * s), int(4 * s)),
+            )
+            pygame.draw.ellipse(
+                surf,
+                self.body_color,
+                (hx - int(5 * s), sy - int(6 * s), int(4 * s), int(7 * s)),
+            )
+            pygame.draw.ellipse(
+                surf,
+                self.body_color,
+                (hx + int(2 * s), sy - int(6 * s), int(4 * s), int(7 * s)),
+            )
+            pygame.draw.circle(
+                surf, self.eye_color, (hx - 2, sy - int(4 * s)), max(1, int(1.5 * s))
+            )
+            pygame.draw.circle(
+                surf, self.eye_color, (hx + 2, sy - int(4 * s)), max(1, int(1.5 * s))
+            )
             tail_wag = math.sin(ticks * 0.012 + self.tail_phase) * 6
-            pygame.draw.line(surf, self.body_color,
-                             (sx - int(8 * s), sy - int(2 * s)),
-                             (sx - int(14 * s), sy - int(8 * s) + int(tail_wag)), 3)
+            pygame.draw.line(
+                surf,
+                self.body_color,
+                (sx - int(8 * s), sy - int(2 * s)),
+                (sx - int(14 * s), sy - int(8 * s) + int(tail_wag)),
+                3,
+            )

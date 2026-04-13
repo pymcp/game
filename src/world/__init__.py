@@ -1,4 +1,5 @@
 """World module: generation, collision, and queries."""
+
 from src.world.collision import (
     tile_at,
     pos_in_bounds,

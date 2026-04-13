@@ -1,4 +1,5 @@
 """Weapon definitions and unlock costs."""
+
 from src.config import TILE
 
 # Each weapon is a dict with:

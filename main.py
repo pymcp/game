@@ -1,4 +1,5 @@
 """Mining Game - Main entry point."""
+
 import sys
 from src.game import Game
 
@@ -15,5 +16,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

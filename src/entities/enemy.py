@@ -1,4 +1,5 @@
 """Enemy class with data-driven vector rendering."""
+
 import math
 import pygame
 from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H
@@ -15,7 +16,7 @@ class Enemy:
 
     def __init__(self, x, y, type_key):
         from src.data import ENEMY_TYPES
-        
+
         self.x = float(x)
         self.y = float(y)
         self.type_key = type_key
@@ -39,13 +40,15 @@ class Enemy:
 
     def _on_screen(self, cam_x, cam_y, margin=0):
         """Check if enemy is on screen."""
-        return (cam_x - margin <= self.x <= cam_x + SCREEN_W + margin and
-                cam_y - margin <= self.y <= cam_y + SCREEN_H + margin)
+        return (
+            cam_x - margin <= self.x <= cam_x + SCREEN_W + margin
+            and cam_y - margin <= self.y <= cam_y + SCREEN_H + margin
+        )
 
     def _blocked(self, wx, wy, world):
         """Check if position is blocked."""
         from src.config import WATER, MOUNTAIN, HOUSE
-        
+
         col = int(wx) // TILE
         row = int(wy) // TILE
         if col < 0 or col >= WORLD_COLS or row < 0 or row >= WORLD_ROWS:

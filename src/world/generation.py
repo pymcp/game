@@ -1,7 +1,21 @@
 """World generation and enemy spawning."""
+
 import random
 import math
-from src.config import WORLD_COLS, WORLD_ROWS, TILE, GRASS, DIRT, STONE, WATER, TREE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, MOUNTAIN
+from src.config import (
+    WORLD_COLS,
+    WORLD_ROWS,
+    TILE,
+    GRASS,
+    DIRT,
+    STONE,
+    WATER,
+    TREE,
+    IRON_ORE,
+    GOLD_ORE,
+    DIAMOND_ORE,
+    MOUNTAIN,
+)
 from src.data import ENEMY_TYPES
 
 
@@ -35,7 +49,7 @@ def generate_world():
 def spawn_enemies(world):
     """Scatter enemies on walkable tiles throughout the world."""
     from src.entities import Enemy
-    
+
     enemies = []
     spawn_count = {}
     for _ in range(25):
