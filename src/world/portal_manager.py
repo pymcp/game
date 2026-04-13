@@ -552,8 +552,6 @@ class PortalManager:
         self.add_realm_portal(origin_key)
 
         realm_map = game.maps["portal_realm"]
-        player.portal_origin_map = origin_key
-        player.current_map = "portal_realm"
 
         origin_portal = next(
             (
@@ -564,23 +562,27 @@ class PortalManager:
             None,
         )
         if origin_portal is not None:
-            player.x = origin_portal[0] * TILE + TILE // 2
-            player.y = origin_portal[1] * TILE + TILE // 2
+            dest_x = origin_portal[0] * TILE + TILE // 2
+            dest_y = origin_portal[1] * TILE + TILE // 2
         else:
-            player.x = realm_map.spawn_col * TILE + TILE // 2
-            player.y = realm_map.spawn_row * TILE + TILE // 2
+            dest_x = realm_map.spawn_col * TILE + TILE // 2
+            dest_y = realm_map.spawn_row * TILE + TILE // 2
 
-        game._snap_camera_to_player(player)
-        self.portal_warp[player.player_id] = {"progress": 0.0}
-        game.floats.append(
-            FloatingText(
-                int(player.x),
-                int(player.y) - 30,
-                "Entered portal realm!",
-                (160, 60, 220),
-                player.current_map,
-            )
-        )
+        # Start the vortex over the OLD scene; defer move to midpoint
+        self.portal_warp[player.player_id] = {
+            "progress": 0.0,
+            "switched": False,
+            "pending": {
+                "pid": player.player_id,
+                "current_map": "portal_realm",
+                "x": dest_x,
+                "y": dest_y,
+                "portal_origin_map": origin_key,
+                "clear_portal_origin": False,
+                "float_text": "Entered portal realm!",
+                "float_color": (160, 60, 220),
+            },
+        }
 
     def exit_portal_realm(
         self,
@@ -609,7 +611,8 @@ class PortalManager:
 
         p_col = getattr(dest_map, "portal_col", dest_map.cols // 2)
         p_row = getattr(dest_map, "portal_row", dest_map.rows // 2)
-        placed = False
+        dest_x: float | None = None
+        dest_y: float | None = None
         for dr, dc in [
             (1, 0),
             (-1, 0),
@@ -624,30 +627,31 @@ class PortalManager:
             adj_r = p_row + dr
             if 0 <= adj_c < dest_map.cols and 0 <= adj_r < dest_map.rows:
                 if dest_map.get_tile(adj_r, adj_c) == GRASS:
-                    player.x = adj_c * TILE + TILE // 2
-                    player.y = adj_r * TILE + TILE // 2
-                    placed = True
+                    dest_x = adj_c * TILE + TILE // 2
+                    dest_y = adj_r * TILE + TILE // 2
                     break
-        if not placed:
-            player.x = p_col * TILE + TILE // 2
-            player.y = p_row * TILE + TILE // 2
+        if dest_x is None:
+            dest_x = p_col * TILE + TILE // 2
+            dest_y = p_row * TILE + TILE // 2
 
-        player.current_map = dest_key
-        player.portal_origin_map = None
-        player.last_portal_exit_map = dest_key
-        player.last_portal_exit_x = player.x
-        player.last_portal_exit_y = player.y
-        game._snap_camera_to_player(player)
-        self.portal_warp[player.player_id] = {"progress": 0.0}
-        game.floats.append(
-            FloatingText(
-                int(player.x),
-                int(player.y) - 30,
-                "Left portal realm!",
-                (180, 160, 220),
-                player.current_map,
-            )
-        )
+        # Start the vortex over the OLD scene; defer move to midpoint
+        self.portal_warp[player.player_id] = {
+            "progress": 0.0,
+            "switched": False,
+            "pending": {
+                "pid": player.player_id,
+                "current_map": dest_key,
+                "x": dest_x,
+                "y": dest_y,
+                "portal_origin_map": None,
+                "clear_portal_origin": True,
+                "last_portal_exit_map": dest_key,
+                "last_portal_exit_x": dest_x,
+                "last_portal_exit_y": dest_y,
+                "float_text": "Left portal realm!",
+                "float_color": (180, 160, 220),
+            },
+        }
 
     # ------------------------------------------------------------------
     # Debug helpers
@@ -678,6 +682,30 @@ class PortalManager:
         else:
             self.check_portal_restored(map_key)
 
+    def debug_ensure_nearby_island(self, origin_sx: int, origin_sy: int) -> None:
+        """Expand outward from origin until two sectors with islands are found,
+        generating them if needed, and force-restoring their portals."""
+        game = self.game
+        found = 0
+        for dist in range(1, 16):
+            for dx in range(-dist, dist + 1):
+                for dy in range(-dist, dist + 1):
+                    if abs(dx) != dist and abs(dy) != dist:
+                        continue
+                    sx, sy = origin_sx + dx, origin_sy + dy
+                    sector_map = game.sectors.get_or_generate_sector(sx, sy)
+                    game.sectors.visited_sectors.add((sx, sy))
+                    if (sx, sy) not in game.sectors.land_sectors:
+                        continue
+                    sector_key = (
+                        ("sector", sx, sy) if (sx, sy) != (0, 0) else "overland"
+                    )
+                    self.debug_force_portal_on_map(sector_key, sector_map)
+                    self.add_realm_portal(sector_key)
+                    found += 1
+                    if found >= 2:
+                        return
+
     # ------------------------------------------------------------------
     # Frame tick
     # ------------------------------------------------------------------
@@ -685,6 +713,46 @@ class PortalManager:
     def tick_warp(self, dt: float) -> None:
         """Advance portal-warp animation timers."""
         for pid in list(self.portal_warp.keys()):
-            self.portal_warp[pid]["progress"] += dt / PORTAL_WARP_DURATION
-            if self.portal_warp[pid]["progress"] >= 1.0:
+            state = self.portal_warp[pid]
+            state["progress"] += dt / PORTAL_WARP_DURATION
+            # At the midpoint flash, execute the deferred scene switch
+            if not state.get("switched", True) and state["progress"] >= 0.5:
+                self._execute_warp_switch(state["pending"])
+                state["switched"] = True
+            if state["progress"] >= 1.0:
                 del self.portal_warp[pid]
+
+    def _execute_warp_switch(self, pending: dict) -> None:
+        """Apply the deferred player teleport at the warp midpoint."""
+        game = self.game
+        pid: int = pending["pid"]
+        player = game.player1 if pid == 1 else game.player2
+
+        if pending.get("clear_portal_origin"):
+            player.portal_origin_map = None
+        elif "portal_origin_map" in pending:
+            player.portal_origin_map = pending["portal_origin_map"]
+
+        player.current_map = pending["current_map"]
+        player.x = pending["x"]
+        player.y = pending["y"]
+
+        for attr in (
+            "last_portal_exit_map",
+            "last_portal_exit_x",
+            "last_portal_exit_y",
+        ):
+            if attr in pending:
+                setattr(player, attr, pending[attr])
+
+        game._snap_camera_to_player(player)
+
+        game.floats.append(
+            FloatingText(
+                int(player.x),
+                int(player.y) - 30,
+                pending["float_text"],
+                pending["float_color"],
+                player.current_map,
+            )
+        )

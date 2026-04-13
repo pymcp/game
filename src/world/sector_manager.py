@@ -11,6 +11,7 @@ import pygame
 
 from src.config import (
     TILE,
+    WATER,
     SECTOR_WIPE_DURATION,
     BiomeType,
     PORTAL_LAVA,
@@ -321,21 +322,82 @@ class SectorManager:
     # ------------------------------------------------------------------
 
     def generate_sector_thumbnail(self, sx: int, sy: int) -> pygame.Surface | None:
-        """Return (or build) an 80x60 thumbnail for sector (sx, sy)."""
+        """Return (or build) a smoothed thumbnail for sector (sx, sy)."""
         key = ("sector", sx, sy)
         if key in self._sector_thumbnail_cache:
             return self._sector_thumbnail_cache[key]
         scene = self.game.maps.get(key)
         if scene is None:
             return None
-        thumb = pygame.Surface((scene.cols, scene.rows))
-        for r in range(scene.rows):
-            for c in range(scene.cols):
+        rows, cols = scene.rows, scene.cols
+        # Build raw 1-pixel-per-tile surface
+        raw = pygame.Surface((cols, rows))
+        for r in range(rows):
+            for c in range(cols):
                 tid = scene.get_tile(r, c)
                 color = TILE_INFO.get(tid, {}).get("color", (50, 50, 50))
-                thumb.set_at((c, r), color)
+                raw.set_at((c, r), color)
+
+        # Coastal depth gradient: tint water pixels near land
+        self._apply_coastal_gradient(raw, scene, rows, cols)
+
+        # Double smoothscale: upscale 4× then back to 2× for soft coastlines
+        up_w, up_h = cols * 4, rows * 4
+        upscaled = pygame.transform.smoothscale(raw, (up_w, up_h))
+        thumb = pygame.transform.smoothscale(upscaled, (cols * 2, rows * 2))
         self._sector_thumbnail_cache[key] = thumb
         return thumb
+
+    @staticmethod
+    def _apply_coastal_gradient(
+        surface: pygame.Surface,
+        scene: MapScene,
+        rows: int,
+        cols: int,
+    ) -> None:
+        """Tint water pixels near land to create a coastal depth effect."""
+        # Coastal colour bands (closest to land → deep ocean)
+        # 1 tile out: bright shallow turquoise
+        # 2 tiles out: medium reef blue
+        # 3 tiles out: mid-depth blue
+        _COAST_COLORS: list[tuple[int, int, int]] = [
+            (55, 165, 190),  # shallow / sand-bottom
+            (40, 135, 190),  # reef
+            (32, 115, 185),  # mid-depth
+        ]
+        max_dist = len(_COAST_COLORS)
+
+        # Quick boolean land mask
+        is_land = [
+            [scene.get_tile(r, c) != WATER for c in range(cols)] for r in range(rows)
+        ]
+
+        # Distance-from-land for water pixels (BFS)
+        dist = [[0 if is_land[r][c] else -1 for c in range(cols)] for r in range(rows)]
+        from collections import deque
+
+        queue: deque[tuple[int, int]] = deque()
+        for r in range(rows):
+            for c in range(cols):
+                if is_land[r][c]:
+                    queue.append((c, r))
+        while queue:
+            cx, cy = queue.popleft()
+            nd = dist[cy][cx] + 1
+            if nd > max_dist:
+                continue
+            for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nc, nr = cx + dc, cy + dr
+                if 0 <= nc < cols and 0 <= nr < rows and dist[nr][nc] == -1:
+                    dist[nr][nc] = nd
+                    queue.append((nc, nr))
+
+        # Paint coastal bands
+        for r in range(rows):
+            for c in range(cols):
+                d = dist[r][c]
+                if 1 <= d <= max_dist:
+                    surface.set_at((c, r), _COAST_COLORS[d - 1])
 
     # ------------------------------------------------------------------
     # Frame ticks (called from Game.update)

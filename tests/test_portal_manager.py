@@ -271,23 +271,53 @@ class TestDebugForcePortal:
 class TestTickWarp:
     def test_warp_progresses(self, mock_game: object) -> None:
         pm = mock_game.portals
-        pm.portal_warp[1] = {"progress": 0.0}
+        pm.portal_warp[1] = {"progress": 0.0, "switched": True}
         pm.tick_warp(PORTAL_WARP_DURATION / 2)
         assert abs(pm.portal_warp[1]["progress"] - 0.5) < 0.01
 
     def test_warp_completes_and_removes(self, mock_game: object) -> None:
         pm = mock_game.portals
-        pm.portal_warp[1] = {"progress": 0.0}
+        pm.portal_warp[1] = {"progress": 0.0, "switched": True}
         pm.tick_warp(PORTAL_WARP_DURATION * 1.1)
         assert 1 not in pm.portal_warp
 
     def test_multiple_warps_independent(self, mock_game: object) -> None:
         pm = mock_game.portals
-        pm.portal_warp[1] = {"progress": 0.0}
-        pm.portal_warp[2] = {"progress": 0.5}
+        pm.portal_warp[1] = {"progress": 0.0, "switched": True}
+        pm.portal_warp[2] = {"progress": 0.5, "switched": True}
         pm.tick_warp(PORTAL_WARP_DURATION * 0.6)
         assert 1 in pm.portal_warp  # only 0.6 progress
         assert 2 not in pm.portal_warp  # 0.5 + 0.6 >= 1.0
+
+    def test_deferred_switch_at_midpoint(self, mock_game: object) -> None:
+        """Pending transition executes when progress crosses 0.5."""
+        pm = mock_game.portals
+        player = mock_game.player1
+        player.current_map = "overland"
+        pm.portal_warp[1] = {
+            "progress": 0.0,
+            "switched": False,
+            "pending": {
+                "pid": 1,
+                "current_map": "portal_realm",
+                "x": 100.0,
+                "y": 200.0,
+                "portal_origin_map": "overland",
+                "clear_portal_origin": False,
+                "float_text": "Entered portal realm!",
+                "float_color": (160, 60, 220),
+            },
+        }
+        # Tick to just before midpoint
+        pm.tick_warp(PORTAL_WARP_DURATION * 0.4)
+        assert player.current_map == "overland"
+        assert not pm.portal_warp[1]["switched"]
+        # Tick past midpoint
+        pm.tick_warp(PORTAL_WARP_DURATION * 0.2)
+        assert player.current_map == "portal_realm"
+        assert pm.portal_warp[1]["switched"]
+        assert player.x == 100.0
+        assert player.y == 200.0
 
 
 # ---------------------------------------------------------------------------

@@ -513,9 +513,12 @@ class PlayerHUD:
             return
 
         progress = anim["progress"]
-        if anim["phase"] == "ascend":
+        phase = anim["phase"]
+        if phase in ("ascend_out", "descend_out"):
+            # Fading TO white over old content
             alpha = int(progress * 255)
         else:
+            # Fading FROM white, revealing new content
             alpha = int((1.0 - progress) * 255)
 
         if alpha <= 0:

@@ -320,8 +320,10 @@ class Game:
     def _enter_sky_view(self, player: Player) -> None:
         """Begin the ascend animation for *player*, then show the sky view."""
         pid = player.player_id
-        self._sky_view[pid] = True
-        self._sky_anim[pid] = {"phase": "ascend", "progress": 0.0}
+        if self._sky_anim[pid] is not None:
+            return  # already animating
+        # Don't switch to sky yet — animate over the world first
+        self._sky_anim[pid] = {"phase": "ascend_out", "progress": 0.0}
         self.sectors.reveal_sky_sectors(player)
         if not self._sky_clouds:
             self._init_sky_clouds()
@@ -331,8 +333,8 @@ class Game:
         pid = player.player_id
         anim = self._sky_anim[pid]
         if anim is not None and anim["phase"] == "sky":
-            # Transition to descend
-            self._sky_anim[pid] = {"phase": "descend", "progress": 0.0}
+            # Animate over sky first, then switch to world at the peak
+            self._sky_anim[pid] = {"phase": "descend_out", "progress": 0.0}
         else:
             # Already animating — skip straight to closed
             self._sky_view[pid] = False
@@ -660,6 +662,10 @@ class Game:
 
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
+
+        # Block interaction during sky-view animation
+        if self._sky_anim[pid] is not None and self._sky_anim[pid]["phase"] != "sky":
+            return
 
         # 3.6 Sky-view exit — takes priority over everything else
         if self._sky_view[pid]:
@@ -1445,7 +1451,7 @@ class Game:
         origin_sy = (
             map_key[2] if isinstance(map_key, tuple) and len(map_key) == 3 else 0
         )
-        self._debug_ensure_nearby_island(origin_sx, origin_sy)
+        self.portals.debug_ensure_nearby_island(origin_sx, origin_sy)
 
         self.floats.append(
             FloatingText(
@@ -1901,7 +1907,10 @@ class Game:
         candidates = [
             p
             for p in (self.player1, self.player2)
-            if p.current_map == map_key and not p.is_dead
+            if p.current_map == map_key
+            and not p.is_dead
+            and self._sky_anim[p.player_id] is None
+            and not self._sky_view[p.player_id]
         ]
         if not candidates:
             return None
@@ -2057,11 +2066,21 @@ class Game:
             if anim is None:
                 continue
             anim["progress"] += dt / _SKY_ANIM_DURATION
-            if anim["phase"] == "ascend" and anim["progress"] >= 1.0:
+            phase = anim["phase"]
+            if phase == "ascend_out" and anim["progress"] >= 1.0:
+                # Peak white — switch to sky view, then fade out
+                self._sky_view[pid] = True
+                anim["phase"] = "ascend_in"
+                anim["progress"] = 0.0
+            elif phase == "ascend_in" and anim["progress"] >= 1.0:
                 anim["phase"] = "sky"
                 anim["progress"] = 0.0
-            elif anim["phase"] == "descend" and anim["progress"] >= 1.0:
+            elif phase == "descend_out" and anim["progress"] >= 1.0:
+                # Peak white — switch to world view, then fade out
                 self._sky_view[pid] = False
+                anim["phase"] = "descend_in"
+                anim["progress"] = 0.0
+            elif phase == "descend_in" and anim["progress"] >= 1.0:
                 self._sky_anim[pid] = None
         # -- Sign display timer tick ---------------------------------------
         for pid in (1, 2):
@@ -2885,6 +2904,9 @@ class Game:
         current_map_key = player.current_map
         for p in (self.player1, self.player2):
             if p.current_map == current_map_key:
+                # Hide player while in sky-view transition
+                if self._sky_anim[p.player_id] is not None:
+                    continue
                 p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
         self.player_hud.draw(player, screen_x, screen_y, view_w, view_h)
@@ -2945,9 +2967,9 @@ class Game:
         RADIUS = 5
         GRID = RADIUS * 2 + 1  # 11
         CELL_W, CELL_H = 68, 51  # px per sector cell
-        GAP = 5
-        total_w = GRID * (CELL_W + GAP) - GAP
-        total_h = GRID * (CELL_H + GAP) - GAP
+        GAP = 0
+        total_w = GRID * CELL_W
+        total_h = GRID * CELL_H
         grid_x0 = screen_x + (view_w - total_w) // 2
         grid_y0 = screen_y + (view_h - total_h) // 2
 
@@ -2955,8 +2977,8 @@ class Game:
             for col in range(GRID):
                 sx_s = cx + (col - RADIUS)
                 sy_s = cy + (row - RADIUS)
-                cell_px = grid_x0 + col * (CELL_W + GAP)
-                cell_py = grid_y0 + row * (CELL_H + GAP)
+                cell_px = grid_x0 + col * CELL_W
+                cell_py = grid_y0 + row * CELL_H
                 cell_rect = pygame.Rect(cell_px, cell_py, CELL_W, CELL_H)
 
                 revealed = (sx_s, sy_s) in self.visited_sectors or (
@@ -2968,7 +2990,9 @@ class Game:
                 if revealed and is_land:
                     thumb = self.sectors.generate_sector_thumbnail(sx_s, sy_s)
                     if thumb is not None:
-                        scaled_thumb = pygame.transform.scale(thumb, (CELL_W, CELL_H))
+                        scaled_thumb = pygame.transform.smoothscale(
+                            thumb, (CELL_W, CELL_H)
+                        )
                         self.screen.blit(scaled_thumb, (cell_px, cell_py))
                     else:
                         biome = get_sector_biome(self.world_seed, sx_s, sy_s)
@@ -2981,20 +3005,13 @@ class Game:
                         }.get(biome, (50, 110, 50))
                         pygame.draw.rect(self.screen, bg_c, cell_rect)
                 elif revealed:
-                    pygame.draw.rect(self.screen, (35, 55, 110), cell_rect)
+                    pygame.draw.rect(self.screen, (28, 100, 180), cell_rect)
                 else:
                     pygame.draw.rect(self.screen, (15, 15, 25), cell_rect)
 
-                # Border
-                border_c = (
-                    (220, 220, 255) if (sx_s == cx and sy_s == cy) else (60, 70, 90)
-                )
-                pygame.draw.rect(
-                    self.screen,
-                    border_c,
-                    cell_rect,
-                    1 if (sx_s != cx or sy_s != cy) else 2,
-                )
+                # Highlight current sector only
+                if sx_s == cx and sy_s == cy:
+                    pygame.draw.rect(self.screen, (220, 220, 255), cell_rect, 2)
 
         # --- Clouds ---
         self._draw_sky_clouds(screen_x, screen_y, view_w, view_h)

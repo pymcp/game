@@ -48,12 +48,12 @@ class TestDraw:
         hud.draw(player1, 0, 0, 320, 360)
 
     def test_draw_with_sky_anim_ascend(self, mock_game: MockGame, player1) -> None:
-        mock_game._sky_anim[1] = {"phase": "ascend", "progress": 0.5}
+        mock_game._sky_anim[1] = {"phase": "ascend_out", "progress": 0.5}
         hud = _make_hud(mock_game)
         hud.draw(player1, 0, 0, 320, 360)
 
     def test_draw_with_sky_anim_descend(self, mock_game: MockGame, player1) -> None:
-        mock_game._sky_anim[1] = {"phase": "descend", "progress": 0.5}
+        mock_game._sky_anim[1] = {"phase": "descend_out", "progress": 0.5}
         hud = _make_hud(mock_game)
         hud.draw(player1, 0, 0, 320, 360)
 
@@ -139,17 +139,27 @@ class TestSkyAnimOverlay:
         hud._draw_sky_anim_overlay(player1, 0, 0, 320, 360)
 
     def test_ascend_overlay(self, mock_game: MockGame, player1) -> None:
-        mock_game._sky_anim[1] = {"phase": "ascend", "progress": 0.8}
+        mock_game._sky_anim[1] = {"phase": "ascend_out", "progress": 0.8}
         hud = _make_hud(mock_game)
         hud._draw_sky_anim_overlay(player1, 0, 0, 320, 360)
 
     def test_descend_overlay(self, mock_game: MockGame, player1) -> None:
-        mock_game._sky_anim[1] = {"phase": "descend", "progress": 0.3}
+        mock_game._sky_anim[1] = {"phase": "descend_out", "progress": 0.3}
         hud = _make_hud(mock_game)
         hud._draw_sky_anim_overlay(player1, 0, 0, 320, 360)
 
     def test_zero_progress_no_crash(self, mock_game: MockGame, player1) -> None:
-        mock_game._sky_anim[1] = {"phase": "ascend", "progress": 0.0}
+        mock_game._sky_anim[1] = {"phase": "ascend_out", "progress": 0.0}
+        hud = _make_hud(mock_game)
+        hud._draw_sky_anim_overlay(player1, 0, 0, 320, 360)
+
+    def test_ascend_in_fades_from_white(self, mock_game: MockGame, player1) -> None:
+        mock_game._sky_anim[1] = {"phase": "ascend_in", "progress": 0.5}
+        hud = _make_hud(mock_game)
+        hud._draw_sky_anim_overlay(player1, 0, 0, 320, 360)
+
+    def test_descend_in_fades_from_white(self, mock_game: MockGame, player1) -> None:
+        mock_game._sky_anim[1] = {"phase": "descend_in", "progress": 0.5}
         hud = _make_hud(mock_game)
         hud._draw_sky_anim_overlay(player1, 0, 0, 320, 360)
 
