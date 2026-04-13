@@ -75,7 +75,9 @@ current_map_for_player = game.get_player_current_map(player1)
 if current_map_for_player:
     print(f"   Map found: {current_map_for_player.cols}x{current_map_for_player.rows}")
     print(f"   Tileset: {current_map_for_player.tileset}")
-    print(f"   Exit marker: ({current_map_for_player.exit_col}, {current_map_for_player.exit_row})")
+    print(
+        f"   Exit marker: ({current_map_for_player.exit_col}, {current_map_for_player.exit_row})"
+    )
 else:
     print(f"   ✗ get_player_current_map returned None!")
 

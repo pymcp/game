@@ -3,7 +3,16 @@
 import math
 import random
 import pygame
-from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H, GRASS, DIRT, MOUNTAIN
+from src.config import (
+    TILE,
+    WORLD_COLS,
+    WORLD_ROWS,
+    SCREEN_W,
+    SCREEN_H,
+    GRASS,
+    DIRT,
+    MOUNTAIN,
+)
 from src.data import PICKAXES, WEAPONS, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, TILE_INFO
 from src.world import try_spend, xp_for_level, hits_blocking, out_of_bounds
 from src.effects import Particle, FloatingText

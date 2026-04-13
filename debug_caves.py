@@ -29,23 +29,24 @@ if cave_positions:
     print(f"Cave map created: {cave.cols}x{cave.rows}")
     print(f"Exit at: ({cave.exit_col}, {cave.exit_row})")
     print(f"Entrance at: ({cave.entrance_col}, {cave.entrance_row})")
-    
+
     # Check what tiles are in the cave
     from src.config import GRASS, STONE, IRON_ORE, GOLD_ORE, DIAMOND_ORE
+
     tile_counts = {}
     for r in range(cave.rows):
         for c in range(cave.cols):
             tid = cave.get_tile(r, c)
             tile_counts[tid] = tile_counts.get(tid, 0) + 1
-    
+
     tile_names = {
         GRASS: "GRASS",
-        STONE: "STONE", 
+        STONE: "STONE",
         IRON_ORE: "IRON_ORE",
         GOLD_ORE: "GOLD_ORE",
         DIAMOND_ORE: "DIAMOND_ORE",
     }
-    
+
     print("\nCave tile composition:")
     for tid, count in sorted(tile_counts.items()):
         name = tile_names.get(tid, f"TILE_{tid}")

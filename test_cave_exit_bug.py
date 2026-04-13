@@ -33,26 +33,32 @@ print(f"\n1. Before transition: current_map={player.current_map}")
 
 # Step 2: Check cave transitions
 game.check_cave_transitions(player, map1)
-print(f"2. After cave entry: current_map={player.current_map}, pos=({player.x}, {player.y})")
+print(
+    f"2. After cave entry: current_map={player.current_map}, pos=({player.x}, {player.y})"
+)
 
 # Step 3: Refresh map (like update() does)
 map1 = game.get_player_current_map(player)
 
 # Step 4: Check cave exits (THE BUG - this used to immediately eject the player)
 game.check_cave_exits(player, map1)
-print(f"3. After exit check: current_map={player.current_map}, pos=({player.x}, {player.y})")
+print(
+    f"3. After exit check: current_map={player.current_map}, pos=({player.x}, {player.y})"
+)
 
 if player.current_map == "overland":
     print("\n*** BUG STILL PRESENT: Player was ejected back to overland! ***")
 else:
     print(f"\n*** FIX WORKS: Player remains in cave {player.current_map} ***")
-    
+
     # Verify the tile at spawn is not CAVE_EXIT
     tile_col = int(player.x) // TILE
     tile_row = int(player.y) // TILE
     tile_at_spawn = map1.get_tile(tile_row, tile_col)
-    print(f"   Spawn tile ({tile_col}, {tile_row}): type={tile_at_spawn} (CAVE_EXIT={CAVE_EXIT})")
-    
+    print(
+        f"   Spawn tile ({tile_col}, {tile_row}): type={tile_at_spawn} (CAVE_EXIT={CAVE_EXIT})"
+    )
+
     # Verify the exit tile exists somewhere
     found_exit = False
     for r in range(map1.rows):

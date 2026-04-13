@@ -264,10 +264,7 @@ def _place_cave_entrances(world):
         is_adj_mountain = _is_adjacent_to_mountain(world, col, row)
 
         # Either place near mountains or in isolated hill areas
-        if is_adj_mountain or (
-            random.random() < 0.3
-            and world[row][col] == GRASS
-        ):
+        if is_adj_mountain or (random.random() < 0.3 and world[row][col] == GRASS):
             # Decide which cave type based on mountain proximity
             cave_type = CAVE_MOUNTAIN if is_adj_mountain else CAVE_HILL
             world[row][col] = cave_type
