@@ -1088,7 +1088,9 @@ class Game:
         bounds, then carves a 12×12 chamber and connects it via L-corridors.
         Returns (portal_col, portal_row) — the centre of the chamber.
         """
-        from src.world.environments.portal_realm import carve_chamber, _connect_regions
+        from src.world.environments.portal_realm import carve_chamber
+        from src.world.environments.utils import connect_regions
+        from src.config import PORTAL_FLOOR, TREASURE_CHEST, PORTAL_ACTIVE
 
         realm_map  = self.maps["portal_realm"]
         slot_size  = realm_map.slot_size
@@ -1121,9 +1123,11 @@ class Game:
         slot_row = slot_pad + iy * slot_size
 
         carve_chamber(realm_map.world, slot_col, slot_row)
-        _connect_regions(
+        connect_regions(
             realm_map.world, realm_map.rows, realm_map.cols,
             realm_map.spawn_col, realm_map.spawn_row,
+            {PORTAL_FLOOR, TREASURE_CHEST, PORTAL_ACTIVE}, PORTAL_FLOOR,
+            getattr(realm_map, "slot_padding", 2),
         )
 
         portal_col = slot_col + slot_size // 2

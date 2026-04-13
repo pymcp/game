@@ -1,6 +1,5 @@
 """Cave environment — generates caverns with walls, ore, and cave-specific enemies."""
 
-import collections
 import math
 import random
 
@@ -20,6 +19,7 @@ from src.config import (
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
 from src.world.environments.base import BaseEnvironment
+from src.world.environments.utils import cellular_automata, connect_regions, find_floor_near_row
 from src.world.map import GameMap
 
 # Enemy pools derived from ENEMY_TYPES definitions
@@ -45,35 +45,6 @@ CAVE_COLS = 66
 # ---------------------------------------------------------------------------
 
 
-def _cellular_automata(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
-    """Open-cavern layout via 5 rounds of cellular automata."""
-    grid = [[1 if rng.random() < 0.45 else 0 for _ in range(cols)] for _ in range(rows)]
-
-    # Force solid MAP_BORDER-tile border so the HUD never overlaps walkable tiles
-    for r in range(rows):
-        for c in range(cols):
-            if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
-                grid[r][c] = 1
-
-    for _ in range(5):
-        new_grid = [[0] * cols for _ in range(rows)]
-        for r in range(rows):
-            for c in range(cols):
-                if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
-                    new_grid[r][c] = 1
-                    continue
-                wall_neighbours = sum(
-                    grid[r + dr][c + dc]
-                    for dr in (-1, 0, 1)
-                    for dc in (-1, 0, 1)
-                    if 0 <= r + dr < rows and 0 <= c + dc < cols
-                )
-                new_grid[r][c] = 1 if wall_neighbours >= 5 else 0
-        grid = new_grid
-
-    return grid
-
-
 def _drunkard_walk(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
     """Labyrinth layout via a drunkard's walk with 2 walkers."""
     grid = [[1] * cols for _ in range(rows)]
@@ -95,78 +66,6 @@ def _drunkard_walk(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
             c = max(MAP_BORDER, min(cols - MAP_BORDER - 1, c + dc))
 
     return grid
-
-
-def _ensure_all_regions_connected(
-    cave_world: list[list[int]], rows: int, cols: int, spawn_col: int, spawn_row: int
-) -> None:
-    """Connect every isolated GRASS/CAVE_EXIT region to the spawn point.
-
-    After cellular-automata or drunkard-walk generation, open floor areas can
-    be split into disconnected pockets.  This function finds those pockets and
-    carves an L-shaped corridor between the closest pair of tiles linking each
-    pocket to the main (spawn-reachable) region, guaranteeing the player can
-    always walk from spawn to every open area.
-    """
-    passable = {GRASS, CAVE_EXIT}
-
-    def bfs(start_c, start_r, candidate_set):
-        region = set()
-        queue = collections.deque([(start_c, start_r)])
-        region.add((start_c, start_r))
-        while queue:
-            c, r = queue.popleft()
-            for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                nc, nr = c + dc, r + dr
-                if (nc, nr) not in region and (nc, nr) in candidate_set:
-                    region.add((nc, nr))
-                    queue.append((nc, nr))
-        return region
-
-    all_floor = {
-        (c, r) for r in range(rows) for c in range(cols) if cave_world[r][c] in passable
-    }
-
-    if (spawn_col, spawn_row) not in all_floor:
-        return  # spawn is on a non-passable tile — shouldn't happen
-
-    main = bfs(spawn_col, spawn_row, all_floor)
-    remaining = all_floor - main
-
-    while remaining:
-        # Pick next isolated region
-        seed = next(iter(remaining))
-        iso = bfs(seed[0], seed[1], remaining)
-
-        # Find the closest tile pair (Manhattan) between main and iso regions
-        best_dist = float("inf")
-        best_main = best_iso = None
-        for mc, mr in main:
-            for ic, ir in iso:
-                d = abs(mc - ic) + abs(mr - ir)
-                if d < best_dist:
-                    best_dist = d
-                    best_main = (mc, mr)
-                    best_iso = (ic, ir)
-
-        # Carve an L-shaped corridor: horizontal first, then vertical
-        c, r = best_iso
-        tc, tr = best_main
-        while c != tc:
-            c += 1 if tc > c else -1
-            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
-                cave_world[r][c] = GRASS
-                all_floor.add((c, r))
-                main.add((c, r))
-        while r != tr:
-            r += 1 if tr > r else -1
-            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
-                cave_world[r][c] = GRASS
-                all_floor.add((c, r))
-                main.add((c, r))
-
-        main |= iso
-        remaining -= iso
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +106,7 @@ class CaveEnvironment(BaseEnvironment):
         grid = (
             _drunkard_walk(rng, rows, cols)
             if is_labyrinth
-            else _cellular_automata(rng, rows, cols)
+            else cellular_automata(rng, rows, cols, density=0.45, iterations=5, border=MAP_BORDER)
         )
 
         # Build tile world from layout grid
@@ -251,8 +150,8 @@ class CaveEnvironment(BaseEnvironment):
             scatter_ore(DIAMOND_ORE, 3, 1, 2)
 
         # Place exit near the top; find a valid floor tile in upper rows
-        exit_col, exit_row = self._find_floor_near_row(
-            cave_world, rows, cols, rng, target_row=MAP_BORDER
+        exit_col, exit_row = find_floor_near_row(
+            cave_world, rows, cols, rng, MAP_BORDER, GRASS, border=MAP_BORDER
         )
         cave_world[exit_row][exit_col] = CAVE_EXIT
 
@@ -277,11 +176,11 @@ class CaveEnvironment(BaseEnvironment):
                         cave_world[rr][rc] = GRASS
 
         # Connect all isolated floor regions to the spawn/exit area
-        _ensure_all_regions_connected(cave_world, rows, cols, spawn_col, spawn_row)
+        connect_regions(cave_world, rows, cols, spawn_col, spawn_row, {GRASS, CAVE_EXIT}, GRASS, MAP_BORDER)
 
         # Place treasure chest deep in the cave (opposite end from the exit)
-        chest_col, chest_row = self._find_floor_near_row(
-            cave_world, rows, cols, rng, target_row=rows - MAP_BORDER - 1
+        chest_col, chest_row = find_floor_near_row(
+            cave_world, rows, cols, rng, rows - MAP_BORDER - 1, GRASS, border=MAP_BORDER
         )
         cave_world[chest_row][chest_col] = TREASURE_CHEST
 
@@ -344,31 +243,4 @@ class CaveEnvironment(BaseEnvironment):
 
         return enemies
 
-    # -- helpers -----------------------------------------------------------
 
-    def _find_floor_near_row(
-        self,
-        cave_world: list[list[int]],
-        rows: int,
-        cols: int,
-        rng: random.Random,
-        target_row: int,
-    ) -> tuple[int, int]:
-        """Return (col, row) of a floor tile at or near target_row."""
-        for r in range(max(2, target_row - 2), min(rows - 2, target_row + 6)):
-            candidates = [c for c in range(2, cols - 2) if cave_world[r][c] == GRASS]
-            if candidates:
-                return rng.choice(candidates), r
-        # Fallback: any floor tile
-        all_floor = [
-            (c, r)
-            for r in range(2, rows - 2)
-            for c in range(2, cols - 2)
-            if cave_world[r][c] == GRASS
-        ]
-        if all_floor:
-            c, r = rng.choice(all_floor)
-            return c, r
-        # Last resort: carve one open
-        cave_world[target_row][cols // 2] = GRASS
-        return cols // 2, target_row

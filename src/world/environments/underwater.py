@@ -1,10 +1,10 @@
 """Underwater environment — generates a seafloor map accessible by diving from a boat."""
 
-import collections
 import random
 
 from src.config import TILE, MAP_BORDER
 from src.world.environments.base import BaseEnvironment
+from src.world.environments.utils import cellular_automata, connect_regions, find_floor_near_row
 from src.world.map import GameMap
 from src.config import SAND, CORAL, REEF, DIVE_EXIT
 
@@ -12,135 +12,6 @@ from src.config import SAND, CORAL, REEF, DIVE_EXIT
 # 40×50 map with its 2-tile border).
 UNDERWATER_ROWS = 56
 UNDERWATER_COLS = 66
-
-
-# ---------------------------------------------------------------------------
-# Layout generator
-# ---------------------------------------------------------------------------
-
-
-def _cellular_automata(rng: random.Random, rows: int, cols: int) -> list[list[int]]:
-    """Generate an open seafloor via cellular automata.
-
-    Returns a binary grid: 1 = wall (REEF), 0 = floor (SAND).
-    """
-    # Lower initial density than caves so the seafloor is more open
-    grid = [[1 if rng.random() < 0.40 else 0 for _ in range(cols)] for _ in range(rows)]
-
-    # Force solid MAP_BORDER-tile border so the HUD never overlaps walkable tiles
-    for r in range(rows):
-        for c in range(cols):
-            if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
-                grid[r][c] = 1
-
-    for _ in range(4):
-        new_grid = [[0] * cols for _ in range(rows)]
-        for r in range(rows):
-            for c in range(cols):
-                if r < MAP_BORDER or r >= rows - MAP_BORDER or c < MAP_BORDER or c >= cols - MAP_BORDER:
-                    new_grid[r][c] = 1
-                    continue
-                wall_neighbours = sum(
-                    grid[r + dr][c + dc]
-                    for dr in (-1, 0, 1)
-                    for dc in (-1, 0, 1)
-                    if 0 <= r + dr < rows and 0 <= c + dc < cols
-                )
-                new_grid[r][c] = 1 if wall_neighbours >= 5 else 0
-        grid = new_grid
-
-    return grid
-
-
-def _ensure_all_regions_connected(
-    world: list[list[int]],
-    rows: int,
-    cols: int,
-    spawn_col: int,
-    spawn_row: int,
-) -> None:
-    """Connect every isolated SAND/DIVE_EXIT region to the spawn point via L-corridors."""
-    passable = {SAND, DIVE_EXIT, CORAL}
-
-    def bfs(start_c: int, start_r: int, candidate_set: set) -> set:
-        region: set = set()
-        queue: collections.deque = collections.deque([(start_c, start_r)])
-        region.add((start_c, start_r))
-        while queue:
-            c, r = queue.popleft()
-            for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                nc, nr = c + dc, r + dr
-                if (nc, nr) not in region and (nc, nr) in candidate_set:
-                    region.add((nc, nr))
-                    queue.append((nc, nr))
-        return region
-
-    all_floor = {
-        (c, r) for r in range(rows) for c in range(cols) if world[r][c] in passable
-    }
-
-    if (spawn_col, spawn_row) not in all_floor:
-        return
-
-    main = bfs(spawn_col, spawn_row, all_floor)
-    remaining = all_floor - main
-
-    while remaining:
-        seed = next(iter(remaining))
-        iso = bfs(seed[0], seed[1], remaining)
-
-        best_dist = float("inf")
-        best_main = best_iso = None
-        for mc, mr in main:
-            for ic, ir in iso:
-                d = abs(mc - ic) + abs(mr - ir)
-                if d < best_dist:
-                    best_dist = d
-                    best_main = (mc, mr)
-                    best_iso = (ic, ir)
-
-        c, r = best_iso
-        tc, tr = best_main
-        while c != tc:
-            c += 1 if tc > c else -1
-            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
-                world[r][c] = SAND
-                all_floor.add((c, r))
-                main.add((c, r))
-        while r != tr:
-            r += 1 if tr > r else -1
-            if MAP_BORDER <= c < cols - MAP_BORDER and MAP_BORDER <= r < rows - MAP_BORDER:
-                world[r][c] = SAND
-                all_floor.add((c, r))
-                main.add((c, r))
-
-        main |= iso
-        remaining -= iso
-
-
-def _find_floor_near_row(
-    world: list[list[int]],
-    rows: int,
-    cols: int,
-    rng: random.Random,
-    target_row: int,
-) -> tuple[int, int]:
-    """Return (col, row) of a SAND tile at or near target_row."""
-    for r in range(max(2, target_row - 2), min(rows - 2, target_row + 6)):
-        candidates = [c for c in range(2, cols - 2) if world[r][c] == SAND]
-        if candidates:
-            return rng.choice(candidates), r
-    all_floor = [
-        (c, r)
-        for r in range(2, rows - 2)
-        for c in range(2, cols - 2)
-        if world[r][c] == SAND
-    ]
-    if all_floor:
-        return rng.choice(all_floor)
-    # Last resort: carve one open
-    world[target_row][cols // 2] = SAND
-    return cols // 2, target_row
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +39,7 @@ class UnderwaterEnvironment(BaseEnvironment):
         rng = random.Random(self.dive_col * 10_000 + self.dive_row)
         rows, cols = UNDERWATER_ROWS, UNDERWATER_COLS
 
-        grid = _cellular_automata(rng, rows, cols)
+        grid = cellular_automata(rng, rows, cols, density=0.40, iterations=4, border=MAP_BORDER)
 
         # Build tile world from layout grid
         world = [
@@ -196,7 +67,7 @@ class UnderwaterEnvironment(BaseEnvironment):
         scatter_coral(count=8, cluster_min=3, cluster_max=8)
 
         # Place DIVE_EXIT near the top
-        exit_col, exit_row = _find_floor_near_row(world, rows, cols, rng, target_row=3)
+        exit_col, exit_row = find_floor_near_row(world, rows, cols, rng, 3, SAND, border=MAP_BORDER)
         world[exit_row][exit_col] = DIVE_EXIT
 
         # Spawn point a few rows below the exit
@@ -219,7 +90,7 @@ class UnderwaterEnvironment(BaseEnvironment):
                         world[rr][rc] = SAND
 
         # Connect all isolated regions
-        _ensure_all_regions_connected(world, rows, cols, spawn_col, spawn_row)
+        connect_regions(world, rows, cols, spawn_col, spawn_row, {SAND, DIVE_EXIT, CORAL}, SAND, MAP_BORDER)
 
         underwater_map = GameMap(world, tileset=self.TILESET)
         underwater_map.dive_col = self.dive_col
