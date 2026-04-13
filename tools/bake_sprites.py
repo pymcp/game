@@ -59,10 +59,10 @@ ASSETS_DIR = os.path.join(_REPO_ROOT, "assets", "sprites")
 ENEMY_CANVAS: tuple[int, int, int, int] = (64, 64, 32, 32)
 
 CREATURE_CANVAS: dict[str, tuple[int, int, int, int]] = {
-    "dolphin":   (160, 96,  80, 48),
-    "fish":      (48,  48,  24, 24),
-    "jellyfish": (64,  80,  32, 36),
-    "horse":     (96,  96,  48, 48),
+    "dolphin": (160, 96, 80, 48),
+    "fish": (48, 48, 24, 24),
+    "jellyfish": (64, 80, 32, 36),
+    "horse": (96, 96, 48, 48),
 }
 
 PET_CANVAS: dict[str, tuple[int, int, int, int]] = {
@@ -78,6 +78,7 @@ WORKER_CANVAS: tuple[int, int, int, int] = (64, 64, 32, 32)
 # Multiple ticks values → multiple columns on the spritesheet row.
 # ---------------------------------------------------------------------------
 
+
 def _ticks_seq(period_ms: float, n_frames: int) -> list[int]:
     """Return *n_frames* evenly-spaced ticks values across one full period."""
     return [int(i / n_frames * period_ms) for i in range(n_frames)]
@@ -85,18 +86,18 @@ def _ticks_seq(period_ms: float, n_frames: int) -> list[int]:
 
 # Creature animation specs: {kind: {state_name: [ticks, ...], ...}}
 CREATURE_ANIM: dict[str, dict[str, list[int]]] = {
-    "dolphin":   {"swim": _ticks_seq(1257, 8)},       # bob: T = 2π/0.005 ≈ 1257 ms
-    "fish":      {"swim": [0]},                         # static
-    "jellyfish": {"swim": _ticks_seq(1257, 8)},        # tentacle + bob
-    "horse":     {                                      # leg swing: T = 2π/0.015 ≈ 419 ms
+    "dolphin": {"swim": _ticks_seq(1257, 8)},  # bob: T = 2π/0.005 ≈ 1257 ms
+    "fish": {"swim": [0]},  # static
+    "jellyfish": {"swim": _ticks_seq(1257, 8)},  # tentacle + bob
+    "horse": {  # leg swing: T = 2π/0.015 ≈ 419 ms
         "walk": _ticks_seq(419, 8),
         "idle": [0],
     },
 }
 
 PET_ANIM: dict[str, dict[str, list[int]]] = {
-    "cat": {"idle": _ticks_seq(785, 8)},    # tail wave: T = 2π/0.008 ≈ 785 ms
-    "dog": {"idle": _ticks_seq(524, 8)},    # tail wag:  T = 2π/0.012 ≈ 524 ms
+    "cat": {"idle": _ticks_seq(785, 8)},  # tail wave: T = 2π/0.008 ≈ 785 ms
+    "dog": {"idle": _ticks_seq(524, 8)},  # tail wag:  T = 2π/0.012 ≈ 524 ms
 }
 
 # Workers have no ticks-based animation in the current draw code.
@@ -106,6 +107,7 @@ WORKER_ANIM: dict[str, list[int]] = {"idle": [0], "walk": [0]}
 # ---------------------------------------------------------------------------
 # Surface helpers
 # ---------------------------------------------------------------------------
+
 
 def _blank(w: int, h: int) -> pygame.Surface:
     """Return a transparent RGBA surface of (w × h)."""
@@ -150,6 +152,7 @@ def _save(
 # ---------------------------------------------------------------------------
 # Baking helpers (per entity class)
 # ---------------------------------------------------------------------------
+
 
 def _bake_enemy(type_key: str, out_dir: str) -> None:
     """Bake a single enemy type into enemies/<type_key>.png."""
@@ -298,6 +301,7 @@ def _bake_worker(out_dir: str) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     print(f"Baking sprites into {os.path.relpath(ASSETS_DIR, _REPO_ROOT)}/\n")

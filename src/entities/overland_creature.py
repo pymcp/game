@@ -17,15 +17,15 @@ _SPEEDS: dict[str, float] = {
 
 # Visual sizes (multiplier of TILE)
 _SIZES: dict[str, float] = {
-    "horse": .9,
+    "horse": 0.9,
 }
 
 # Brown coat colours for horses
 _HORSE_COLORS: list[tuple[int, int, int]] = [
-    (139, 90, 43),   # chestnut
-    (101, 67, 33),   # dark bay
+    (139, 90, 43),  # chestnut
+    (101, 67, 33),  # dark bay
     (180, 130, 70),  # palomino
-    (60, 40, 25),    # near-black
+    (60, 40, 25),  # near-black
 ]
 
 
@@ -89,10 +89,16 @@ class OverlandCreature(Creature):
                     body_h = r
                     seat_x = sx
                     seat_y = sy - body_h // 2 - 2
-                    pygame.draw.rect(screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10))
-                    pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 14), 5)
+                    pygame.draw.rect(
+                        screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10)
+                    )
+                    pygame.draw.circle(
+                        screen, (240, 200, 160), (seat_x, seat_y - 14), 5
+                    )
                     for side in (-1, 1):
-                        pygame.draw.rect(screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8))
+                        pygame.draw.rect(
+                            screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8)
+                        )
                 return
 
         # --- Procedural fallback ---
@@ -135,20 +141,34 @@ class OverlandCreature(Creature):
         for i, lx_off in enumerate([-r // 3, -r // 8, r // 8, r // 3]):
             swing = leg_swing if i % 2 == 0 else -leg_swing
             lx = sx + flip * lx_off
-            pygame.draw.rect(screen, dark, (lx - leg_w // 2, leg_y_top + swing, leg_w, leg_h))
+            pygame.draw.rect(
+                screen, dark, (lx - leg_w // 2, leg_y_top + swing, leg_w, leg_h)
+            )
 
         # ---- Neck ----
         neck_base_x = sx + flip * (r // 2)
         neck_base_y = sy - body_h // 4
         neck_tip_x = neck_base_x + flip * (r // 3)
         neck_tip_y = neck_base_y - r // 2
-        pygame.draw.line(screen, c, (neck_base_x, neck_base_y), (neck_tip_x, neck_tip_y), max(5, r // 5))
+        pygame.draw.line(
+            screen,
+            c,
+            (neck_base_x, neck_base_y),
+            (neck_tip_x, neck_tip_y),
+            max(5, r // 5),
+        )
 
         # ---- Head ----
         head_r = max(5, r // 4)
         pygame.draw.ellipse(
-            screen, c,
-            (neck_tip_x - head_r + flip * head_r // 2, neck_tip_y - head_r, head_r * 2, int(head_r * 1.4))
+            screen,
+            c,
+            (
+                neck_tip_x - head_r + flip * head_r // 2,
+                neck_tip_y - head_r,
+                head_r * 2,
+                int(head_r * 1.4),
+            ),
         )
         # Eye
         eye_x = neck_tip_x + flip * head_r // 2
@@ -167,7 +187,9 @@ class OverlandCreature(Creature):
         tail_base_y = sy - body_h // 4
         tail_tip_x = tail_base_x - flip * (r // 3)
         tail_tip_y = tail_base_y + r // 3
-        pygame.draw.line(screen, mane_color, (tail_base_x, tail_base_y), (tail_tip_x, tail_tip_y), 3)
+        pygame.draw.line(
+            screen, mane_color, (tail_base_x, tail_base_y), (tail_tip_x, tail_tip_y), 3
+        )
 
         # ---- Rider seated on back ----
         if rider_color is not None:
@@ -179,4 +201,6 @@ class OverlandCreature(Creature):
             pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 14), 5)
             # Legs dangling each side
             for side in (-1, 1):
-                pygame.draw.rect(screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8))
+                pygame.draw.rect(
+                    screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8)
+                )

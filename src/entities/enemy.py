@@ -167,6 +167,7 @@ class Enemy:
             return
         self._animator_checked = True
         from src.rendering.registry import SpriteRegistry
+
         self._animator = SpriteRegistry.get_instance().make_animator(self.type_key)
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
@@ -192,7 +193,9 @@ class Enemy:
                     by = sy - fh // 2 - 5
                     ratio = max(0.0, self.hp / self.max_hp)
                     pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3))
-                    pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3))
+                    pygame.draw.rect(
+                        surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3)
+                    )
                 return
 
         # --- Procedural fallback ---

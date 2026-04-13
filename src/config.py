@@ -91,9 +91,9 @@ VOID_ORE = 50  # Portal realm ore (mineable, drops Void Stone)
 PORTAL_LAVA = 51  # Portal realm lava river (walkable, damages without Ancient armor)
 
 # Sky Ladder quest tiles
-SIGN = 52            # Readable sign post (walkable, non-blocking)
-BROKEN_LADDER = 53   # Quest object: broken ladder awaiting repair (blocking)
-SKY_LADDER = 54      # Quest object: repaired sky ladder (blocking)
+SIGN = 52  # Readable sign post (walkable, non-blocking)
+BROKEN_LADDER = 53  # Quest object: broken ladder awaiting repair (blocking)
+SKY_LADDER = 54  # Quest object: repaired sky ladder (blocking)
 
 # Biome types for island generation
 from enum import Enum

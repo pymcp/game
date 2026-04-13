@@ -52,6 +52,7 @@ class Worker:
             return
         self._animator_checked = True
         from src.rendering.registry import SpriteRegistry
+
         self._animator = SpriteRegistry.get_instance().make_animator("worker")
 
     def _pick_wander_dest(self) -> None:
@@ -196,7 +197,9 @@ class Worker:
         # Advance animator
         self._ensure_animator()
         if self._animator is not None:
-            anim_state = AnimationState.WALK if self.state == "wander" else AnimationState.IDLE
+            anim_state = (
+                AnimationState.WALK if self.state == "wander" else AnimationState.IDLE
+            )
             self._animator.set_state(anim_state)
             self._animator.update(dt)
 

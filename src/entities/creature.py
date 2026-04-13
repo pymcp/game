@@ -67,6 +67,7 @@ class Creature:
             return
         self._animator_checked = True
         from src.rendering.registry import SpriteRegistry
+
         self._animator = SpriteRegistry.get_instance().make_animator(sprite_id)
 
     # ------------------------------------------------------------------
@@ -157,9 +158,7 @@ class Creature:
         ticks: int,
         rider_color: tuple[int, int, int] | None = None,
     ) -> None:
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement draw()"
-        )
+        raise NotImplementedError(f"{type(self).__name__} must implement draw()")
 
     # ------------------------------------------------------------------
     # Helpers

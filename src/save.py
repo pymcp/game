@@ -152,9 +152,7 @@ def _serialize_map(game_map: "GameMap | MapScene") -> dict:
     if hasattr(raw, "origin_map"):
         data["origin_map"] = _key_to_str(raw.origin_map)
     if hasattr(raw, "sub_house_positions"):
-        data["sub_house_positions"] = [
-            list(entry) for entry in raw.sub_house_positions
-        ]
+        data["sub_house_positions"] = [list(entry) for entry in raw.sub_house_positions]
     if hasattr(raw, "portal_exits"):
         data["portal_exits"] = {
             f"{c}:{r}": (_key_to_str(v) if v is not None else None)
@@ -431,7 +429,9 @@ def _deserialize_creature(data: dict) -> Creature:
     creature_class = data.get("creature_class", "sea")
 
     if creature_class == "overland":
-        c: Creature = OverlandCreature(data["x"], data["y"], kind=kind, home_map=home_map)
+        c: Creature = OverlandCreature(
+            data["x"], data["y"], kind=kind, home_map=home_map
+        )
     else:
         c = SeaCreature(data["x"], data["y"], kind=kind, home_map=home_map)
 

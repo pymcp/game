@@ -63,7 +63,8 @@ class OverlandEnvironment(BaseEnvironment):
         _place_horse(first_col, first_row)
         # Remove tiles too close to the first horse for the remaining placements
         remaining = [
-            pos for pos in candidates
+            pos
+            for pos in candidates
             if abs(pos[0] - first_col) + abs(pos[1] - first_row) > 6
         ]
         # Try to add up to 3 more, each separated from all previous
@@ -73,8 +74,7 @@ class OverlandEnvironment(BaseEnvironment):
             col, row = rng.choice(remaining)
             _place_horse(col, row)
             remaining = [
-                pos for pos in remaining
-                if abs(pos[0] - col) + abs(pos[1] - row) > 6
+                pos for pos in remaining if abs(pos[0] - col) + abs(pos[1] - row) > 6
             ]
 
         return creatures

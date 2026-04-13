@@ -50,7 +50,14 @@ class MapScene:
             pass
         object.__setattr__(self, "enemies", existing_enemies)
 
-        for attr in ("workers", "pets", "creatures", "projectiles", "particles", "floats"):
+        for attr in (
+            "workers",
+            "pets",
+            "creatures",
+            "projectiles",
+            "particles",
+            "floats",
+        ):
             object.__setattr__(self, attr, [])
 
     # ------------------------------------------------------------------

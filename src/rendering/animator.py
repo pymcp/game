@@ -78,7 +78,10 @@ class Animator:
             return
         # Only switch if the new state actually exists in the manifest;
         # otherwise keep the current state (avoids falling to None mid-game).
-        if state.value in self._manifest["states"] or self._state_data(state) is not None:
+        if (
+            state.value in self._manifest["states"]
+            or self._state_data(state) is not None
+        ):
             self._state = state
             self._frame_idx = 0
             self._elapsed_ms = 0.0

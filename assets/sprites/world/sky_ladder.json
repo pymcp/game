@@ -1,0 +1,18 @@
+{
+  "frame_size": [
+    64,
+    128
+  ],
+  "states": {
+    "idle": {
+      "row": 0,
+      "frames": 1,
+      "fps": 1
+    },
+    "extending": {
+      "row": 1,
+      "frames": 8,
+      "fps": 8
+    }
+  }
+}

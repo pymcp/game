@@ -70,6 +70,7 @@ class Pet:
             return
         self._animator_checked = True
         from src.rendering.registry import SpriteRegistry
+
         self._animator = SpriteRegistry.get_instance().make_animator(self.kind)
 
     def update(
