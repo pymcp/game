@@ -525,6 +525,7 @@ def load_game() -> dict | None:
 def apply_save(game: "Game", data: dict) -> None:
     """Overwrite game state with the saved data dict."""
     game.world_seed = data["world_seed"]
+    game.sectors.world_seed = data["world_seed"]
 
     # Rebuild maps as MapScene instances (entities are inline per-map in v8)
     game.maps = {}
@@ -535,29 +536,41 @@ def apply_save(game: "Game", data: dict) -> None:
     # Re-create the sector (0,0) alias
     game.maps[("sector", 0, 0)] = game.maps["overland"]
 
-    # Restore entity archive (evicted sector entities)
-    game._entity_archive = {}
+    # Restore entity archive (evicted sector entities) — update in-place
+    game.sectors._entity_archive.clear()
     for arc_key_str, arc_data in data.get("entity_archive", {}).items():
-        game._entity_archive[_str_to_key(arc_key_str)] = arc_data
+        game.sectors._entity_archive[_str_to_key(arc_key_str)] = arc_data
 
     # Players
     p1_data, p2_data = data["players"][0], data["players"][1]
     game.player1 = _deserialize_player(p1_data, CONTROL_SCHEME_PLAYER1)
     game.player2 = _deserialize_player(p2_data, CONTROL_SCHEME_PLAYER2)
 
-    # Visited sectors
-    game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}
-    game.land_sectors = {tuple(s) for s in data.get("land_sectors", [[0, 0]])}
-    game.sky_revealed_sectors = {tuple(s) for s in data.get("sky_revealed_sectors", [])}
+    # Visited sectors — update in-place so SectorManager aliases stay valid
+    game.sectors.visited_sectors.clear()
+    game.sectors.visited_sectors.update(
+        {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}
+    )
+    game.sectors.land_sectors.clear()
+    game.sectors.land_sectors.update(
+        {tuple(s) for s in data.get("land_sectors", [[0, 0]])}
+    )
+    game.sectors.sky_revealed_sectors.clear()
+    game.sectors.sky_revealed_sectors.update(
+        {tuple(s) for s in data.get("sky_revealed_sectors", [])}
+    )
 
     # Portal quest state
     raw_quests = data.get("portal_quests", {})
     from src.data import PortalQuestType
 
-    game.portal_quests = {
+    restored_quests = {
         _str_to_key(k): {**v, "type": PortalQuestType(v["type"])}
         for k, v in raw_quests.items()
     }
+    # Update the PortalManager's dict in-place so the backward-compat alias stays valid
+    game.portals.portal_quests.clear()
+    game.portals.portal_quests.update(restored_quests)
 
     # Snap cameras to loaded player positions
     game.cam1_x = game.player1.x - game.viewport_w // 2

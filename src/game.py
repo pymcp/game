@@ -103,20 +103,16 @@ from src.entities.attack import Attack
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.save import save_game, load_game, apply_save
+from src.ui.death_challenge import DeathChallengeManager
+from src.ui.treasure import TreasureManager
+from src.ui.player_hud import PlayerHUD
 from src.ui.inventory import (
     InventoryState,
     InventoryTab,
-    NUM_TABS,
-    DOLL_SLOTS,
-    DOLL_SLOT_POSITIONS,
-    DOLL_VIRTUAL_SLOTS,
-    DOLL_VIRTUAL_SLOT_TABS,
-    TAB_LABELS,
-    TAB_SPRITE_IDS,
-    item_sprite_id,
-    get_tab_items,
-    auto_equip_slot,
 )
+from src.ui.inventory_renderer import InventoryRenderer
+from src.world.sector_manager import SectorManager
+from src.world.portal_manager import PortalManager
 
 
 class _EffectRouter:
@@ -233,7 +229,7 @@ class Game:
         self.cam2_y = self.player2.y - self.viewport_h // 2
 
         # Entity archive: evicted sector entities saved by map key for restoration.
-        self._entity_archive: dict[str | tuple, dict] = {}
+        # (owned by SectorManager, but referenced during __init__ for ordering)
 
         # Effect routers: self.floats.append(f) and self.particles.append(p) route
         # to the appropriate MapScene so all 60+ call-sites need not change.
@@ -242,60 +238,59 @@ class Game:
 
         self.running = True
 
-        # Death challenge state: {player_id: {"question": str, "answer": int, "input": str, "wrong": bool}}
-        self.death_challenges = {}
+        # Death challenge manager
+        self.death_challenge = DeathChallengeManager(self)
+        # Backward compat alias for save.py and other references
+        self.death_challenges = self.death_challenge.challenges
 
-        # Inventory overlay state (replaces old equip + craft menus)
-        self._inventory_open: dict[int, bool] = {1: False, 2: False}
-        self._inventory_ui: dict[int, InventoryState] = {
-            1: InventoryState(),
-            2: InventoryState(),
-        }
-        # Cache for scaled item/tab icons: (sprite_id, size) → Surface
-        self._inv_icon_cache: dict[tuple[str, int], pygame.Surface] = {}
+        # Inventory overlay (rendering + input + state)
+        self.inventory = InventoryRenderer(self)
 
-        # Portal quest state: map_key → quest dict
-        # {"type": PortalQuestType, "restored": bool, ...type-specific keys}
-        self.portal_quests: dict[str | tuple, dict] = {}
+        # Portal manager — owns portal quests, realm nav, warp animations
+        self.portals = PortalManager(self)
+        # Backward compat alias for save.py and rendering
+        self.portal_quests = self.portals.portal_quests
 
-        # Treasure reveal state: [{"player_id": int, "items": dict, "timer": float}]
-        self.treasure_reveals = []
+        # Treasure chest reveal UI
+        self.treasure = TreasureManager(self)
+        # Backward compat alias
+        self.treasure_reveals = self.treasure.reveals
 
-        # Deterministic seed for the ocean sector grid
-        self.world_seed = random.randint(0, 0xFFFF_FFFF)
+        # Player viewport HUD
+        self.player_hud = PlayerHUD(self)
+
+        # Sector manager — owns seed, visited/land/sky_revealed sets, entity archive,
+        # biome warn timers, sector wipe state, thumbnail cache
+        _seed = random.randint(0, 0xFFFF_FFFF)
+        self.sectors = SectorManager(self, _seed)
         # Alias sector (0,0) as the home overland map so sector logic can use one key type
         self.maps[("sector", 0, 0)] = self.maps["overland"]
-        # Sector-wipe animation state: {player_id: {"progress": float, "direction": str}}
-        self.sector_wipe = {}
-        # Portal-warp vortex animation state: {player_id: {"progress": float}}
-        self.portal_warp: dict[int, dict] = {}
-        # Biome entry damage: {player_id: {"biome": BiomeType, "frames": int} | None}
-        self._biome_warn_timers: dict[int, dict | None] = {1: None, 2: None}
+        # Backward compat aliases for save.py
+        self.world_seed = self.sectors.world_seed
+        self.visited_sectors = self.sectors.visited_sectors
+        self.land_sectors = self.sectors.land_sectors
+        self.sky_revealed_sectors = self.sectors.sky_revealed_sectors
+        self._entity_archive = self.sectors._entity_archive
+        self._sector_thumbnail_cache = self.sectors._sector_thumbnail_cache
+        self._biome_warn_timers = self.sectors._biome_warn_timers
+        self.sector_wipe = self.sectors.sector_wipe
+
+        # Backward compat alias for portal warp state
+        self.portal_warp = self.portals.portal_warp
         # Portal lava hurt cooldown: {player_id: int} (frames until next lava damage tick)
-        self._lava_hurt_timers: dict[int, int] = {1: 0, 2: 0}
-        # Biome entry damage: {player_id: {"biome": BiomeType, "frames": int} | None}
-        self._biome_warn_timers: dict[int, dict | None] = {1: None, 2: None}
-        # Portal lava hurt cooldown: {player_id: int} (counts down frames between damage ticks)
         self._lava_hurt_timers: dict[int, int] = {1: 0, 2: 0}
         # Mount state: which Creature each player is currently riding (None = none)
         self._player_mounts: dict[int, Creature | None] = {1: None, 2: None}
-        # Set of (sx, sy) sector coordinates the players have ever visited
-        self.visited_sectors: set = {(0, 0)}
-        # Set of (sx, sy) sector coordinates that contain land (grass tiles)
-        self.land_sectors: set = {(0, 0)}
 
         # Sky-ladder quest state
         self._sky_view: dict[int, bool] = {1: False, 2: False}
         # phase: "ascend" | "sky" | "descend" | None; progress: 0.0 → 1.0 (ticks)
         self._sky_anim: dict[int, dict | None] = {1: None, 2: None}
         self._sky_clouds: list[dict] = []
-        self._sector_thumbnail_cache: dict[tuple, pygame.Surface] = {}
         # Per-player sign text popup: {text: str, timer: float (seconds)}
         self._sign_display: dict[int, dict | None] = {1: None, 2: None}
         # Exit confirmation dialog
         self._confirm_quit: bool = False
-        # Set of (sx, sy) coords revealed by the sky view (visible on minimap even if unvisited)
-        self.sky_revealed_sectors: set = set()
 
         # Load saved state if a save file exists
         save_data = load_game()
@@ -304,252 +299,12 @@ class Game:
 
         # Place/verify portal ruins on the overland map (skip if loaded from save)
         if "overland" not in self.portal_quests:
-            self._assign_portal_quest("overland")
-            self._place_portal_on_map(self.maps["overland"], "overland")
+            self.portals.assign_portal_quest("overland")
+            self.portals.place_portal_on_map(self.maps["overland"], "overland")
 
         # Place broken ladder + sign on the overland map (new game only)
         if save_data is None:
-            self._place_sky_ladder_quest(self.maps["overland"])
-
-    # -- death challenge ---------------------------------------------------
-
-    def _start_death_challenge(self, player: Player) -> None:
-        """Pause a dead player and present a math problem they must solve to respawn."""
-        player.is_dead = True
-        player.hurt_timer = 0
-        a = random.randint(1, 20)
-        b = random.randint(1, 20)
-        if random.choice([True, False]):
-            answer = a + b
-            question = f"{a} + {b} = ?"
-        else:
-            if a < b:
-                a, b = b, a
-            answer = a - b
-            question = f"{a} - {b} = ?"
-        self.death_challenges[player.player_id] = {
-            "question": question,
-            "answer": answer,
-            "input": "",
-            "wrong": False,
-        }
-
-    def _submit_death_challenge(self, player: Player) -> None:
-        """Check the typed answer; respawn player on correct answer."""
-        challenge = self.death_challenges.get(player.player_id)
-        if challenge is None:
-            return
-        try:
-            typed = int(challenge["input"])
-        except ValueError:
-            challenge["wrong"] = True
-            challenge["input"] = ""
-            return
-        if typed == challenge["answer"]:
-            player.is_dead = False
-            player.hp = player.max_hp
-            del self.death_challenges[player.player_id]
-            self._respawn_player(player)
-            self.floats.append(
-                FloatingText(
-                    player.x,
-                    player.y - 30,
-                    "Respawned!",
-                    (100, 255, 100),
-                    player.current_map,
-                )
-            )
-        else:
-            challenge["wrong"] = True
-            challenge["input"] = ""
-
-    def _respawn_player(self, player: Player) -> None:
-        """Teleport a respawning player to a safe grass tile near the world centre."""
-        # If this player has exited a portal before, respawn there instead
-        if (
-            player.last_portal_exit_map is not None
-            and player.last_portal_exit_x is not None
-            and player.last_portal_exit_map in self.maps
-        ):
-            player.current_map = player.last_portal_exit_map
-            player.x = player.last_portal_exit_x
-            player.y = player.last_portal_exit_y
-            self._snap_camera_to_player(player)
-            return
-        player.current_map = "overland"
-        overland = self.maps["overland"]
-        for search_dist in range(1, 30):
-            for dc in range(-search_dist, search_dist + 1):
-                for dr in range(-search_dist, search_dist + 1):
-                    if abs(dc) != search_dist and abs(dr) != search_dist:
-                        continue
-                    col = WORLD_COLS // 2 + dc
-                    row = WORLD_ROWS // 2 + dr
-                    if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
-                        if overland.get_tile(row, col) == GRASS:
-                            player.x = col * TILE + TILE // 2
-                            player.y = row * TILE + TILE // 2
-                            return
-        player.x = WORLD_COLS // 2 * TILE + TILE // 2
-        player.y = WORLD_ROWS // 2 * TILE + TILE // 2
-
-    # -- portal quests -----------------------------------------------------
-
-    def _assign_portal_quest(self, map_key: str | tuple) -> dict:
-        """Deterministically assign a portal quest for the given map key.
-
-        Uses a seeded RNG derived from (world_seed, map_key) so island quests
-        are consistent across sessions.  Stores the result in portal_quests and
-        returns the quest dict.
-        """
-        seed = hash((self.world_seed, str(map_key))) & 0xFFFF_FFFF
-        rng = random.Random(seed)
-        quest_type = rng.choice(list(PortalQuestType))
-
-        if quest_type == PortalQuestType.RITUAL:
-            quest: dict = {
-                "type": PortalQuestType.RITUAL,
-                "restored": False,
-                "stones_total": 4,
-                "stones_activated": 0,
-            }
-        elif quest_type == PortalQuestType.GATHER:
-            # Scale cost by island distance from (0, 0)
-            if (
-                isinstance(map_key, tuple)
-                and len(map_key) == 3
-                and map_key[0] == "sector"
-            ):
-                dist = abs(map_key[1]) + abs(map_key[2])
-            else:
-                dist = 0
-            gold_needed = max(5, 5 + dist)
-            diamond_needed = max(2, dist)
-            quest = {
-                "type": PortalQuestType.GATHER,
-                "restored": False,
-                "required": {"Gold": gold_needed, "Diamond": diamond_needed},
-            }
-        else:  # combat
-            quest = {
-                "type": PortalQuestType.COMBAT,
-                "restored": False,
-                "guardian_defeated": False,
-                "guardian_spawned": False,
-            }
-
-        self.portal_quests[map_key] = quest
-        return quest
-
-    def _place_portal_on_map(self, game_map: "GameMap", map_key: str | tuple) -> None:
-        """Place portal tiles on a newly generated island map.
-
-        Finds a GRASS tile sufficiently far from the map centre, places
-        PORTAL_RUINS (or PORTAL_ACTIVE if the quest is already restored),
-        and sets up ritual stones or combat guardian flags.
-        """
-        quest = self.portal_quests.get(map_key)
-        if quest is None:
-            return
-
-        seed = hash((self.world_seed, str(map_key), "place")) & 0xFFFF_FFFF
-        rng = random.Random(seed)
-
-        rows, cols = game_map.rows, game_map.cols
-        cx, cy = cols // 2, rows // 2
-        min_dist = 12
-
-        # Collect candidate GRASS tiles far enough from centre
-        candidates = [
-            (c, r)
-            for r in range(rows)
-            for c in range(cols)
-            if game_map.get_tile(r, c) == GRASS
-            and abs(c - cx) + abs(r - cy) >= min_dist
-        ]
-        if not candidates:
-            # Fallback: any grass tile
-            candidates = [
-                (c, r)
-                for r in range(rows)
-                for c in range(cols)
-                if game_map.get_tile(r, c) == GRASS
-            ]
-        if not candidates:
-            return
-
-        rng.shuffle(candidates)
-        portal_col, portal_row = candidates[0]
-
-        tile_id = PORTAL_ACTIVE if quest["restored"] else PORTAL_RUINS
-        game_map.set_tile(portal_row, portal_col, tile_id)
-        game_map.portal_col = portal_col
-        game_map.portal_row = portal_row
-
-        # Ritual: scatter ANCIENT_STONE tiles around the island
-        if quest["type"] == PortalQuestType.RITUAL:
-            stone_candidates = [
-                (c, r)
-                for r in range(rows)
-                for c in range(cols)
-                if game_map.get_tile(r, c) == GRASS
-                and (c, r) != (portal_col, portal_row)
-                and abs(c - cx) + abs(r - cy) >= 8
-            ]
-            rng.shuffle(stone_candidates)
-            positions: list[tuple[int, int]] = []
-            for sc, sr in stone_candidates:
-                # Ensure stones are spread out (at least 8 tiles apart from each other)
-                if all(abs(sc - ec) + abs(sr - er) >= 8 for ec, er in positions):
-                    game_map.set_tile(sr, sc, ANCIENT_STONE)
-                    positions.append((sc, sr))
-                    if len(positions) >= quest["stones_total"]:
-                        break
-            game_map.ritual_stone_positions = positions
-
-        # Combat: flag that the sentinel has not yet been spawned
-        if quest["type"] == PortalQuestType.COMBAT:
-            game_map.portal_guardian_spawned = quest.get("guardian_spawned", False)
-
-    def _place_sky_ladder_quest(self, game_map: "MapScene") -> None:
-        """Place the broken ladder and sign on the overland map for a new game.
-
-        Scans outward from the map centre for a GRASS tile that has another
-        GRASS tile immediately to its left, and places SIGN there and
-        BROKEN_LADDER one tile to the right.
-        """
-        rows, cols = game_map.rows, game_map.cols
-        cx, cy = cols // 2, rows // 2
-
-        placed = False
-        for dist in range(4, min(cx, cy)):
-            for r in range(max(1, cy - dist), min(rows - 1, cy + dist + 1)):
-                for c in range(max(2, cx - dist), min(cols - 1, cx + dist + 1)):
-                    if (
-                        game_map.get_tile(r, c) == GRASS
-                        and game_map.get_tile(r, c - 1) == GRASS
-                    ):
-                        sign_col, sign_row = c - 1, r
-                        ladder_col, ladder_row = c, r
-                        game_map.set_tile(sign_row, sign_col, SIGN)
-                        game_map.set_tile(ladder_row, ladder_col, BROKEN_LADDER)
-                        raw = object.__getattribute__(game_map, "map")
-                        raw.sign_texts[(sign_col, sign_row)] = (
-                            "This old ladder once reached the sky.\n"
-                            "Repair it with:\n"
-                            "  \u2022 30 Diamond\n"
-                            "  \u2022 30 Stone\n"
-                            "  \u2022 30 Wood"
-                        )
-                        raw.ladder_repaired = False
-                        raw.ladder_col = ladder_col
-                        raw.ladder_row = ladder_row
-                        placed = True
-                        break
-                if placed:
-                    break
-            if placed:
-                break
+            self.portals.place_sky_ladder_quest(self.maps["overland"])
 
     # ------------------------------------------------------------------
     # Sky-view helpers
@@ -567,7 +322,7 @@ class Game:
         pid = player.player_id
         self._sky_view[pid] = True
         self._sky_anim[pid] = {"phase": "ascend", "progress": 0.0}
-        self._reveal_sky_sectors(player)
+        self.sectors.reveal_sky_sectors(player)
         if not self._sky_clouds:
             self._init_sky_clouds()
 
@@ -583,43 +338,6 @@ class Game:
             self._sky_view[pid] = False
             self._sky_anim[pid] = None
 
-    def _reveal_sky_sectors(self, player: Player) -> None:
-        """Reveal a 5-sector radius around the player's current sector.
-
-        Land sectors within that radius are generated immediately so
-        that thumbnails can be built.  Ocean sectors are revealed in
-        the minimap but not materialised (they need no entities).
-        """
-        sector = self._get_player_sector(player)
-        if sector is None:
-            return
-        cx, cy = sector
-        RADIUS = 5
-        for dx in range(-RADIUS, RADIUS + 1):
-            for dy in range(-RADIUS, RADIUS + 1):
-                sx, sy = cx + dx, cy + dy
-                self.sky_revealed_sectors.add((sx, sy))
-                key = ("sector", sx, sy)
-                if key not in self.maps:
-                    # Generate the sector map (needed for thumbnail + entity spawning)
-                    world_data, has_island, biome = generate_ocean_sector(
-                        sx, sy, self.world_seed
-                    )
-                    sector_map = GameMap(world_data, tileset="overland")
-                    sector_map.biome = biome
-                    sector_map.enemies = spawn_enemies(world_data, biome)
-                    scene = MapScene(sector_map)
-                    self.maps[key] = scene
-                    if has_island:
-                        self.land_sectors.add((sx, sy))
-                        if key not in self.portal_quests:
-                            self._assign_portal_quest(key)
-                            self._place_portal_on_map(sector_map, key)
-                        if biome == BiomeType.STANDARD:
-                            from src.world.environments import OverlandEnvironment
-
-                            env = OverlandEnvironment(map_key=key)
-                            scene.creatures.extend(env.spawn_creatures(sector_map))
 
     def _init_sky_clouds(self) -> None:
         """Populate the cloud layer with 8 randomly positioned cloud instances."""
@@ -640,56 +358,6 @@ class Game:
                     "frame_timer": random.uniform(0.0, 2000.0),
                 }
             )
-
-    def _generate_sector_thumbnail(self, sx: int, sy: int) -> pygame.Surface | None:
-        """Return (or build) an 80×60 thumbnail Surface for sector (sx, sy).
-
-        Each pixel represents one tile, coloured by TILE_INFO.
-        Returns None if the sector map is not yet loaded.
-        """
-        key = ("sector", sx, sy)
-        if key in self._sector_thumbnail_cache:
-            return self._sector_thumbnail_cache[key]
-        scene = self.maps.get(key)
-        if scene is None:
-            return None
-        thumb = pygame.Surface((scene.cols, scene.rows))
-        for r in range(scene.rows):
-            for c in range(scene.cols):
-                tid = scene.get_tile(r, c)
-                color = TILE_INFO.get(tid, {}).get("color", (50, 50, 50))
-                thumb.set_at((c, r), color)
-        self._sector_thumbnail_cache[key] = thumb
-        return thumb
-
-    def _check_portal_restored(self, map_key: str | tuple) -> bool:
-        """Evaluate whether a portal quest is complete and restore if so.
-
-        Returns True if the portal is (now) restored.
-        """
-        quest = self.portal_quests.get(map_key)
-        if quest is None:
-            return False
-        if quest["restored"]:
-            return True
-
-        complete = False
-        if quest["type"] == PortalQuestType.RITUAL:
-            complete = quest["stones_activated"] >= quest["stones_total"]
-        elif quest["type"] == PortalQuestType.GATHER:
-            complete = True  # gather completion is checked at delivery time
-        elif quest["type"] == PortalQuestType.COMBAT:
-            complete = quest.get("guardian_defeated", False)
-
-        if complete:
-            quest["restored"] = True
-            game_map = self.maps.get(map_key)
-            if game_map is not None and hasattr(game_map, "portal_col"):
-                game_map.set_tile(
-                    game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE
-                )
-            return True
-        return False
 
     # -- map / scene helpers -----------------------------------------------
 
@@ -762,60 +430,15 @@ class Game:
 
     def _handle_keydown(self, key: int) -> None:
         """Handle key press (for both players based on key)."""
-        # --- Death challenge input handling (takes priority over all other keys) ---
-        active_player = None
-        if self.player1.is_dead and self.player1.player_id in self.death_challenges:
-            active_player = self.player1
-        elif self.player2.is_dead and self.player2.player_id in self.death_challenges:
-            active_player = self.player2
-
-        if active_player is not None:
-            challenge = self.death_challenges[active_player.player_id]
-            digit_map = {
-                pygame.K_0: "0",
-                pygame.K_1: "1",
-                pygame.K_2: "2",
-                pygame.K_3: "3",
-                pygame.K_4: "4",
-                pygame.K_5: "5",
-                pygame.K_6: "6",
-                pygame.K_7: "7",
-                pygame.K_8: "8",
-                pygame.K_9: "9",
-                pygame.K_KP0: "0",
-                pygame.K_KP1: "1",
-                pygame.K_KP2: "2",
-                pygame.K_KP3: "3",
-                pygame.K_KP4: "4",
-                pygame.K_KP5: "5",
-                pygame.K_KP6: "6",
-                pygame.K_KP7: "7",
-                pygame.K_KP8: "8",
-                pygame.K_KP9: "9",
-            }
-            if key in digit_map:
-                challenge["input"] += digit_map[key]
-                challenge["wrong"] = False
-                return
-            elif key in (pygame.K_MINUS, pygame.K_KP_MINUS) and not challenge["input"]:
-                challenge["input"] = "-"
-                challenge["wrong"] = False
-                return
-            elif key == pygame.K_BACKSPACE:
-                challenge["input"] = challenge["input"][:-1]
-                challenge["wrong"] = False
-                return
-            elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                self._submit_death_challenge(active_player)
-                return
+        # --- Death challenge input handling (takes priority over all other keys) ---\n        active_player = None\n        if self.player1.is_dead and self.death_challenge.is_active(self.player1.player_id):\n            active_player = self.player1\n        elif self.player2.is_dead and self.death_challenge.is_active(self.player2.player_id):\n            active_player = self.player2\n\n        if active_player is not None:\n            if self.death_challenge.handle_keydown(key, active_player):\n                return
 
         # --- Inventory overlay input (takes priority over normal keys while open) ---
         inv_consumed = False
         for player in (self.player1, self.player2):
             pid = player.player_id
-            if not self._inventory_open[pid]:
+            if not self.inventory.is_open(pid):
                 continue
-            self._handle_inventory_input(key, player)
+            self.inventory.handle_input(key, player)
             inv_consumed = True
         if inv_consumed:
             return
@@ -864,10 +487,7 @@ class Game:
         elif not self.player1.is_dead and key == self.player1.controls.build_pier_key:
             self._try_build_pier(self.player1)
         elif not self.player1.is_dead and key == self.player1.controls.equip_key:
-            pid = self.player1.player_id
-            self._inventory_open[pid] = not self._inventory_open[pid]
-            if self._inventory_open[pid]:
-                self._inventory_ui[pid] = InventoryState()
+            self.inventory.toggle(self.player1.player_id)
         elif not self.player1.is_dead and key == self.player1.controls.cycle_weapon_key:
             self.player1.cycle_weapon()
         # Player 2 controls (blocked while dead)
@@ -894,10 +514,7 @@ class Game:
         elif not self.player2.is_dead and key == self.player2.controls.build_pier_key:
             self._try_build_pier(self.player2)
         elif not self.player2.is_dead and key == self.player2.controls.equip_key:
-            pid = self.player2.player_id
-            self._inventory_open[pid] = not self._inventory_open[pid]
-            if self._inventory_open[pid]:
-                self._inventory_ui[pid] = InventoryState()
+            self.inventory.toggle(self.player2.player_id)
         elif not self.player2.is_dead and key == self.player2.controls.cycle_weapon_key:
             self.player2.cycle_weapon()
 
@@ -1075,11 +692,9 @@ class Game:
             # 0.5. Craft at worktable — standing on or adjacent to WORKTABLE
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 if current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE:
-                    pid = player.player_id
-                    self._inventory_open[pid] = True
-                    ui = InventoryState()
-                    ui.tab = InventoryTab.RECIPES
-                    self._inventory_ui[pid] = ui
+                    self.inventory.open_to_tab(
+                        player.player_id, InventoryTab.RECIPES
+                    )
                     return
 
         # 1. Cave entry — standing on a cave entrance tile on a surface map
@@ -1262,7 +877,7 @@ class Game:
                 current_map_obj.set_tile_hp(rr, cc, 0)
                 tx = cc * TILE + TILE // 2
                 ty = rr * TILE + TILE // 2
-                self._open_treasure_chest(player, tx, ty)
+                self.treasure.open_chest(player, tx, ty)
                 return
 
         # 4.4 Adjacent SIGN — read its text
@@ -1333,7 +948,7 @@ class Game:
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == ANCIENT_STONE:
-                    self._try_activate_ritual_stone(player, current_map_obj, cc, rr)
+                    self.portals.try_activate_ritual_stone(player, current_map_obj, cc, rr)
                     return
 
         # 4.6. Adjacent PORTAL_RUINS — show quest status or gather delivery
@@ -1341,7 +956,7 @@ class Game:
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == PORTAL_RUINS:
-                    self._try_interact_portal_ruins(player, player.current_map)
+                    self.portals.try_interact_portal_ruins(player, player.current_map)
                     return
 
         # 4.7. Adjacent PORTAL_ACTIVE on island — enter portal realm
@@ -1349,7 +964,7 @@ class Game:
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
-                    self._enter_portal_realm(player)
+                    self.portals.enter_portal_realm(player)
                     return
 
         # 4.8. PORTAL_ACTIVE tile inside portal realm — exit to linked island
@@ -1357,7 +972,7 @@ class Game:
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
-                    self._exit_portal_realm(player, cc, rr)
+                    self.portals.exit_portal_realm(player, cc, rr)
                     return
 
         # 5. On a PIER tile → try to build a boat in the next water cell
@@ -1457,313 +1072,6 @@ class Game:
                 )
             )
 
-    def _try_activate_ritual_stone(
-        self,
-        player: Player,
-        game_map: "GameMap",
-        stone_col: int,
-        stone_row: int,
-    ) -> None:
-        """Handle a player interacting with an ANCIENT_STONE ritual tile."""
-        map_key = player.current_map
-        quest = self.portal_quests.get(map_key)
-        if (
-            quest is None
-            or quest["type"] != PortalQuestType.RITUAL
-            or quest["restored"]
-        ):
-            return
-
-        positions: list[tuple[int, int]] = getattr(
-            game_map, "ritual_stone_positions", []
-        )
-        if not positions:
-            return
-
-        next_idx = quest["stones_activated"]
-        if next_idx >= len(positions):
-            return
-
-        expected_col, expected_row = positions[next_idx]
-        tx = stone_col * TILE + TILE // 2
-        ty = stone_row * TILE + TILE // 2
-
-        if (stone_col, stone_row) == (expected_col, expected_row):
-            quest["stones_activated"] += 1
-            remaining = quest["stones_total"] - quest["stones_activated"]
-            self.floats.append(
-                FloatingText(
-                    tx, ty - 30, "Stone awakened!", (200, 180, 50), player.current_map
-                )
-            )
-            for _ in range(10):
-                self.particles.append(
-                    Particle(tx, ty, (200, 180, 50), player.current_map)
-                )
-            if remaining == 0:
-                if self._check_portal_restored(map_key):
-                    self._announce_portal_restored(player)
-        else:
-            self.floats.append(
-                FloatingText(
-                    tx,
-                    ty - 30,
-                    "Not the next stone!",
-                    (255, 100, 100),
-                    player.current_map,
-                )
-            )
-
-    def _try_interact_portal_ruins(self, player: Player, map_key: str | tuple) -> None:
-        """Handle a player interacting with a PORTAL_RUINS tile."""
-        quest = self.portal_quests.get(map_key)
-        tx = int(player.x)
-        ty = int(player.y) - 36
-
-        if quest is None:
-            self.floats.append(
-                FloatingText(
-                    tx, ty, "Ancient portal...", (180, 160, 200), player.current_map
-                )
-            )
-            return
-
-        if quest["restored"]:
-            self.floats.append(
-                FloatingText(
-                    tx, ty, "Portal is active!", (160, 60, 220), player.current_map
-                )
-            )
-            return
-
-        if quest["type"] == PortalQuestType.RITUAL:
-            done = quest["stones_activated"]
-            total = quest["stones_total"]
-            self.floats.append(
-                FloatingText(
-                    tx,
-                    ty,
-                    f"Ritual: {done}/{total} stones",
-                    (200, 180, 50),
-                    player.current_map,
-                )
-            )
-
-        elif quest["type"] == PortalQuestType.GATHER:
-            required = quest["required"]
-            # Try to spend items if the player has enough
-            can_afford = all(
-                player.inventory.get(k, 0) >= v for k, v in required.items()
-            )
-            if can_afford:
-                from src.world import try_spend as _try_spend
-
-                if _try_spend(player.inventory, required):
-                    if self._check_portal_restored(map_key):
-                        self._announce_portal_restored(player)
-            else:
-                parts = ", ".join(f"{v} {k}" for k, v in required.items())
-                self.floats.append(
-                    FloatingText(
-                        tx, ty, f"Need: {parts}", (255, 160, 80), player.current_map
-                    )
-                )
-
-        elif quest["type"] == PortalQuestType.COMBAT:
-            if quest.get("guardian_defeated"):
-                if self._check_portal_restored(map_key):
-                    self._announce_portal_restored(player)
-            else:
-                self.floats.append(
-                    FloatingText(
-                        tx,
-                        ty,
-                        "A guardian blocks the portal!",
-                        (200, 80, 80),
-                        player.current_map,
-                    )
-                )
-
-    def _announce_portal_restored(self, player: Player) -> None:
-        """Show a restoration announcement floating text."""
-        self.floats.append(
-            FloatingText(
-                int(player.x),
-                int(player.y) - 50,
-                "Portal restored!",
-                (160, 60, 220),
-                player.current_map,
-            )
-        )
-        for _ in range(20):
-            self.particles.append(
-                Particle(
-                    int(player.x), int(player.y), (160, 60, 220), player.current_map
-                )
-            )
-        # Register this island's portal in the realm (no-op if realm not yet generated)
-        self._add_realm_portal(player.current_map)
-
-    def _get_sector_coords(self, map_key: str | tuple) -> tuple[int, int] | None:
-        """Return (sx, sy) sector coordinates for a surface map key, or None."""
-        if map_key == "overland":
-            return (0, 0)
-        if isinstance(map_key, tuple) and len(map_key) == 3 and map_key[0] == "sector":
-            return (map_key[1], map_key[2])
-        return None
-
-    def _expand_realm(
-        self,
-        realm_map: "GameMap",
-        left: int,
-        right: int,
-        top: int,
-        bottom: int,
-    ) -> None:
-        """Grow the realm's world array by the given number of slots in each direction.
-
-        New areas are filled with PORTAL_WALL.  All positional attrs on realm_map
-        (spawn_col/row, portal_exits coords, origin_sx/sy) are shifted accordingly.
-        """
-        slot_size = realm_map.slot_size
-        add_left = left * slot_size
-        add_right = right * slot_size  # noqa: F841
-        add_top = top * slot_size
-        add_bottom = bottom * slot_size  # noqa: F841
-        old_rows = realm_map.rows
-        old_cols = realm_map.cols
-        new_rows = old_rows + add_top + bottom * slot_size
-        new_cols = old_cols + add_left + right * slot_size
-
-        world = [[PORTAL_WALL] * new_cols for _ in range(new_rows)]
-        tile_hp = [[0] * new_cols for _ in range(new_rows)]
-        for r in range(old_rows):
-            for c in range(old_cols):
-                world[r + add_top][c + add_left] = realm_map.world[r][c]
-                tile_hp[r + add_top][c + add_left] = realm_map.tile_hp[r][c]
-
-        realm_map.world = world
-        realm_map.tile_hp = tile_hp
-        realm_map.rows = new_rows
-        realm_map.cols = new_cols
-        realm_map.origin_sx -= left
-        realm_map.origin_sy -= top
-        realm_map.spawn_col += add_left
-        realm_map.spawn_row += add_top
-        # Track the number of slots (cols/rows // slot_size gives wrong answer with padding)
-        if hasattr(realm_map, "slot_cols"):
-            realm_map.slot_cols += left + right
-        if hasattr(realm_map, "slot_rows"):
-            realm_map.slot_rows += top + bottom
-        # Shift all existing portal exit positions to match the new coordinate space
-        new_exits: dict = {}
-        for (col, row), mk in realm_map.portal_exits.items():
-            new_exits[(col + add_left, row + add_top)] = mk
-        realm_map.portal_exits = new_exits
-
-    def _ensure_realm_slot(self, sx: int, sy: int) -> tuple[int, int]:
-        """Ensure the realm has a carved chamber for sector (sx, sy).
-
-        Expands the world array in-place if the sector falls outside the current
-        bounds, then carves a 12×12 chamber and connects it via L-corridors.
-        Returns (portal_col, portal_row) — the centre of the chamber.
-        """
-        from src.world.environments.portal_realm import carve_chamber
-        from src.world.environments.utils import connect_regions
-        from src.config import PORTAL_FLOOR, TREASURE_CHEST, PORTAL_ACTIVE
-
-        realm_map = self.maps["portal_realm"]
-        slot_size = realm_map.slot_size
-        slot_pad = getattr(realm_map, "slot_padding", 0)
-        origin_sx = realm_map.origin_sx
-        origin_sy = realm_map.origin_sy
-        # Number of slots in each dimension (may be tracked explicitly if padding present)
-        if hasattr(realm_map, "slot_cols"):
-            cur_s_cols = realm_map.slot_cols
-            cur_s_rows = realm_map.slot_rows
-        else:
-            cur_s_cols = realm_map.cols // slot_size
-            cur_s_rows = realm_map.rows // slot_size
-
-        expand_left = max(0, origin_sx - sx)
-        expand_right = max(0, sx - (origin_sx + cur_s_cols - 1))
-        expand_top = max(0, origin_sy - sy)
-        expand_bottom = max(0, sy - (origin_sy + cur_s_rows - 1))
-
-        if expand_left or expand_right or expand_top or expand_bottom:
-            self._expand_realm(
-                realm_map, expand_left, expand_right, expand_top, expand_bottom
-            )
-            origin_sx = realm_map.origin_sx
-            origin_sy = realm_map.origin_sy
-
-        ix = sx - origin_sx
-        iy = sy - origin_sy
-        slot_col = slot_pad + ix * slot_size
-        slot_row = slot_pad + iy * slot_size
-
-        carve_chamber(realm_map.world, slot_col, slot_row)
-        connect_regions(
-            realm_map.world,
-            realm_map.rows,
-            realm_map.cols,
-            realm_map.spawn_col,
-            realm_map.spawn_row,
-            {PORTAL_FLOOR, TREASURE_CHEST, PORTAL_ACTIVE},
-            PORTAL_FLOOR,
-            getattr(realm_map, "slot_padding", 2),
-        )
-
-        portal_col = slot_col + slot_size // 2
-        portal_row = slot_row + slot_size // 2
-        return portal_col, portal_row
-
-    def _add_realm_chest_near(
-        self, realm_map: "GameMap", portal_col: int, portal_row: int
-    ) -> None:
-        """Place a TREASURE_CHEST on the nearest free PORTAL_FLOOR tile to the portal."""
-        for dc, dr in [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (2, 0),
-            (-2, 0),
-            (0, 2),
-            (0, -2),
-        ]:
-            c, r = portal_col + dc, portal_row + dr
-            if realm_map.get_tile(r, c) == PORTAL_FLOOR:
-                realm_map.world[r][c] = TREASURE_CHEST
-                return
-
-    def _add_realm_portal(self, dest_map_key: str | tuple) -> None:
-        """Place a PORTAL_ACTIVE tile in the portal realm linking to dest_map_key.
-
-        No-op if the realm has not been generated yet, if dest_map_key is not a
-        surface island, or if it is already registered.
-        """
-        if "portal_realm" not in self.maps:
-            return
-        coords = self._get_sector_coords(dest_map_key)
-        if coords is None:
-            return
-
-        realm_map = self.maps["portal_realm"]
-        if not hasattr(realm_map, "portal_exits"):
-            realm_map.portal_exits = {}
-        if not hasattr(realm_map, "slot_size"):
-            return  # old-format realm from save — will be regenerated on entry
-        if dest_map_key in realm_map.portal_exits.values():
-            return  # already registered
-
-        sx, sy = coords
-        portal_col, portal_row = self._ensure_realm_slot(sx, sy)
-        realm_map.world[portal_row][portal_col] = PORTAL_ACTIVE
-        realm_map.portal_exits[(portal_col, portal_row)] = dest_map_key
-
-        # Spawn a chest in the same slot, offset from the portal tile
-        self._add_realm_chest_near(realm_map, portal_col, portal_row)
 
     # ------------------------------------------------------------------
     # Housing environment transitions
@@ -1951,132 +1259,6 @@ class Game:
             )
         )
 
-    def _enter_portal_realm(self, player: Player) -> None:
-        """Teleport the player into the portal realm, spawning at their origin portal."""
-        origin_key = player.current_map
-
-        # Regenerate if the saved realm lacks the slot-grid attrs (old save compat)
-        if "portal_realm" in self.maps:
-            rm = self.maps["portal_realm"]
-            if not hasattr(rm, "slot_size") or not hasattr(rm, "origin_sx"):
-                del self.maps["portal_realm"]
-
-        if "portal_realm" not in self.maps:
-            env = PortalRealmEnvironment()
-            self.maps["portal_realm"] = MapScene(env.generate())
-            # Backfill portals for every already-restored island
-            for mk, quest in self.portal_quests.items():
-                if quest.get("restored"):
-                    self._add_realm_portal(mk)
-
-        # Ensure origin island has a portal carved (also handles F9 debug first entry)
-        self._add_realm_portal(origin_key)
-
-        realm_map = self.maps["portal_realm"]
-        player.portal_origin_map = origin_key
-        player.current_map = "portal_realm"
-
-        # Spawn at the origin island's portal tile in the realm
-        origin_portal = next(
-            (
-                (c, r)
-                for (c, r), mk in realm_map.portal_exits.items()
-                if mk == origin_key
-            ),
-            None,
-        )
-        if origin_portal is not None:
-            player.x = origin_portal[0] * TILE + TILE // 2
-            player.y = origin_portal[1] * TILE + TILE // 2
-        else:
-            player.x = realm_map.spawn_col * TILE + TILE // 2
-            player.y = realm_map.spawn_row * TILE + TILE // 2
-
-        self._snap_camera_to_player(player)
-        self.portal_warp[player.player_id] = {"progress": 0.0}
-        self.floats.append(
-            FloatingText(
-                int(player.x),
-                int(player.y) - 30,
-                "Entered portal realm!",
-                (160, 60, 220),
-                player.current_map,
-            )
-        )
-
-    def _exit_portal_realm(
-        self,
-        player: Player,
-        portal_col: int | None = None,
-        portal_row: int | None = None,
-    ) -> None:
-        """Return the player from the portal realm.
-
-        If portal_col/row are given, look up the destination in the realm's
-        portal_exits dict so each portal leads to a specific island.  Falls
-        back to portal_origin_map when the tile is unknown.
-        """
-        realm_map = self.maps.get("portal_realm")
-        dest_key: str | tuple | None = None
-        if (
-            realm_map is not None
-            and portal_col is not None
-            and hasattr(realm_map, "portal_exits")
-        ):
-            dest_key = realm_map.portal_exits.get((portal_col, portal_row))
-
-        if dest_key is None:
-            dest_key = player.portal_origin_map or "overland"
-
-        dest_map = self.maps.get(dest_key)
-        if dest_map is None:
-            dest_key = "overland"
-            dest_map = self.maps["overland"]
-
-        # Place near the portal on the destination island
-        p_col = getattr(dest_map, "portal_col", dest_map.cols // 2)
-        p_row = getattr(dest_map, "portal_row", dest_map.rows // 2)
-        placed = False
-        for dr, dc in [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (2, 0),
-            (-2, 0),
-            (0, 2),
-            (0, -2),
-        ]:
-            adj_c = p_col + dc
-            adj_r = p_row + dr
-            if 0 <= adj_c < dest_map.cols and 0 <= adj_r < dest_map.rows:
-                if dest_map.get_tile(adj_r, adj_c) == GRASS:
-                    player.x = adj_c * TILE + TILE // 2
-                    player.y = adj_r * TILE + TILE // 2
-                    placed = True
-                    break
-        if not placed:
-            player.x = p_col * TILE + TILE // 2
-            player.y = p_row * TILE + TILE // 2
-
-        player.current_map = dest_key
-        player.portal_origin_map = None
-        # Record this exit as the respawn anchor
-        player.last_portal_exit_map = dest_key
-        player.last_portal_exit_x = player.x
-        player.last_portal_exit_y = player.y
-        self._snap_camera_to_player(player)
-        self.portal_warp[player.player_id] = {"progress": 0.0}
-        self.floats.append(
-            FloatingText(
-                int(player.x),
-                int(player.y) - 30,
-                "Left portal realm!",
-                (180, 160, 220),
-                player.current_map,
-            )
-        )
-
     def _debug_spawn_houses(self, player: Player) -> None:
         """DEBUG (F8): Spawn one cluster for each housing tier near player 1.
 
@@ -2254,8 +1436,8 @@ class Game:
             )
             return
 
-        self._debug_force_portal_on_map(map_key, game_map)
-        self._add_realm_portal(map_key)
+        self.portals.debug_force_portal_on_map(map_key, game_map)
+        self.portals.add_realm_portal(map_key)
 
         # Generate a nearby island and restore its portal too so the realm
         # has two portals and the player can traverse between them.
@@ -2276,68 +1458,6 @@ class Game:
                 player.current_map,
             )
         )
-
-    def _debug_force_portal_on_map(
-        self, map_key: str | tuple, game_map: "GameMap"
-    ) -> None:
-        """Force-complete the portal quest for map_key and flip the tile."""
-        if map_key not in self.portal_quests:
-            self._assign_portal_quest(map_key)
-            self._place_portal_on_map(game_map, map_key)
-
-        quest = self.portal_quests[map_key]
-        if quest["type"] == PortalQuestType.RITUAL:
-            quest["stones_activated"] = quest["stones_total"]
-        elif quest["type"] == PortalQuestType.COMBAT:
-            quest["guardian_defeated"] = True
-            quest["guardian_spawned"] = True
-
-        quest["restored"] = False
-        if quest["type"] == PortalQuestType.GATHER:
-            quest["restored"] = True
-            if hasattr(game_map, "portal_col"):
-                game_map.set_tile(
-                    game_map.portal_row, game_map.portal_col, PORTAL_ACTIVE
-                )
-        else:
-            self._check_portal_restored(map_key)
-
-    def _debug_ensure_nearby_island(self, origin_sx: int, origin_sy: int) -> None:
-        """Expand outward from origin until TWO sectors with islands are found,
-        generating them if needed, and force-restoring their portals."""
-        found = 0
-        for dist in range(1, 16):
-            for dx in range(-dist, dist + 1):
-                for dy in range(-dist, dist + 1):
-                    if abs(dx) != dist and abs(dy) != dist:
-                        continue
-                    sx, sy = origin_sx + dx, origin_sy + dy
-                    sector_map = self._get_or_generate_sector(sx, sy)
-                    # Mark all intermediate sectors as visited so the minimap
-                    # shows them rather than leaving gaps in the fog of war
-                    self.visited_sectors.add((sx, sy))
-                    if (sx, sy) not in self.land_sectors:
-                        continue
-                    sector_key = (
-                        ("sector", sx, sy) if (sx, sy) != (0, 0) else "overland"
-                    )
-                    self._debug_force_portal_on_map(sector_key, sector_map)
-                    self._add_realm_portal(sector_key)
-                    found += 1
-                    if found >= 2:
-                        return
-
-    def _on_sentinel_defeated(self, map_key: str | tuple) -> None:
-        quest = self.portal_quests.get(map_key)
-        if quest is None or quest["type"] != PortalQuestType.COMBAT:
-            return
-        quest["guardian_defeated"] = True
-        if self._check_portal_restored(map_key):
-            # Announce to any player on this map
-            for player in (self.player1, self.player2):
-                if player.current_map == map_key:
-                    self._announce_portal_restored(player)
-                    break
 
     def _try_build_pier(self, player: Player) -> None:
         if player.on_boat:
@@ -2416,220 +1536,6 @@ class Game:
                 player.current_map,
             )
         )
-
-    def _get_player_sector(self, player: Player) -> tuple[int, int] | None:
-        """Return the (sx, sy) sector coordinates for a player's current map.
-
-        Overland/"overland" maps map to sector (0, 0).
-        Sector maps keyed as ("sector", sx, sy) return (sx, sy).
-        Cave and housing maps return None (no sector transitions underground/indoors).
-        """
-        key = player.current_map
-        if key == "overland" or key == ("sector", 0, 0):
-            return (0, 0)
-        if isinstance(key, tuple) and len(key) == 3 and key[0] == "sector":
-            return (key[1], key[2])
-        return None  # cave, housing, or unknown
-
-    def _get_or_generate_sector(self, sx: int, sy: int) -> "MapScene":
-        """Return (or lazily generate) the GameMap for sector (sx, sy)."""
-        if sx == 0 and sy == 0:
-            return self.maps["overland"]
-        key = ("sector", sx, sy)
-        if key not in self.maps:
-            world_data, has_island, biome = generate_ocean_sector(
-                sx, sy, self.world_seed
-            )
-            sector_map = GameMap(world_data, tileset="overland")
-            sector_map.biome = biome
-            sector_map.enemies = spawn_enemies(world_data, biome)
-            sector_scene = MapScene(sector_map)
-            self.maps[key] = sector_scene
-            # Record if this sector has a full island (not just atolls)
-            if has_island:
-                self.land_sectors.add((sx, sy))
-                # Assign and place portal quest for this island
-                self._assign_portal_quest(key)
-                self._place_portal_on_map(sector_map, key)
-                # Spawn land creatures (horses) on standard-biome islands only
-                if biome == BiomeType.STANDARD:
-                    land_env = OverlandEnvironment(map_key=key)
-                    sector_scene.creatures.extend(land_env.spawn_creatures(sector_map))
-            # Restore any archived entities from before eviction
-            archived = self._entity_archive.pop(key, None)
-            if archived:
-                from src.save import (
-                    _deserialize_worker,
-                    _deserialize_pet,
-                    _deserialize_creature,
-                )
-
-                sector_scene.workers.extend(
-                    _deserialize_worker(w) for w in archived.get("workers", [])
-                )
-                sector_scene.pets.extend(
-                    _deserialize_pet(p) for p in archived.get("pets", [])
-                )
-                sector_scene.creatures.extend(
-                    _deserialize_creature(c) for c in archived.get("creatures", [])
-                )
-        return self.maps[key]
-
-    def _evict_distant_sectors(self) -> None:
-        """Drop sector maps that are more than 2 sectors away from all players."""
-        sectors_in_use = set()
-        for player in (self.player1, self.player2):
-            coords = self._get_player_sector(player)
-            if coords is None:
-                continue
-            sx, sy = coords
-            for dx in range(-2, 3):
-                for dy in range(-2, 3):
-                    sectors_in_use.add((sx + dx, sy + dy))
-
-        to_evict = []
-        for key in self.maps:
-            if isinstance(key, tuple) and len(key) == 3 and key[0] == "sector":
-                if key[1] != 0 or key[2] != 0:  # never evict home island
-                    if (key[1], key[2]) not in sectors_in_use:
-                        to_evict.append(key)
-        for key in to_evict:
-            scene = self.maps.get(key)
-            if isinstance(scene, MapScene):
-                # Archive entities before eviction so they survive sector reload
-                from src.save import (
-                    _serialize_worker,
-                    _serialize_pet,
-                    _serialize_creature,
-                )
-
-                self._entity_archive[key] = {
-                    "workers": [_serialize_worker(w) for w in scene.workers],
-                    "pets": [_serialize_pet(p) for p in scene.pets],
-                    "creatures": [_serialize_creature(c) for c in scene.creatures],
-                }
-            del self.maps[key]
-
-    def _check_biome_entry_armor(self, player: Player, biome: BiomeType) -> bool:
-        """Return True if the player meets the armor requirement for the given biome."""
-        body_slots = ["helmet", "chest", "legs", "boots"]
-        if biome == BiomeType.TUNDRA:
-            # Any armor equipped in any body slot
-            return any(player.equipment.get(s) is not None for s in body_slots)
-        if biome == BiomeType.VOLCANO:
-            # Full armor set — all 4 body slots occupied
-            return all(player.equipment.get(s) is not None for s in body_slots)
-        return True
-
-    def _has_ancient_armor(self, player: Player) -> bool:
-        """Return True if the player has at least one Ancient material armor piece equipped."""
-        body_slots = ["helmet", "chest", "legs", "boots"]
-        for slot in body_slots:
-            item_name = player.equipment.get(slot)
-            if (
-                item_name
-                and ARMOR_PIECES.get(item_name, {}).get("material")
-                == ArmorMaterial.ANCIENT
-            ):
-                return True
-        return False
-
-    def check_sector_transitions(self, player: Player) -> None:
-        """Detect when an on-boat player crosses the edge of their current sector
-        and teleport them to the adjacent sector with a brief wipe animation."""
-        if not player.on_boat:
-            return
-        sector_coords = self._get_player_sector(player)
-        if sector_coords is None:
-            return  # underground — no sector transitions
-
-        sx, sy = sector_coords
-        current_map = self._get_or_generate_sector(sx, sy)
-        world_pixel_w = current_map.cols * TILE
-        world_pixel_h = current_map.rows * TILE
-
-        x, y = player.x, player.y
-        pid = player.player_id
-        direction = None
-        new_sx, new_sy = sx, sy
-        new_x, new_y = x, y
-
-        margin = TILE // 2  # cross within half a tile of the edge
-
-        if x < margin:
-            direction = "left"
-            new_sx = sx - 1
-            new_x = float(world_pixel_w - TILE)
-            new_y = y
-        elif x > world_pixel_w - margin:
-            direction = "right"
-            new_sx = sx + 1
-            new_x = float(TILE)
-            new_y = y
-        elif y < margin:
-            direction = "up"
-            new_sy = sy - 1
-            new_x = x
-            new_y = float(world_pixel_h - TILE)
-        elif y > world_pixel_h - margin:
-            direction = "down"
-            new_sy = sy + 1
-            new_x = x
-            new_y = float(TILE)
-
-        if direction is None:
-            return
-
-        # Generate next sector (may be cached)
-        self._get_or_generate_sector(new_sx, new_sy)
-
-        # Move the player to the new sector
-        new_key = (
-            ("sector", new_sx, new_sy) if (new_sx != 0 or new_sy != 0) else "overland"
-        )
-        player.current_map = new_key
-        player.x = new_x
-        player.y = new_y
-        self._snap_camera_to_player(player)
-
-        # Record the new sector as visited
-        self.visited_sectors.add((new_sx, new_sy))
-
-        # Check biome entry armor requirement for island sectors
-        if (new_sx, new_sy) in self.land_sectors and new_sx != 0 and new_sy != 0:
-            from src.world.generation import get_sector_biome
-
-            biome = get_sector_biome(self.world_seed, new_sx, new_sy)
-            if not self._check_biome_entry_armor(player, biome):
-                _BIOME_WARNINGS = {
-                    BiomeType.TUNDRA: "Too cold! Equip armor!",
-                    BiomeType.VOLCANO: "Too hot! Full armor set needed!",
-                }
-                msg = _BIOME_WARNINGS.get(biome)
-                if msg:
-                    self.floats.append(
-                        FloatingText(
-                            int(player.x),
-                            int(player.y) - 30,
-                            msg,
-                            (100, 200, 255),
-                            player.current_map,
-                        )
-                    )
-                    self._biome_warn_timers[pid] = {"biome": biome, "frames": 120}
-            else:
-                self._biome_warn_timers[pid] = None
-        else:
-            self._biome_warn_timers[pid] = None
-
-        # Start the wipe animation (skip if player is on a boat)
-        if not player.on_boat:
-            self.sector_wipe[pid] = {
-                "progress": 0.0,
-                "direction": direction,
-            }
-
-        self._evict_distant_sectors()
 
     def _snap_camera_to_player(self, player: Player) -> None:
         """Immediately snap a player's camera to centre on that player."""
@@ -3143,15 +2049,9 @@ class Game:
         # Update maps after potential transitions
 
         # -- Sector-wipe animation tick ------------------------------------
-        for pid in list(self.sector_wipe.keys()):
-            self.sector_wipe[pid]["progress"] += dt / SECTOR_WIPE_DURATION
-            if self.sector_wipe[pid]["progress"] >= 1.0:
-                del self.sector_wipe[pid]
+        self.sectors.tick_wipe(dt)
         # -- Portal-warp animation tick ------------------------------------
-        for pid in list(self.portal_warp.keys()):
-            self.portal_warp[pid]["progress"] += dt / PORTAL_WARP_DURATION
-            if self.portal_warp[pid]["progress"] >= 1.0:
-                del self.portal_warp[pid]
+        self.portals.tick_warp(dt)
         # -- Sky-view animation tick ---------------------------------------
         _SKY_ANIM_DURATION = 120.0  # frames at dt=1 (≈2 s at 60 fps)
         for pid in (1, 2):
@@ -3179,28 +2079,13 @@ class Game:
 
         # -- Sector transitions for on-boat players -----------------------
         if not self.player1.is_dead:
-            self.check_sector_transitions(self.player1)
+            self.sectors.check_sector_transitions(self.player1)
         if not self.player2.is_dead:
-            self.check_sector_transitions(self.player2)
+            self.sectors.check_sector_transitions(self.player2)
         # ----------------------------------------------------------------
 
         # -- Biome entry damage timer tick --------------------------------
-        for player in (self.player1, self.player2):
-            if player.is_dead:
-                continue
-            pid = player.player_id
-            warn = self._biome_warn_timers[pid]
-            if warn is None:
-                continue
-            warn["frames"] -= dt
-            if warn["frames"] <= 0:
-                if not self._check_biome_entry_armor(player, warn["biome"]):
-                    player.take_damage(
-                        5, self.particles, self.floats, player.current_map
-                    )
-                    if player.hp <= 0 and not player.is_dead:
-                        self._start_death_challenge(player)
-                self._biome_warn_timers[pid] = None
+        self.sectors.tick_biome_damage(dt)
         # ----------------------------------------------------------------
 
         # -- Portal lava damage -------------------------------------------
@@ -3216,7 +2101,7 @@ class Game:
                 continue
             pc = int(player.x) // TILE
             pr = int(player.y) // TILE
-            if cur_map.get_tile(pr, pc) == PORTAL_LAVA and not self._has_ancient_armor(
+            if cur_map.get_tile(pr, pc) == PORTAL_LAVA and not self.sectors.has_ancient_armor(
                 player
             ):
                 self._lava_hurt_timers[pid] -= dt
@@ -3235,65 +2120,9 @@ class Game:
                         8, self.particles, self.floats, player.current_map
                     )
                     if player.hp <= 0 and not player.is_dead:
-                        self._start_death_challenge(player)
+                        self.death_challenge.start(player)
             else:
                 self._lava_hurt_timers[pid] = 0
-        # ----------------------------------------------------------------
-
-        # -- Biome entry damage timer tick --------------------------------
-        for player in (self.player1, self.player2):
-            if player.is_dead:
-                continue
-            pid = player.player_id
-            warn = self._biome_warn_timers[pid]
-            if warn is None:
-                continue
-            warn["frames"] -= dt
-            if warn["frames"] <= 0:
-                # Grace period expired — deal damage if still unprotected
-                if not self._check_biome_entry_armor(player, warn["biome"]):
-                    player.take_damage(
-                        5, self.particles, self.floats, player.current_map
-                    )
-                    if player.hp <= 0 and not player.is_dead:
-                        self._start_death_challenge(player)
-                self._biome_warn_timers[pid] = None
-        # ----------------------------------------------------------------
-
-        # -- Portal lava damage -------------------------------------------
-        for player in (self.player1, self.player2):
-            if player.is_dead:
-                continue
-            if player.current_map != ("portal_realm",):
-                self._lava_hurt_timers[player.player_id] = 0
-                continue
-            cur_map = self.get_player_current_map(player)
-            if cur_map is None:
-                continue
-            pc = int(player.x) // TILE
-            pr = int(player.y) // TILE
-            if cur_map.get_tile(pr, pc) == PORTAL_LAVA:
-                if not self._has_ancient_armor(player):
-                    pid = player.player_id
-                    self._lava_hurt_timers[pid] -= dt
-                    if self._lava_hurt_timers[pid] <= 0:
-                        self._lava_hurt_timers[pid] = 60
-                        self.floats.append(
-                            FloatingText(
-                                int(player.x),
-                                int(player.y) - 30,
-                                "Lava burns! Need Ancient armor!",
-                                (255, 120, 30),
-                                player.current_map,
-                            )
-                        )
-                        player.take_damage(
-                            8, self.particles, self.floats, player.current_map
-                        )
-                        if player.hp <= 0 and not player.is_dead:
-                            self._start_death_challenge(player)
-            else:
-                self._lava_hurt_timers[player.player_id] = 0
         # ----------------------------------------------------------------
 
         # -- Boat disembark detection (before movement) -------------------
@@ -3324,7 +2153,7 @@ class Game:
         # ----------------------------------------------------------------
 
         # Player 1 movement & mining (skipped while dead or inventory open)
-        if not self.player1.is_dead and not self._inventory_open[1]:
+        if not self.player1.is_dead and not self.inventory.is_open(1):
             if self.player1.on_mount:
                 # Drive the mounted creature with player input
                 mount1 = self._player_mounts[1]
@@ -3360,7 +2189,7 @@ class Game:
                 self.player1.hurt_timer -= dt
 
         # Player 2 movement & mining (skipped while dead or inventory open)
-        if not self.player2.is_dead and not self._inventory_open[2]:
+        if not self.player2.is_dead and not self.inventory.is_open(2):
             if self.player2.on_mount:
                 # Drive the mounted creature with player input
                 mount2 = self._player_mounts[2]
@@ -3513,9 +2342,7 @@ class Game:
             scene.floats = [f for f in scene.floats if f.life > 0]
 
         # Tick treasure reveals
-        for rev in self.treasure_reveals:
-            rev["timer"] -= dt
-        self.treasure_reveals = [r for r in self.treasure_reveals if r["timer"] > 0]
+        self.treasure.tick(dt)
 
     def _spawn_portal_guardians(self) -> None:
         """Spawn Stone Sentinel enemies for combat quests when a player is nearby."""
@@ -3585,12 +2412,12 @@ class Game:
                         dmg, scene.particles, scene.floats, target_player.current_map
                     )
                     if target_player.hp <= 0 and not target_player.is_dead:
-                        self._start_death_challenge(target_player)
+                        self.death_challenge.start(target_player)
             dead = [e for e in scene.enemies if e.hp <= 0]
             scene.enemies = [e for e in scene.enemies if e.hp > 0]
             for dead_e in dead:
                 if dead_e.type_key == "stone_sentinel":
-                    self._on_sentinel_defeated(map_key)
+                    self.portals.on_sentinel_defeated(map_key)
 
     def _draw_portal_warp_viewport(
         self,
@@ -3685,25 +2512,6 @@ class Game:
             flash = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
             flash.fill((255, 230, 255, flash_alpha))
             self.screen.blit(flash, (screen_x, screen_y))
-
-    def _draw_sector_wipe_viewport(
-        self, screen_x: int, screen_y: int, view_w: int, view_h: int, progress: float
-    ) -> None:
-        """Draw a quick scroll-wipe flash when crossing a sector boundary.
-
-        The first half of the animation blurs/fades out the old view with a
-        horizontal or vertical white flash; the second half fades into the new
-        view which is already rendered behind it.  We overlay a white rect
-        whose alpha peaks at midpoint (progress == 0.5) and falls back to 0.
-        """
-        # Compute alpha: 0 → 255 at progress 0.5 → 0
-        alpha = int(255 * (1.0 - abs(progress - 0.5) * 2.0))
-        alpha = max(0, min(255, alpha))
-        if alpha == 0:
-            return
-        flash = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
-        flash.fill((220, 240, 255, alpha))
-        self.screen.blit(flash, (screen_x, screen_y))
 
     def _update_combat(
         self,
@@ -4081,17 +2889,17 @@ class Game:
             if p.current_map == current_map_key:
                 p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
-        self._draw_player_ui(player, screen_x, screen_y, view_w, view_h)
+        self.player_hud.draw(player, screen_x, screen_y, view_w, view_h)
         if player.is_dead:
-            self._draw_death_challenge(player, screen_x, screen_y, view_w, view_h)
-        self._draw_treasure_reveal(player, screen_x, screen_y, view_w, view_h)
-        if self._inventory_open[player.player_id]:
-            self._draw_inventory(player, screen_x, screen_y, view_w, view_h)
+            self.death_challenge.draw(player, screen_x, screen_y, view_w, view_h)
+        self.treasure.draw(player, screen_x, screen_y, view_w, view_h)
+        if self.inventory.is_open(player.player_id):
+            self.inventory.draw(player, screen_x, screen_y, view_w, view_h)
 
         # Sector-wipe flash overlay (drawn last so it appears on top)
         wipe_state = self.sector_wipe.get(player.player_id)
         if wipe_state:
-            self._draw_sector_wipe_viewport(
+            self.sectors.draw_sector_wipe_viewport(
                 screen_x, screen_y, view_w, view_h, wipe_state["progress"]
             )
 
@@ -4104,496 +2912,6 @@ class Game:
 
         self.screen.set_clip(None)
 
-    def _draw_player_ui(
-        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
-    ) -> None:
-        """Draw UI for a single player's viewport."""
-        font_small = self.font_ui_sm
-        font_tiny = self.font_ui_xs
-
-        # Top HUD panel — HP, XP, current gear only; inventory/upgrades are in the modal
-        top_panel_w = 240
-        top_panel_h = 148
-        top_panel_surf = pygame.Surface((top_panel_w, top_panel_h), pygame.SRCALPHA)
-        top_panel_surf.fill((20, 20, 30, 200))
-        self.screen.blit(top_panel_surf, (screen_x + 8, screen_y + 8))
-        pygame.draw.rect(
-            self.screen,
-            (150, 150, 150),
-            (screen_x + 8, screen_y + 8, top_panel_w, top_panel_h),
-            2,
-        )
-
-        # Health bar
-        bar_w, bar_h = 220, 18
-        hp_ratio = max(0, player.hp / player.max_hp)
-        pygame.draw.rect(
-            self.screen, (50, 50, 50), (screen_x + 18, screen_y + 18, bar_w, bar_h)
-        )
-        hp_col = (
-            (50, 200, 50)
-            if hp_ratio > 0.5
-            else (220, 180, 30) if hp_ratio > 0.25 else (220, 40, 40)
-        )
-        pygame.draw.rect(
-            self.screen,
-            hp_col,
-            (screen_x + 18, screen_y + 18, int(bar_w * hp_ratio), bar_h),
-        )
-        self.screen.blit(
-            font_small.render(
-                f"HP: {player.hp:.0f}/{player.max_hp}", True, (255, 255, 255)
-            ),
-            (screen_x + 25, screen_y + 20),
-        )
-
-        # XP bar
-        xp_bar_w = 220
-        xp_ratio = player.xp / player.xp_next if player.xp_next > 0 else 0
-        pygame.draw.rect(
-            self.screen, (50, 50, 0), (screen_x + 18, screen_y + 44, xp_bar_w, 10)
-        )
-        pygame.draw.rect(
-            self.screen,
-            (255, 255, 0),
-            (screen_x + 18, screen_y + 44, int(xp_bar_w * xp_ratio), 10),
-        )
-        self.screen.blit(
-            font_tiny.render(
-                f"Lv {player.level}  XP: {player.xp}/{player.xp_next}",
-                True,
-                (255, 255, 0),
-            ),
-            (screen_x + 18, screen_y + 56),
-        )
-
-        # Current pickaxe
-        pick = PICKAXES[player.pick_level]
-        pygame.draw.rect(
-            self.screen, pick["color"], (screen_x + 18, screen_y + 74, 10, 10)
-        )
-        pick_label = (
-            pick["name"]
-            if player.pick_level < len(PICKAXES) - 1
-            else f"{pick['name']} (MAX)"
-        )
-        self.screen.blit(
-            font_tiny.render(pick_label, True, (255, 255, 255)),
-            (screen_x + 32, screen_y + 73),
-        )
-
-        # Current weapon
-        wpn_def = WEAPON_REGISTRY.get(player.weapon_id)
-        if wpn_def is not None:
-            pygame.draw.rect(
-                self.screen, wpn_def.color, (screen_x + 18, screen_y + 90, 10, 10)
-            )
-            n_unlocked = len(player.unlocked_weapons)
-            wpn_label = (
-                f"{wpn_def.name} [{n_unlocked}]" if n_unlocked > 1 else wpn_def.name
-            )
-        else:
-            pygame.draw.rect(
-                self.screen, (100, 100, 100), (screen_x + 18, screen_y + 90, 10, 10)
-            )
-            wpn_label = "No weapon"
-        self.screen.blit(
-            font_tiny.render(wpn_label, True, (255, 150, 100)),
-            (screen_x + 32, screen_y + 89),
-        )
-
-        # Defense %
-        def_pct = int(player.defense_pct * 100)
-        equip_key_name = pygame.key.name(player.controls.equip_key).upper()
-        self.screen.blit(
-            font_tiny.render(
-                f"Defense: {def_pct}%  [{equip_key_name}] Inventory",
-                True,
-                (160, 220, 160),
-            ),
-            (screen_x + 18, screen_y + 108),
-        )
-
-        # Workers / pets
-        parts = []
-        workers_here = [
-            w
-            for sc in self.maps.values()
-            for w in sc.workers
-            if getattr(w, "player_id", None) == player.player_id
-        ]
-        if workers_here:
-            parts.append(f"Workers: {len(workers_here)}")
-        pets_here = [
-            p
-            for sc in self.maps.values()
-            for p in sc.pets
-            if getattr(p, "player_id", None) == player.player_id
-        ]
-        num_cats = sum(1 for p in pets_here if p.kind == "cat")
-        num_dogs = sum(1 for p in pets_here if p.kind == "dog")
-        if num_cats:
-            parts.append(f"Cats: {num_cats}")
-        if num_dogs:
-            parts.append(f"Dogs: {num_dogs}")
-        if parts:
-            self.screen.blit(
-                font_tiny.render("  ".join(parts), True, (100, 220, 255)),
-                (screen_x + 18, screen_y + 126),
-            )
-
-        # Bottom HUD Panel (Controls + Auto-toggle status)
-        bottom_panel_h = 130
-        ctrl_y_start = screen_y + view_h - 138
-        bottom_panel_w = 340
-        bottom_panel_surf = pygame.Surface(
-            (bottom_panel_w, bottom_panel_h), pygame.SRCALPHA
-        )
-        bottom_panel_surf.fill((20, 20, 30, 200))  # Translucent dark blue-gray
-        self.screen.blit(bottom_panel_surf, (screen_x + 8, ctrl_y_start))
-
-        # Bottom panel border
-        pygame.draw.rect(
-            self.screen,
-            (150, 150, 150),
-            (screen_x + 8, ctrl_y_start, bottom_panel_w, bottom_panel_h),
-            2,
-        )
-
-        # Control scheme (2-column layout)
-        controls = player.controls.get_controls_list()
-
-        ctrl_y = ctrl_y_start + 8
-        ctrl_header = font_small.render("Controls:", True, (200, 200, 200))
-        self.screen.blit(ctrl_header, (screen_x + 18, ctrl_y))
-
-        controls_per_column = 3
-
-        column_widths = [0, 90, 210]
-        for idx, ctrl_text in enumerate(controls):
-            col = idx // controls_per_column
-            row = idx % controls_per_column
-            x_offset = column_widths[col]
-            y_offset = ctrl_y + 24 + row * 15
-            ctrl_surf = font_tiny.render(ctrl_text, True, (180, 180, 180))
-            self.screen.blit(ctrl_surf, (screen_x + 18 + x_offset, y_offset))
-
-        # Auto-toggle status lines (appended below the controls grid)
-        auto_y = ctrl_y + 24 + (controls_per_column - 1) * 15 + 20
-        auto_mine_key = pygame.key.name(player.controls.toggle_auto_mine_key).upper()
-        auto_mine_status = (
-            f"Auto Mine ({auto_mine_key}): {'ON' if player.auto_mine else 'OFF'}"
-        )
-        auto_mine_color = (100, 255, 100) if player.auto_mine else (150, 150, 150)
-        auto_mine_text = font_tiny.render(auto_mine_status, True, auto_mine_color)
-        self.screen.blit(auto_mine_text, (screen_x + 18, auto_y))
-
-        auto_fire_key = pygame.key.name(player.controls.toggle_auto_fire_key).upper()
-        auto_fire_status = (
-            f"Auto Fire ({auto_fire_key}): {'ON' if player.auto_fire else 'OFF'}"
-        )
-        auto_fire_color = (100, 255, 100) if player.auto_fire else (150, 150, 150)
-        auto_fire_text = font_tiny.render(auto_fire_status, True, auto_fire_color)
-        self.screen.blit(auto_fire_text, (screen_x + 18, auto_y + 16))
-
-        # Cave interaction hint — shown when standing on a cave entrance or exit
-        interact_key = pygame.key.name(player.controls.interact_key).upper()
-        current_map_obj = self.get_player_current_map(player)
-        if current_map_obj is not None:
-            p_col = int(player.x) // TILE
-            p_row = int(player.y) // TILE
-            tile_id = current_map_obj.get_tile(p_row, p_col)
-            if tile_id in (CAVE_MOUNTAIN, CAVE_HILL):
-                hint = font_tiny.render(
-                    f"[{interact_key}] Enter cave", True, (180, 180, 255)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            elif tile_id == CAVE_EXIT:
-                hint = font_tiny.render(
-                    f"[{interact_key}] Exit cave", True, (180, 255, 180)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            # Housing environment hints
-            elif tile_id == HOUSE and current_map_obj.tileset == "overland":
-                cluster_size = current_map_obj.town_clusters.get((p_row, p_col), 1)
-                tier_idx, tier_name = self._get_settlement_tier(cluster_size)
-                hint = font_tiny.render(
-                    f"[{interact_key}] Enter {tier_name}", True, (255, 210, 130)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            elif tile_id == SETTLEMENT_HOUSE:
-                hint = font_tiny.render(
-                    f"[{interact_key}] Enter house", True, (255, 210, 130)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            elif tile_id == HOUSE_EXIT:
-                hint = font_tiny.render(f"[{interact_key}] Exit", True, (180, 255, 180))
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            elif tile_id == WORKTABLE or any(
-                current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE
-                for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]
-            ):
-                # Only show craft hint if we're in a housing env (not overland HOUSE tile)
-                if self._is_in_housing_env(player):
-                    hint = font_tiny.render(
-                        f"[{interact_key}] Craft", True, (130, 220, 255)
-                    )
-                    hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                    hint_y = screen_y + view_h - 150
-                    self.screen.blit(hint, (hint_x, hint_y))
-            elif any(
-                current_map_obj.get_tile(p_row + dr, p_col + dc) == SIGN
-                for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
-            ):
-                hint = font_tiny.render(
-                    f"[{interact_key}] Read sign", True, (230, 200, 120)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            elif any(
-                current_map_obj.get_tile(p_row + dr, p_col + dc) == BROKEN_LADDER
-                for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
-            ):
-                hint = font_tiny.render(
-                    f"[{interact_key}] Repair ladder", True, (200, 160, 90)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-            elif any(
-                current_map_obj.get_tile(p_row + dr, p_col + dc) == SKY_LADDER
-                for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
-            ):
-                hint = font_tiny.render(
-                    f"[{interact_key}] Ascend to sky", True, (140, 200, 255)
-                )
-                hint_x = screen_x + view_w // 2 - hint.get_width() // 2
-                hint_y = screen_y + view_h - 150
-                self.screen.blit(hint, (hint_x, hint_y))
-
-        # Sector minimap (top-right corner)
-        self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
-
-        # Sign text panel
-        self._draw_sign_display(player, screen_x, screen_y, view_w, view_h)
-
-        # Sky-ladder ascend/descend flash overlay
-        self._draw_sky_anim_overlay(player, screen_x, screen_y, view_w, view_h)
-
-    def _draw_sector_minimap(
-        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
-    ) -> None:
-        """Draw a small sector-grid minimap in the top-right corner of the viewport.
-
-        Only shown when the player is on the surface (not in a cave).
-        Shows a 9x9 window of the infinite sector grid centred on the player's
-        current sector, with visited sectors lit and fog elsewhere.
-        """
-        player_sector = self._get_player_sector(player)
-        if player_sector is None:
-            return  # underground — hide minimap
-
-        cx, cy = player_sector  # current sector coords
-
-        CELL = 10  # px per cell
-        GAP = 1  # px gap between cells
-        WINDOW = 9  # cells across / down (must be odd)
-        half = WINDOW // 2
-
-        panel_w = WINDOW * (CELL + GAP) - GAP + 8
-        panel_h = WINDOW * (CELL + GAP) - GAP + 8 + 14  # extra 14 for header text
-        panel_x = screen_x + view_w - panel_w - 8
-        panel_y = screen_y + 8
-
-        # Background panel
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel_surf.fill((20, 20, 30, 200))
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-        pygame.draw.rect(
-            self.screen, (150, 150, 150), (panel_x, panel_y, panel_w, panel_h), 2
-        )
-
-        # "MAP" label
-        label = self.font_ui_xs.render("MAP", True, (180, 180, 180))
-        self.screen.blit(
-            label, (panel_x + panel_w // 2 - label.get_width() // 2, panel_y + 3)
-        )
-
-        grid_top = panel_y + 14 + 4  # below label
-
-        for row in range(WINDOW):
-            for col in range(WINDOW):
-                sx = cx + (col - half)
-                sy = cy + (row - half)
-
-                cell_x = panel_x + 4 + col * (CELL + GAP)
-                cell_y = grid_top + row * (CELL + GAP)
-
-                if (sx, sy) in self.visited_sectors:
-                    if (sx, sy) in self.land_sectors:
-                        biome = get_sector_biome(self.world_seed, sx, sy)
-                        color = {
-                            BiomeType.STANDARD: (50, 110, 50),
-                            BiomeType.TUNDRA: (120, 180, 220),
-                            BiomeType.VOLCANO: (200, 70, 20),
-                            BiomeType.ZOMBIE: (80, 95, 60),
-                            BiomeType.DESERT: (195, 170, 85),
-                        }.get(biome, (50, 110, 50))
-                    else:
-                        color = (35, 55, 110)  # visited ocean — dark navy
-                elif (sx, sy) in self.sky_revealed_sectors:
-                    # Seen from sky but never visited on foot — lighter fog tint
-                    if (sx, sy) in self.land_sectors:
-                        color = (30, 65, 30)  # dim green land
-                    else:
-                        color = (20, 30, 60)  # dim ocean
-                else:
-                    color = (25, 25, 35)  # fog / unvisited
-
-                pygame.draw.rect(self.screen, color, (cell_x, cell_y, CELL, CELL))
-
-                # Sky-revealed (but not foot-visited) land cells get a sky-blue tint border
-                if (sx, sy) in self.sky_revealed_sectors and (
-                    sx,
-                    sy,
-                ) not in self.visited_sectors:
-                    pygame.draw.rect(
-                        self.screen, (60, 100, 160), (cell_x, cell_y, CELL, CELL), 1
-                    )
-
-                # Highlight current sector with a bright border
-                if sx == cx and sy == cy:
-                    pygame.draw.rect(
-                        self.screen, (220, 220, 255), (cell_x, cell_y, CELL, CELL), 2
-                    )
-
-        # Draw a small dot at the exact centre cell to mark the player
-        centre_col = half
-        centre_row = half
-        dot_x = panel_x + 4 + centre_col * (CELL + GAP) + CELL // 2
-        dot_y = grid_top + centre_row * (CELL + GAP) + CELL // 2
-        pygame.draw.circle(self.screen, (255, 255, 255), (dot_x, dot_y), 2)
-
-    # ------------------------------------------------------------------
-    # World tile sprite rendering (SIGN / BROKEN_LADDER / SKY_LADDER)
-    # ------------------------------------------------------------------
-
-    # Maps tile ID → (sprite_name, frame_w, frame_h) for above-tile sprites
-    _TILE_SPRITE_NAMES: dict[int, str] = {}  # populated lazily
-
-    def _draw_world_tile_sprite(self, tid: int, sx: int, sy: int, ticks: int) -> None:
-        """Draw a world-object sprite (sign, ladder) over the tile base rectangle.
-
-        Ladders are 1-tile wide × 2-tiles tall so they are drawn offset upward.
-        """
-        from src.rendering.registry import SpriteRegistry
-        from src.rendering.animator import AnimationState
-
-        names = {
-            SIGN: ("sign", TILE, TILE),
-            BROKEN_LADDER: ("broken_ladder", TILE, TILE * 2),
-            SKY_LADDER: ("sky_ladder", TILE, TILE * 2),
-        }
-        entry = names.get(tid)
-        if entry is None:
-            return
-        sprite_name, draw_w, draw_h = entry
-        data = SpriteRegistry.get_instance().get(sprite_name)
-        if data is None:
-            return
-        sheet, manifest = data
-        fw_raw, fh_raw = manifest["frame_size"]
-        state_data = manifest["states"].get("idle")
-        if state_data is None:
-            return
-        frame_surf = sheet.subsurface(
-            pygame.Rect(0, state_data["row"] * fh_raw, fw_raw, fh_raw)
-        )
-        scaled = pygame.transform.scale(frame_surf, (draw_w, draw_h))
-        self.screen.blit(scaled, (sx, sy - (draw_h - TILE)))
-
-    # ------------------------------------------------------------------
-    # Sign text popup
-    # ------------------------------------------------------------------
-
-    def _draw_sign_display(
-        self,
-        player: Player,
-        screen_x: int,
-        screen_y: int,
-        view_w: int,
-        view_h: int,
-    ) -> None:
-        """Draw the sign text panel at the bottom of player's viewport if active."""
-        pid = player.player_id
-        disp = self._sign_display[pid]
-        if disp is None:
-            return
-
-        lines = disp["text"].split("\n")
-        font = self.font_ui_sm
-        line_h = font.get_height() + 4
-        padding = 14
-        panel_h = line_h * len(lines) + padding * 2
-        panel_w = view_w - 80
-        panel_x = screen_x + 40
-        panel_y = screen_y + view_h - panel_h - 24
-
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel_surf.fill((15, 10, 5, 210))
-        pygame.draw.rect(
-            panel_surf, (180, 140, 70), (0, 0, panel_w, panel_h), 2, border_radius=4
-        )
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-
-        for i, line in enumerate(lines):
-            color = (230, 200, 130) if i == 0 else (210, 185, 145)
-            rendered = font.render(line, True, color)
-            self.screen.blit(
-                rendered, (panel_x + padding, panel_y + padding + i * line_h)
-            )
-
-    # ------------------------------------------------------------------
-    # Sky-view ascend/descend overlay
-    # ------------------------------------------------------------------
-
-    def _draw_sky_anim_overlay(
-        self,
-        player: Player,
-        screen_x: int,
-        screen_y: int,
-        view_w: int,
-        view_h: int,
-    ) -> None:
-        """Draw the white flash overlay during ascend/descend animation."""
-        pid = player.player_id
-        anim = self._sky_anim[pid]
-        if anim is None or anim["phase"] == "sky":
-            return
-
-        progress = anim["progress"]  # 0.0 → 1.0
-        if anim["phase"] == "ascend":
-            # Fade from transparent to white as we ascend
-            alpha = int(progress * 255)
-        else:  # descend
-            alpha = int((1.0 - progress) * 255)
-
-        if alpha <= 0:
-            return
-        overlay = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
-        overlay.fill((255, 255, 255, alpha))
-        self.screen.blit(overlay, (screen_x, screen_y))
 
     # ------------------------------------------------------------------
     # Sky view
@@ -4624,7 +2942,7 @@ class Game:
             )
 
         # --- Sector grid ---
-        player_sector = self._get_player_sector(player)
+        player_sector = self.sectors.get_player_sector(player)
         cx, cy = player_sector if player_sector is not None else (0, 0)
 
         RADIUS = 5
@@ -4651,7 +2969,7 @@ class Game:
                 is_land = (sx_s, sy_s) in self.land_sectors
 
                 if revealed and is_land:
-                    thumb = self._generate_sector_thumbnail(sx_s, sy_s)
+                    thumb = self.sectors.generate_sector_thumbnail(sx_s, sy_s)
                     if thumb is not None:
                         scaled_thumb = pygame.transform.scale(thumb, (CELL_W, CELL_H))
                         self.screen.blit(scaled_thumb, (cell_px, cell_py))
@@ -4704,7 +3022,7 @@ class Game:
         # --- Ascend/descend flash overlay on top ---
         anim = self._sky_anim[pid]
         if anim is not None and anim["phase"] != "sky":
-            self._draw_sky_anim_overlay(player, screen_x, screen_y, view_w, view_h)
+            self.player_hud._draw_sky_anim_overlay(player, screen_x, screen_y, view_w, view_h)
 
     def _draw_sky_clouds(
         self,
@@ -4732,988 +3050,3 @@ class Game:
             cy = screen_y + int(cloud["y"]) % view_h
             self.screen.blit(frame_surf, (cx - fw // 2, cy - fh // 2))
 
-    def _open_treasure_chest(self, player: Player, tx: int, ty: int) -> None:
-        """Award loot from a treasure chest, spawn particles, and queue a reveal popup."""
-        # Loot table: always a Sail + a random bonus
-        loot = {"Sail": 1}
-        bonus_pool = [
-            {"Iron": random.randint(8, 18)},
-            {"Gold": random.randint(4, 10)},
-            {"Diamond": random.randint(1, 3)},
-            {"Wood": random.randint(15, 30)},
-            {"Stone": random.randint(20, 40)},
-            {"Gold": random.randint(3, 7), "Iron": random.randint(5, 12)},
-            {"Diamond": 1, "Gold": random.randint(3, 6)},
-        ]
-        bonus = random.choice(bonus_pool)
-        for item, qty in bonus.items():
-            loot[item] = loot.get(item, 0) + qty
-
-        for item, qty in loot.items():
-            player.inventory[item] = player.inventory.get(item, 0) + qty
-
-        # Dramatic particle burst — gold/sparkle colours, upward fan + scatter
-        sparkle_colors = [
-            (255, 230, 80),  # gold
-            (255, 200, 40),  # deep gold
-            (255, 255, 160),  # pale yellow
-            (255, 255, 255),  # white sparkle
-            (255, 180, 60),  # amber
-        ]
-        for _ in range(55):
-            p = Particle(tx, ty, random.choice(sparkle_colors), player.current_map)
-            # Override default random speed with a stronger upward bias
-            angle = random.uniform(-math.pi, 0)  # upper hemisphere
-            speed = random.uniform(2, 6)
-            p.vx = math.cos(angle) * speed
-            p.vy = math.sin(angle) * speed
-            p.life = random.randint(25, 50)
-            p.size = random.randint(2, 5)
-            self.particles.append(p)
-        # A few stray downward particles for the "chest lid" effect
-        for _ in range(12):
-            p = Particle(tx, ty, (200, 140, 40), player.current_map)
-            p.life = random.randint(10, 20)
-            p.size = random.randint(3, 6)
-            self.particles.append(p)
-
-        # Queue reveal popup (lasts 180 ticks ≈ 3 s at 60 fps)
-        self.treasure_reveals.append(
-            {
-                "player_id": player.player_id,
-                "items": loot,
-                "timer": 180.0,
-            }
-        )
-
-    def _draw_treasure_reveal(
-        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
-    ) -> None:
-        """Draw the treasure chest loot popup for a player's viewport."""
-        reveal = next(
-            (r for r in self.treasure_reveals if r["player_id"] == player.player_id),
-            None,
-        )
-        if reveal is None:
-            return
-
-        # Fade out during the last 60 ticks
-        alpha = int(min(255, reveal["timer"] / 60 * 255))
-        alpha = max(0, min(255, alpha))
-
-        items = reveal["items"]
-        item_count = len(items)
-
-        panel_w = max(280, item_count * 90 + 40)
-        panel_h = 100
-        panel_x = screen_x + view_w // 2 - panel_w // 2
-        panel_y = screen_y + view_h // 2 - panel_h // 2 - 40
-
-        # Background panel
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel_surf.fill((30, 20, 0, min(220, alpha)))
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-        border_col = (220, 180, 40, alpha)
-        border_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        pygame.draw.rect(border_surf, border_col, (0, 0, panel_w, panel_h), 3)
-        self.screen.blit(border_surf, (panel_x, panel_y))
-
-        # Header
-        font_med = self.font_dc_med
-        font_sm = self.font_dc_sm
-        header = font_med.render("✦ TREASURE! ✦", True, (255, 220, 60))
-        header.set_alpha(alpha)
-        self.screen.blit(
-            header,
-            (panel_x + panel_w // 2 - header.get_width() // 2, panel_y + 6),
-        )
-
-        # Loot items in a row
-        item_y = panel_y + 52
-        total_w = sum(font_sm.size(f"{k}  x{v}")[0] + 16 for k, v in items.items())
-        ix = panel_x + panel_w // 2 - total_w // 2
-        item_colors = {
-            "Sail": (100, 200, 255),
-            "Iron": (180, 200, 220),
-            "Gold": (255, 215, 0),
-            "Diamond": (180, 240, 255),
-            "Wood": (180, 130, 70),
-            "Stone": (160, 160, 160),
-        }
-        for item, qty in items.items():
-            col = item_colors.get(item, (220, 220, 220))
-            txt = font_sm.render(f"{item}  x{qty}", True, col)
-            txt.set_alpha(alpha)
-            self.screen.blit(txt, (ix, item_y))
-            ix += txt.get_width() + 16
-
-    # ==========================================================================
-    # INVENTORY OVERLAY
-    # ==========================================================================
-
-    # Layout constants (relative to each player's viewport)
-    _INV_DOLL_W: int = 280  # width of the character-doll left panel
-    _INV_CELL: int = 72  # grid cell size
-    _INV_GAP: int = 5  # gap between grid cells
-    _INV_COLS: int = 8  # columns in item grid
-    _INV_TAB_H: int = 68  # height of tab strip
-    _INV_TOOLTIP_H: int = 165  # height of tooltip strip at the bottom
-    _INV_SLOT_SZ: int = 40  # doll slot square size
-
-    def _handle_inventory_input(self, key: int, player: Player) -> None:
-        """Process one KEYDOWN event while the inventory is open for *player*."""
-        pid = player.player_id
-        state = self._inventory_ui[pid]
-        up_k = player.controls.move_keys["up"]
-        down_k = player.controls.move_keys["down"]
-        left_k = player.controls.move_keys["left"]
-        right_k = player.controls.move_keys["right"]
-        # Tab-switch keys: Z/X for P1, comma/period for P2
-        if pid == 1:
-            prev_tab_key, next_tab_key = pygame.K_z, pygame.K_x
-        else:
-            prev_tab_key, next_tab_key = pygame.K_COMMA, pygame.K_PERIOD
-
-        # Close inventory
-        if key in (pygame.K_ESCAPE, player.controls.equip_key):
-            self._inventory_open[pid] = False
-            return
-
-        # --- Ring-disambiguation sub-state ---
-        if state.ring_pick_item is not None:
-            if key in (up_k, down_k):
-                state.ring_pick_choice ^= 1
-            elif key == player.controls.interact_key:
-                slot_key = "ring1" if state.ring_pick_choice == 0 else "ring2"
-                item_name = state.ring_pick_item
-                if player.equip_item(slot_key, item_name):
-                    self._inv_float(player, f"Equipped {item_name}!")
-                state.ring_pick_item = None
-            elif key == pygame.K_ESCAPE:
-                state.ring_pick_item = None
-            return
-
-        # --- Tab switch ---
-        if key == prev_tab_key:
-            state.tab = InventoryTab((state.tab - 1) % NUM_TABS)
-            state.grid_idx = 0
-            state.scroll_offset = 0
-            state.doll_focus = False
-            return
-        if key == next_tab_key:
-            state.tab = InventoryTab((state.tab + 1) % NUM_TABS)
-            state.grid_idx = 0
-            state.scroll_offset = 0
-            state.doll_focus = False
-            return
-
-        # --- Doll navigation ---
-        if state.doll_focus:
-            num_slots = len(DOLL_SLOTS)
-            if key == up_k:
-                state.doll_slot_idx = (state.doll_slot_idx - 1) % num_slots
-            elif key == down_k:
-                state.doll_slot_idx = (state.doll_slot_idx + 1) % num_slots
-            elif key == right_k:
-                state.doll_focus = False  # back to grid
-            elif key == player.controls.interact_key:
-                slot_key = DOLL_SLOTS[state.doll_slot_idx]
-                self._inv_doll_confirm(player, state, slot_key)
-            return
-
-        # --- Grid navigation ---
-        items = get_tab_items(player, state.tab)
-        num_items = len(items)
-        cols = self._INV_COLS
-
-        if key == left_k:
-            col = state.grid_idx % cols
-            if col == 0:
-                state.doll_focus = True  # enter doll
-            else:
-                state.grid_idx -= 1
-        elif key == right_k:
-            col = state.grid_idx % cols
-            if col < cols - 1 and state.grid_idx < num_items - 1:
-                state.grid_idx += 1
-        elif key == up_k:
-            new_idx = state.grid_idx - cols
-            if new_idx >= 0:
-                state.grid_idx = new_idx
-        elif key == down_k:
-            new_idx = state.grid_idx + cols
-            if new_idx < num_items:
-                state.grid_idx = new_idx
-        elif key == player.controls.interact_key and num_items > 0:
-            item = items[state.grid_idx]
-            self._inv_grid_confirm(player, state, item)
-            return
-
-        # Clamp and scroll after navigation
-        if num_items > 0:
-            state.grid_idx = max(0, min(state.grid_idx, num_items - 1))
-        self._inv_update_scroll(state, num_items)
-
-    def _inv_update_scroll(self, state: InventoryState, num_items: int) -> None:
-        """Keep scroll_offset so the selected cell is visible."""
-        visible_rows = self._inv_visible_rows()
-        row = state.grid_idx // self._INV_COLS
-        if row < state.scroll_offset:
-            state.scroll_offset = row
-        elif row >= state.scroll_offset + visible_rows:
-            state.scroll_offset = row - visible_rows + 1
-
-    def _inv_visible_rows(self) -> int:
-        grid_h = self.viewport_h - self._INV_TAB_H - self._INV_TOOLTIP_H - 8
-        return max(1, grid_h // (self._INV_CELL + self._INV_GAP))
-
-    def _inv_float(
-        self, player: Player, text: str, color: tuple = (100, 220, 100)
-    ) -> None:
-        self.floats.append(
-            FloatingText(
-                int(player.x), int(player.y) - 20, text, color, player.current_map
-            )
-        )
-
-    def _inv_doll_confirm(
-        self, player: Player, state: InventoryState, slot_key: str
-    ) -> None:
-        """Handle E pressed on a doll slot."""
-        if slot_key in DOLL_VIRTUAL_SLOTS:
-            # Jump to the relevant tab
-            state.doll_focus = False
-            state.tab = DOLL_VIRTUAL_SLOT_TABS[slot_key]
-            state.grid_idx = 0
-            state.scroll_offset = 0
-            return
-        # Equipped slot → unequip
-        if player.equipment.get(slot_key) is not None:
-            player.unequip_item(slot_key)
-            self._inv_float(player, "Unequipped", (200, 200, 100))
-        else:
-            # Empty slot → jump to tab that shows items for this slot
-            if slot_key in ("ring1", "ring2", "amulet"):
-                state.tab = InventoryTab.ACCESSORIES
-            else:
-                state.tab = InventoryTab.ARMOR
-            state.doll_focus = False
-            state.grid_idx = 0
-            state.scroll_offset = 0
-
-    def _inv_grid_confirm(
-        self, player: Player, state: InventoryState, item: dict
-    ) -> None:
-        """Handle E pressed on an item in the grid."""
-        pid = player.player_id
-        itype = item["type"]
-        tx, ty = int(player.x), int(player.y) - 20
-
-        if itype in ("armor", "accessory"):
-            slot_key = auto_equip_slot(item, player)
-            if slot_key is None:
-                # Both ring slots occupied — start disambiguation
-                state.ring_pick_item = item["name"]
-                state.ring_pick_choice = 0
-            else:
-                if player.equip_item(slot_key, item["name"]):
-                    self._inv_float(player, f"Equipped {item['name']}!")
-
-        elif itype == "weapon":
-            if item["can_upgrade"]:
-                player.try_upgrade_weapon()
-                self._inv_float(player, f"Upgraded to {item['name']}!", (255, 200, 50))
-                # Refresh grid index to new current level
-                state.grid_idx = player.weapon_level
-            else:
-                state.message = "Cannot upgrade yet"
-                state.message_timer = 2.0
-
-        elif itype == "pickaxe":
-            if item["can_upgrade"]:
-                player.try_upgrade_pick()
-                self._inv_float(player, f"Upgraded to {item['name']}!", (255, 200, 50))
-                state.grid_idx = player.pick_level
-            else:
-                state.message = "Cannot upgrade yet"
-                state.message_timer = 2.0
-
-        elif itype == "recipe":
-            self._inv_craft(player, state, item)
-
-    def _inv_craft(self, player: Player, state: InventoryState, item: dict) -> None:
-        """Attempt to craft *item* from the Recipes tab."""
-        min_tier: int = item["min_tier"]
-        is_in_housing = self._is_in_housing_env(player)
-        housing_tier = getattr(self.get_player_current_map(player), "housing_tier", 0)
-
-        # Crafting availability:
-        #   min_tier == 0  → craftable anywhere
-        #   min_tier  > 0  → requires a housing environment with enough tier
-        if min_tier > 0 and not is_in_housing:
-            state.message = "Visit a settlement to craft this"
-            state.message_timer = 2.5
-            return
-        if min_tier > 0 and housing_tier < min_tier:
-            state.message = f"Requires settlement tier {min_tier}"
-            state.message_timer = 2.5
-            return
-
-        cost_str = ", ".join(f"{v}×{k}" for k, v in item["cost"].items())
-        if try_spend(player.inventory, item["cost"]):
-            result = item["result"]
-            player.inventory[result["item"]] = (
-                player.inventory.get(result["item"], 0) + result["qty"]
-            )
-            self._inv_float(
-                player,
-                f"Crafted {result['qty']}×{result['item']}!",
-                (60, 200, 255),
-            )
-            for _ in range(8):
-                self.particles.append(
-                    Particle(
-                        int(player.x),
-                        int(player.y) - 20,
-                        (40, 160, 220),
-                        player.current_map,
-                    )
-                )
-        else:
-            state.message = f"Need {cost_str}"
-            state.message_timer = 2.0
-
-    # -------------------------------------------------------------------------
-    # Drawing helpers
-    # -------------------------------------------------------------------------
-
-    def _inv_get_icon(self, sprite_id: str, size: int) -> pygame.Surface | None:
-        """Return a *size*×*size* surface for *sprite_id*, cached per (id, size)."""
-        cache_key = (sprite_id, size)
-        if cache_key in self._inv_icon_cache:
-            return self._inv_icon_cache[cache_key]
-        from src.rendering.registry import SpriteRegistry
-
-        reg = SpriteRegistry.get_instance()
-        result = reg.get(sprite_id)
-        if result is None:
-            return None
-        sheet, manifest = result
-        fw = manifest["frame_size"][0]
-        fh = manifest["frame_size"][1]
-        frame = sheet.subsurface((0, 0, fw, fh))
-        icon = pygame.transform.smoothscale(frame, (size, size))
-        self._inv_icon_cache[cache_key] = icon
-        return icon
-
-    def _draw_inventory(
-        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
-    ) -> None:
-        """Draw the full inventory overlay for *player*'s viewport."""
-        state = self._inventory_ui[player.player_id]
-
-        # Tick transient message timer
-        state.message_timer = max(0.0, state.message_timer - 1.0 / 60.0)
-        if state.message_timer <= 0.0:
-            state.message = ""
-
-        doll_w = self._INV_DOLL_W
-        grid_x = screen_x + doll_w
-        grid_w = view_w - doll_w
-
-        # Full-viewport semi-transparent overlay
-        overlay = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
-        self.screen.blit(overlay, (screen_x, screen_y))
-
-        # Left panel: character doll
-        self._draw_inventory_doll(player, state, screen_x, screen_y, doll_w, view_h)
-
-        # Right panel: tabs + grid + tooltip
-        self._draw_inventory_grid(player, state, grid_x, screen_y, grid_w, view_h)
-
-        # Divider line between panels
-        pygame.draw.line(
-            self.screen,
-            (80, 70, 120),
-            (screen_x + doll_w, screen_y + 4),
-            (screen_x + doll_w, screen_y + view_h - 4),
-            1,
-        )
-
-    def _draw_inventory_doll(
-        self,
-        player: Player,
-        state: InventoryState,
-        bx: int,
-        by: int,
-        w: int,
-        h: int,
-    ) -> None:
-        """Draw the character-doll panel."""
-        font_xs = self.font_ui_xs
-        font_sm = self.font_ui_sm
-
-        # Panel background
-        panel = pygame.Surface((w, h), pygame.SRCALPHA)
-        panel.fill((18, 14, 30, 230))
-        self.screen.blit(panel, (bx, by))
-
-        # Title
-        title = font_sm.render("Character", True, (200, 180, 255))
-        self.screen.blit(title, (bx + (w - title.get_width()) // 2, by + 12))
-
-        # --- Stick-figure outline ---
-        fig_col = (70, 62, 100)
-        cx = bx + w // 2  # figure centre x
-        fy = by + 50  # figure top offset
-        # Head
-        pygame.draw.circle(self.screen, fig_col, (cx, fy + 38), 24, 2)
-        # Neck
-        pygame.draw.line(self.screen, fig_col, (cx, fy + 62), (cx, fy + 78), 3)
-        # Torso
-        pygame.draw.rect(
-            self.screen, fig_col, (cx - 30, fy + 78, 60, 62), 2, border_radius=3
-        )
-        # Shoulders → arms
-        pygame.draw.line(
-            self.screen, fig_col, (cx - 30, fy + 90), (cx - 78, fy + 120), 3
-        )
-        pygame.draw.line(
-            self.screen, fig_col, (cx + 30, fy + 90), (cx + 78, fy + 120), 3
-        )
-        # Legs
-        pygame.draw.line(
-            self.screen, fig_col, (cx - 15, fy + 140), (cx - 20, fy + 212), 3
-        )
-        pygame.draw.line(
-            self.screen, fig_col, (cx + 15, fy + 140), (cx + 20, fy + 212), 3
-        )
-
-        # --- Slot squares ---
-        slot_sz = self._INV_SLOT_SZ
-        for si, slot_key in enumerate(DOLL_SLOTS):
-            rx, ry = DOLL_SLOT_POSITIONS[slot_key]
-            ax, ay = bx + rx, by + ry
-
-            is_selected = state.doll_focus and si == state.doll_slot_idx
-            is_virtual = slot_key in DOLL_VIRTUAL_SLOTS
-
-            # Background
-            bg_col = (40, 35, 65) if not is_virtual else (35, 50, 40)
-            pygame.draw.rect(
-                self.screen, bg_col, (ax, ay, slot_sz, slot_sz), border_radius=3
-            )
-
-            # Equipped item icon or progression fill
-            if slot_key == "weapon":
-                wpn_def = WEAPON_REGISTRY.get(player.weapon_id)
-                if wpn_def is not None:
-                    icon = self._inv_get_icon(item_sprite_id(wpn_def.name), slot_sz)
-                    if icon:
-                        self.screen.blit(icon, (ax, ay))
-                    else:
-                        pygame.draw.rect(
-                            self.screen,
-                            wpn_def.color,
-                            (ax + 4, ay + 4, slot_sz - 8, slot_sz - 8),
-                            border_radius=2,
-                        )
-            elif slot_key == "pickaxe":
-                pick = PICKAXES[player.pick_level]
-                icon = self._inv_get_icon(item_sprite_id(pick["name"]), slot_sz)
-                if icon:
-                    self.screen.blit(icon, (ax, ay))
-                else:
-                    pygame.draw.rect(
-                        self.screen,
-                        pick["color"],
-                        (ax + 4, ay + 4, slot_sz - 8, slot_sz - 8),
-                        border_radius=2,
-                    )
-            else:
-                equipped = player.equipment.get(slot_key)
-                if equipped:
-                    icon = self._inv_get_icon(item_sprite_id(equipped), slot_sz)
-                    if icon:
-                        self.screen.blit(icon, (ax, ay))
-                    else:
-                        # Fallback: colored square
-                        if equipped in ARMOR_PIECES:
-                            ec = ARMOR_PIECES[equipped]["color"]
-                        elif equipped in ACCESSORY_PIECES:
-                            ec = ACCESSORY_PIECES[equipped]["color"]
-                        else:
-                            ec = (120, 120, 120)
-                        pygame.draw.rect(
-                            self.screen,
-                            ec,
-                            (ax + 4, ay + 4, slot_sz - 8, slot_sz - 8),
-                            border_radius=2,
-                        )
-
-            # Border
-            border_col = (
-                (255, 220, 60)
-                if is_selected
-                else (100, 90, 140) if not is_virtual else (70, 110, 70)
-            )
-            pygame.draw.rect(
-                self.screen, border_col, (ax, ay, slot_sz, slot_sz), 2, border_radius=3
-            )
-
-        # --- Stats below doll ---
-        stat_y = by + 318
-        def_pct = int(player.defense_pct * 100)
-        def_surf = font_xs.render(f"Defense: {def_pct}%", True, (160, 220, 160))
-        self.screen.blit(def_surf, (bx + (w - def_surf.get_width()) // 2, stat_y))
-
-        # Controls hint
-        hint_y = stat_y + 72
-        close_key_name = pygame.key.name(player.controls.equip_key).upper()
-        tab_key = "Z/X" if player.player_id == 1 else ",/."
-        for txt, col in [
-            (f"{close_key_name}: Close", (140, 130, 160)),
-            (f"{tab_key}: Switch Tab", (120, 110, 140)),
-            ("← Enter doll", (120, 110, 140)),
-        ]:
-            surf = font_xs.render(txt, True, col)
-            self.screen.blit(surf, (bx + 8, hint_y))
-            hint_y += 16
-
-    def _draw_inventory_grid(
-        self,
-        player: Player,
-        state: InventoryState,
-        bx: int,
-        by: int,
-        w: int,
-        h: int,
-    ) -> None:
-        """Draw the tab strip + item grid + tooltip."""
-        font_xs = self.font_ui_xs
-        font_sm = self.font_ui_sm
-
-        tab_h = self._INV_TAB_H
-        tooltip_h = self._INV_TOOLTIP_H
-        cell = self._INV_CELL
-        gap = self._INV_GAP
-        cols = self._INV_COLS
-
-        # ---- Tab strip ----
-        tab_w = w // NUM_TABS
-        for ti in range(NUM_TABS):
-            tx = bx + ti * tab_w
-            ty = by
-            is_active = ti == state.tab
-
-            tab_bg = (40, 36, 68) if is_active else (22, 20, 36)
-            pygame.draw.rect(self.screen, tab_bg, (tx, ty, tab_w, tab_h))
-            border_col = (200, 160, 255) if is_active else (55, 50, 80)
-            pygame.draw.rect(self.screen, border_col, (tx, ty, tab_w, tab_h), 1)
-
-            # Icon
-            icon = self._inv_get_icon(TAB_SPRITE_IDS[ti], 36)
-            icon_x = tx + (tab_w - 36) // 2
-            icon_y = ty + 4
-            if icon:
-                if not is_active:
-                    dimmed = icon.copy()
-                    dimmed.set_alpha(130)
-                    self.screen.blit(dimmed, (icon_x, icon_y))
-                else:
-                    self.screen.blit(icon, (icon_x, icon_y))
-            # Label
-            label_col = (220, 200, 255) if is_active else (120, 110, 150)
-            lbl = font_xs.render(TAB_LABELS[ti], True, label_col)
-            self.screen.blit(lbl, (tx + (tab_w - lbl.get_width()) // 2, ty + 44))
-
-        # ---- Item grid ----
-        grid_top = by + tab_h + 4
-        grid_h = h - tab_h - tooltip_h - 8
-        # Centre the grid within the right panel
-        total_grid_w = cols * (cell + gap) - gap
-        grid_left = bx + (w - total_grid_w) // 2
-
-        # Clip to grid area
-        self.screen.set_clip((bx, grid_top, w, grid_h))
-
-        items = get_tab_items(player, state.tab)
-        visible_rows = self._inv_visible_rows()
-
-        for idx, item in enumerate(items):
-            row = idx // cols
-            col_i = idx % cols
-            if row < state.scroll_offset or row >= state.scroll_offset + visible_rows:
-                continue
-            sx = grid_left + col_i * (cell + gap)
-            sy = grid_top + (row - state.scroll_offset) * (cell + gap)
-
-            is_selected = (not state.doll_focus) and idx == state.grid_idx
-
-            # Cell background
-            self._draw_inv_cell(item, player, sx, sy, cell, is_selected, state)
-
-        self.screen.set_clip(None)
-
-        # ---- Scrollbar ----
-        total_rows = (len(items) + cols - 1) // cols if items else 0
-        if total_rows > visible_rows:
-            sb_x = bx + w - 8
-            sb_h = grid_h
-            thumb_h = max(20, int(sb_h * visible_rows / total_rows))
-            thumb_y = grid_top + int(
-                (sb_h - thumb_h)
-                * state.scroll_offset
-                / max(1, total_rows - visible_rows)
-            )
-            pygame.draw.rect(
-                self.screen, (40, 35, 65), (sb_x, grid_top, 6, sb_h), border_radius=3
-            )
-            pygame.draw.rect(
-                self.screen,
-                (130, 110, 180),
-                (sb_x, thumb_y, 6, thumb_h),
-                border_radius=3,
-            )
-
-        # ---- Ring pick sub-state ----
-        if state.ring_pick_item is not None:
-            self._draw_inv_ring_pick(state, bx, by, w, h)
-            return
-
-        # ---- Tooltip ----
-        tooltip_top = by + h - tooltip_h
-        pygame.draw.line(
-            self.screen, (60, 55, 90), (bx, tooltip_top), (bx + w, tooltip_top), 1
-        )
-        focused_item = (
-            items[state.grid_idx] if (not state.doll_focus and items) else None
-        )
-        self._draw_inventory_tooltip(
-            player, state, focused_item, bx, tooltip_top, w, tooltip_h
-        )
-
-    def _draw_inv_cell(
-        self,
-        item: dict,
-        player: Player,
-        sx: int,
-        sy: int,
-        cell: int,
-        is_selected: bool,
-        state: InventoryState,
-    ) -> None:
-        """Draw one grid cell."""
-        font_xs = self.font_ui_xs
-        itype = item["type"]
-
-        # Determine background tint based on state
-        if itype in ("weapon", "pickaxe"):
-            if item["is_current"]:
-                bg = (30, 55, 30)
-            elif item["is_past"]:
-                bg = (22, 40, 22)
-            elif item["can_upgrade"]:
-                bg = (50, 50, 20)
-            else:
-                bg = (22, 20, 36)
-        elif itype == "recipe":
-            is_in_housing = self._is_in_housing_env(player)
-            housing_tier = getattr(
-                self.get_player_current_map(player), "housing_tier", 0
-            )
-            craftable = item["min_tier"] == 0 or (
-                is_in_housing and housing_tier >= item["min_tier"]
-            )
-            if craftable and item["can_afford"]:
-                bg = (20, 45, 20)
-            elif craftable:
-                bg = (45, 35, 10)
-            else:
-                bg = (22, 20, 36)
-        else:
-            bg = (28, 24, 44)
-
-        pygame.draw.rect(self.screen, bg, (sx, sy, cell, cell), border_radius=4)
-
-        # Item icon
-        sprite_id = item_sprite_id(item["name"])
-        icon = self._inv_get_icon(sprite_id, cell - 4)
-        if icon:
-            # Desaturate locked items
-            if itype in ("weapon", "pickaxe") and item.get("is_locked"):
-                dimmed = icon.copy()
-                dimmed.set_alpha(80)
-                self.screen.blit(dimmed, (sx + 2, sy + 2))
-            else:
-                self.screen.blit(icon, (sx + 2, sy + 2))
-        else:
-            # Colour-swatch fallback
-            fb_col = item.get("color", (120, 120, 140))
-            pygame.draw.rect(
-                self.screen,
-                fb_col,
-                (sx + 8, sy + 8, cell - 16, cell - 16),
-                border_radius=3,
-            )
-
-        # Stack count (materials)
-        if item["count"] > 1:
-            ct = font_xs.render(str(item["count"]), True, (240, 240, 240))
-            self.screen.blit(ct, (sx + cell - ct.get_width() - 3, sy + cell - 14))
-
-        # "Current" tick for weapon/pickaxe
-        if itype in ("weapon", "pickaxe") and item["is_current"]:
-            pygame.draw.circle(self.screen, (100, 230, 100), (sx + cell - 6, sy + 6), 4)
-
-        # Border
-        if is_selected:
-            pygame.draw.rect(
-                self.screen, (255, 220, 60), (sx, sy, cell, cell), 2, border_radius=4
-            )
-        elif itype in ("weapon", "pickaxe") and item["is_current"]:
-            pygame.draw.rect(
-                self.screen, (80, 200, 80), (sx, sy, cell, cell), 1, border_radius=4
-            )
-        else:
-            pygame.draw.rect(
-                self.screen, (55, 50, 82), (sx, sy, cell, cell), 1, border_radius=4
-            )
-
-    def _draw_inventory_tooltip(
-        self,
-        player: Player,
-        state: InventoryState,
-        item: dict | None,
-        bx: int,
-        by: int,
-        w: int,
-        h: int,
-    ) -> None:
-        """Draw the tooltip strip at the bottom of the grid panel."""
-        font_sm = self.font_ui_sm
-        font_xs = self.font_ui_xs
-        PADX = 14
-
-        bg = pygame.Surface((w, h), pygame.SRCALPHA)
-        bg.fill((14, 12, 24, 210))
-        self.screen.blit(bg, (bx, by))
-
-        # Transient message overrides tooltip
-        if state.message:
-            msg = font_sm.render(state.message, True, (255, 180, 80))
-            self.screen.blit(msg, (bx + PADX, by + (h - msg.get_height()) // 2))
-            return
-
-        if item is None:
-            return
-
-        itype = item["type"]
-        name_surf = font_sm.render(item["name"], True, (220, 210, 255))
-        self.screen.blit(name_surf, (bx + PADX, by + 10))
-
-        y = by + 36
-        line_h = 18
-
-        def _line(text: str, col: tuple = (180, 175, 210)) -> None:
-            nonlocal y
-            self.screen.blit(font_xs.render(text, True, col), (bx + PADX, y))
-            y += line_h
-
-        if itype == "armor":
-            _line(
-                f"Slot: {item['slot'].capitalize()}  |  Defense: {int(item['defense_pct'] * 100)}%  |  Durability: {item['durability']}"
-            )
-            equipped_in = [
-                s
-                for s in ("helmet", "chest", "legs", "boots")
-                if player.equipment.get(s) == item["name"]
-            ]
-            if equipped_in:
-                _line(f"Equipped in: {', '.join(equipped_in)}", (100, 220, 100))
-            _line("E — Equip", (255, 220, 80))
-
-        elif itype == "accessory":
-            _line(f"Slot: {item['slot'].capitalize()}  |  {item['label']}")
-            equipped_in = [
-                s
-                for s in ("ring1", "ring2", "amulet")
-                if player.equipment.get(s) == item["name"]
-            ]
-            if equipped_in:
-                _line(f"Equipped in: {', '.join(equipped_in)}", (100, 220, 100))
-            _line("E — Equip", (255, 220, 80))
-
-        elif itype == "weapon":
-            wpn = item["weapon_data"]
-            _line(
-                f"DMG {wpn['damage']}  |  Range {wpn['distance'] // TILE}t  |  Cooldown {wpn['cooldown']}f  {'| Piercing' if wpn.get('pierce') else ''}"
-            )
-            if item["is_current"]:
-                _line("Current weapon", (100, 220, 100))
-            elif item["is_past"]:
-                _line("Already surpassed", (120, 120, 120))
-            elif item["can_upgrade"]:
-                cost_str = "  ".join(
-                    f"{v}×{k}" for k, v in item["upgrade_cost"].items()
-                )
-                _line(f"E — Upgrade  ({cost_str})", (255, 220, 80))
-            else:
-                cost_str = (
-                    "  ".join(f"{v}×{k}" for k, v in item["upgrade_cost"].items())
-                    if item["upgrade_cost"]
-                    else "—"
-                )
-                _line(f"Unlock cost: {cost_str}", (180, 120, 80))
-
-        elif itype == "pickaxe":
-            _line(f"Power: {item['pick_data']['power']}")
-            if item["is_current"]:
-                _line("Current pickaxe", (100, 220, 100))
-            elif item["is_past"]:
-                _line("Already surpassed", (120, 120, 120))
-            elif item["can_upgrade"]:
-                cost_str = "  ".join(
-                    f"{v}×{k}" for k, v in item["upgrade_cost"].items()
-                )
-                _line(f"E — Upgrade  ({cost_str})", (255, 220, 80))
-            else:
-                cost_str = (
-                    "  ".join(f"{v}×{k}" for k, v in item["upgrade_cost"].items())
-                    if item["upgrade_cost"]
-                    else "—"
-                )
-                _line(f"Unlock cost: {cost_str}", (180, 120, 80))
-
-        elif itype == "material":
-            _line(f"Qty: {item['count']}")
-
-        elif itype == "recipe":
-            cost_str = "  ".join(f"{v}×{k}" for k, v in item["cost"].items())
-            result = item["result"]
-            _line(f"Cost: {cost_str}")
-            _line(f"Result: {result['qty']}×{result['item']}")
-            is_in_housing = self._is_in_housing_env(player)
-            housing_tier = getattr(
-                self.get_player_current_map(player), "housing_tier", 0
-            )
-            min_tier = item["min_tier"]
-            if min_tier == 0:
-                hint = "E — Craft (anywhere)"
-            elif not is_in_housing:
-                hint = "Visit a settlement to craft this"
-            elif housing_tier < min_tier:
-                hint = f"Requires settlement tier {min_tier}"
-            else:
-                hint = "E — Craft"
-            can_afford = item["can_afford"]
-            hint_col = (
-                (255, 220, 80)
-                if (min_tier == 0 or (is_in_housing and housing_tier >= min_tier))
-                else (180, 120, 80)
-            )
-            _line(hint, hint_col)
-            if not can_afford:
-                _line("(Missing materials)", (220, 100, 80))
-
-    def _draw_inv_ring_pick(
-        self,
-        state: InventoryState,
-        bx: int,
-        by: int,
-        w: int,
-        h: int,
-    ) -> None:
-        """Draw the ring-slot disambiguation overlay."""
-        font_sm = self.font_ui_sm
-        font_xs = self.font_ui_xs
-
-        ov_w, ov_h = 300, 90
-        ox = bx + (w - ov_w) // 2
-        oy = by + (h - ov_h) // 2
-
-        bg = pygame.Surface((ov_w, ov_h), pygame.SRCALPHA)
-        bg.fill((20, 15, 35, 240))
-        self.screen.blit(bg, (ox, oy))
-        pygame.draw.rect(
-            self.screen, (200, 150, 255), (ox, oy, ov_w, ov_h), 2, border_radius=4
-        )
-
-        title = font_sm.render("Replace which ring?", True, (220, 200, 255))
-        self.screen.blit(title, (ox + (ov_w - title.get_width()) // 2, oy + 8))
-
-        for ci, label in enumerate(("Ring 1", "Ring 2")):
-            ry = oy + 36 + ci * 22
-            if ci == state.ring_pick_choice:
-                pygame.draw.rect(
-                    self.screen,
-                    (70, 50, 130),
-                    (ox + 6, ry, ov_w - 12, 20),
-                    border_radius=2,
-                )
-            self.screen.blit(
-                font_xs.render(label, True, (220, 220, 220)), (ox + 14, ry + 2)
-            )
-
-    def _draw_death_challenge(
-        self, player: Player, screen_x: int, screen_y: int, view_w: int, view_h: int
-    ) -> None:
-        """Draw the death/respawn math challenge overlay for a player's viewport."""
-        challenge = self.death_challenges.get(player.player_id)
-        if challenge is None:
-            return
-
-        # Semi-transparent dark overlay over the whole viewport
-        overlay = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        self.screen.blit(overlay, (screen_x, screen_y))
-
-        font_big = self.font_dc_big
-        font_med = self.font_dc_med
-        font_small = self.font_dc_sm
-
-        cx = screen_x + view_w // 2
-        cy = screen_y + view_h // 2
-
-        panel_w, panel_h = 360, 210
-        panel_x = cx - panel_w // 2
-        panel_y = cy - panel_h // 2
-
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel_surf.fill((20, 10, 10, 235))
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-        pygame.draw.rect(
-            self.screen, (200, 50, 50), (panel_x, panel_y, panel_w, panel_h), 3
-        )
-
-        # "YOU DIED" header
-        died_surf = font_big.render("YOU DIED", True, (255, 50, 50))
-        self.screen.blit(died_surf, (cx - died_surf.get_width() // 2, panel_y + 14))
-
-        # Instruction
-        desc_surf = font_small.render(
-            "Solve to respawn at full health:", True, (200, 200, 200)
-        )
-        self.screen.blit(desc_surf, (cx - desc_surf.get_width() // 2, panel_y + 62))
-
-        # Math question
-        q_surf = font_med.render(challenge["question"], True, (255, 255, 100))
-        self.screen.blit(q_surf, (cx - q_surf.get_width() // 2, panel_y + 88))
-
-        # Answer input field
-        input_display = challenge["input"] if challenge["input"] else "_"
-        input_color = (255, 80, 80) if challenge.get("wrong") else (100, 255, 100)
-        input_surf = font_med.render(input_display, True, input_color)
-        self.screen.blit(input_surf, (cx - input_surf.get_width() // 2, panel_y + 130))
-
-        # Hint / wrong-answer message
-        if challenge.get("wrong"):
-            hint_surf = font_small.render(
-                "Wrong answer — try again!", True, (255, 80, 80)
-            )
-        else:
-            hint_surf = font_small.render(
-                "Type your answer and press Enter", True, (140, 140, 140)
-            )
-        self.screen.blit(hint_surf, (cx - hint_surf.get_width() // 2, panel_y + 175))
