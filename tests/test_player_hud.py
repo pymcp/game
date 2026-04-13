@@ -8,7 +8,6 @@ import pytest
 from src.ui.player_hud import PlayerHUD, _get_settlement_tier
 from tests.conftest import MockGame
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -84,17 +83,13 @@ class TestSectorMinimap:
         # Should return early (no crash, no render)
         hud._draw_sector_minimap(player1, 0, 0, 320, 360)
 
-    def test_minimap_with_visited_sectors(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_minimap_with_visited_sectors(self, mock_game: MockGame, player1) -> None:
         mock_game.visited_sectors.update({(1, 0), (-1, 0), (0, 1)})
         mock_game.land_sectors.add((1, 0))
         hud = _make_hud(mock_game)
         hud._draw_sector_minimap(player1, 0, 0, 320, 360)
 
-    def test_minimap_with_sky_revealed(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_minimap_with_sky_revealed(self, mock_game: MockGame, player1) -> None:
         mock_game.sky_revealed_sectors.add((2, 2))
         hud = _make_hud(mock_game)
         hud._draw_sector_minimap(player1, 0, 0, 320, 360)
@@ -110,9 +105,7 @@ class TestInteractionHints:
         hud = _make_hud(mock_game)
         hud._draw_interaction_hints(player1, 0, 0, 320, 360)
 
-    def test_hints_no_map_returns_early(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_hints_no_map_returns_early(self, mock_game: MockGame, player1) -> None:
         player1.current_map = "nonexistent"
         hud = _make_hud(mock_game)
         # Should return early without error

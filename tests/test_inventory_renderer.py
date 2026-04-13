@@ -8,7 +8,6 @@ from src.ui.inventory_renderer import InventoryRenderer
 from src.ui.inventory import InventoryTab, InventoryState
 from tests.conftest import MockGame
 
-
 # ---------------------------------------------------------------------------
 # Construction & initial state
 # ---------------------------------------------------------------------------

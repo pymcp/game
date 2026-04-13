@@ -398,7 +398,9 @@ class InventoryRenderer:
             is_virtual = slot_key in DOLL_VIRTUAL_SLOTS
 
             bg_col = (40, 35, 65) if not is_virtual else (35, 50, 40)
-            pygame.draw.rect(screen, bg_col, (ax, ay, slot_sz, slot_sz), border_radius=3)
+            pygame.draw.rect(
+                screen, bg_col, (ax, ay, slot_sz, slot_sz), border_radius=3
+            )
 
             if slot_key == "weapon":
                 wpn_def = WEAPON_REGISTRY.get(player.weapon_id)
@@ -824,6 +826,4 @@ class InventoryRenderer:
                     (ox + 6, ry, ov_w - 12, 20),
                     border_radius=2,
                 )
-            screen.blit(
-                font_xs.render(label, True, (220, 220, 220)), (ox + 14, ry + 2)
-            )
+            screen.blit(font_xs.render(label, True, (220, 220, 220)), (ox + 14, ry + 2))

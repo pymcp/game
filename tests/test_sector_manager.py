@@ -13,7 +13,6 @@ from src.world.sector_manager import SectorManager
 from src.entities.player import Player
 from tests.conftest import MockGame
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -150,9 +149,7 @@ class TestTickBiomeDamage:
         # Timer should be cleared
         assert sm._biome_warn_timers[1] is None
 
-    def test_no_damage_if_armored(
-        self, mock_game: MockGame, player1: Player
-    ) -> None:
+    def test_no_damage_if_armored(self, mock_game: MockGame, player1: Player) -> None:
         sm = _make_sm(mock_game)
         player1.equipment["helmet"] = "Leather Helmet"
         initial_hp = player1.hp

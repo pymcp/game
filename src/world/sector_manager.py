@@ -102,9 +102,7 @@ class SectorManager:
                     from src.world.environments import OverlandEnvironment
 
                     land_env = OverlandEnvironment(map_key=key)
-                    sector_scene.creatures.extend(
-                        land_env.spawn_creatures(sector_map)
-                    )
+                    sector_scene.creatures.extend(land_env.spawn_creatures(sector_map))
             archived = self._entity_archive.pop(key, None)
             if archived:
                 from src.save import (
@@ -249,9 +247,7 @@ class SectorManager:
         self.get_or_generate_sector(new_sx, new_sy)
 
         new_key: str | tuple = (
-            ("sector", new_sx, new_sy)
-            if (new_sx != 0 or new_sy != 0)
-            else "overland"
+            ("sector", new_sx, new_sy) if (new_sx != 0 or new_sy != 0) else "overland"
         )
         player.current_map = new_key
         player.x = new_x
@@ -324,9 +320,7 @@ class SectorManager:
     # Thumbnails
     # ------------------------------------------------------------------
 
-    def generate_sector_thumbnail(
-        self, sx: int, sy: int
-    ) -> pygame.Surface | None:
+    def generate_sector_thumbnail(self, sx: int, sy: int) -> pygame.Surface | None:
         """Return (or build) an 80x60 thumbnail for sector (sx, sy)."""
         key = ("sector", sx, sy)
         if key in self._sector_thumbnail_cache:

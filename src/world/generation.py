@@ -1,5 +1,6 @@
 """World generation and enemy spawning."""
 
+import collections
 import random
 import math
 from src.config import (
@@ -41,10 +42,39 @@ from src.config import (
     BiomeType,
 )
 from src.data import ENEMY_TYPES, EnemyEnvironment
+from src.data.tiles import BLOCKING_TILES
+
+# Tiles the player can walk across on the overland map.
+_OVERLAND_WALKABLE: frozenset[int] = frozenset(
+    tid for tid in range(256) if tid not in BLOCKING_TILES
+)
 
 
 def generate_world() -> list[list[int]]:
-    """Return a 2-D list of tile-type IDs using simple noise-like placement."""
+    """Return a 2-D list of tile-type IDs using simple noise-like placement.
+
+    Retries up to 5 times to guarantee the spawn point can reach the
+    pier/boat and at least 2 caves.  If retries are exhausted, carves
+    paths through mountains as a fallback.
+    """
+    max_attempts = 5
+    world: list[list[int]] = []
+    reachable: set[tuple[int, int]] = set()
+    spawn_col = spawn_row = 0
+    for _attempt in range(max_attempts):
+        world = _generate_world_inner()
+        spawn_col, spawn_row = _find_spawn_tile(world)
+        ok, reachable = _validate_overland_reachability(world, spawn_col, spawn_row)
+        if ok:
+            return world
+
+    # Fallback: carve paths to unreachable targets on the last world
+    _fixup_reachability(world, spawn_col, spawn_row, reachable)
+    return world
+
+
+def _generate_world_inner() -> list[list[int]]:
+    """Core island generation logic (one attempt)."""
     # Start entirely as ocean; the island mask determines land vs water
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
 
@@ -693,3 +723,212 @@ def _place_cave_entrances(world: list[list[int]]) -> None:
             cave_type = CAVE_MOUNTAIN if is_adj_mountain else CAVE_HILL
             world[row][col] = cave_type
             cave_count += 1
+
+
+# ---------------------------------------------------------------------------
+# Spawn-reachability helpers (home island only)
+# ---------------------------------------------------------------------------
+
+
+def _find_spawn_tile(world: list[list[int]]) -> tuple[int, int]:
+    """Return (col, row) of a GRASS/DIRT tile near map centre.
+
+    Mirrors the expanding-square search in ``Game.__init__.find_grass_spawn``
+    but covers the full map instead of capping at 10 tiles.
+    """
+    start_col = WORLD_COLS // 2
+    start_row = WORLD_ROWS // 2
+    for dist in range(max(WORLD_COLS, WORLD_ROWS)):
+        for dc in range(-dist, dist + 1):
+            for dr in range(-dist, dist + 1):
+                if abs(dc) != dist and abs(dr) != dist:
+                    continue
+                c = start_col + dc
+                r = start_row + dr
+                if 0 <= c < WORLD_COLS and 0 <= r < WORLD_ROWS:
+                    if world[r][c] in (GRASS, DIRT):
+                        return c, r
+    return start_col, start_row
+
+
+def _bfs_reachable(
+    world: list[list[int]], start_col: int, start_row: int
+) -> set[tuple[int, int]]:
+    """BFS from *start* over walkable overland tiles.  Returns reachable set."""
+    rows = len(world)
+    cols = len(world[0]) if rows else 0
+    reachable: set[tuple[int, int]] = set()
+    queue: collections.deque[tuple[int, int]] = collections.deque()
+    reachable.add((start_col, start_row))
+    queue.append((start_col, start_row))
+    while queue:
+        c, r = queue.popleft()
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nc, nr = c + dc, r + dr
+            if (
+                0 <= nc < cols
+                and 0 <= nr < rows
+                and (nc, nr) not in reachable
+                and world[nr][nc] in _OVERLAND_WALKABLE
+            ):
+                reachable.add((nc, nr))
+                queue.append((nc, nr))
+    return reachable
+
+
+def _validate_overland_reachability(
+    world: list[list[int]], spawn_col: int, spawn_row: int
+) -> tuple[bool, set[tuple[int, int]]]:
+    """Check spawn can reach >=1 pier/boat and >=2 caves.
+
+    Returns ``(passed, reachable_set)``.
+    """
+    reachable = _bfs_reachable(world, spawn_col, spawn_row)
+    pier_ok = False
+    cave_count = 0
+    for c, r in reachable:
+        tid = world[r][c]
+        if tid in (PIER, BOAT):
+            pier_ok = True
+        if tid in (CAVE_MOUNTAIN, CAVE_HILL):
+            cave_count += 1
+    return (pier_ok and cave_count >= 2), reachable
+
+
+def _pick_ground_tile(world: list[list[int]], col: int, row: int) -> int:
+    """Choose GRASS or DIRT weighted by the tiles surrounding *(col, row)*."""
+    rows = len(world)
+    cols = len(world[0]) if rows else 0
+    grass_count = 0
+    dirt_count = 0
+    for dc, dr in (
+        (-1, 0),
+        (1, 0),
+        (0, -1),
+        (0, 1),
+        (-1, -1),
+        (1, -1),
+        (-1, 1),
+        (1, 1),
+    ):
+        nc, nr = col + dc, row + dr
+        if 0 <= nc < cols and 0 <= nr < rows:
+            if world[nr][nc] == GRASS:
+                grass_count += 1
+            elif world[nr][nc] == DIRT:
+                dirt_count += 1
+    total = grass_count + dirt_count
+    if total == 0:
+        return GRASS
+    return DIRT if random.random() < dirt_count / total else GRASS
+
+
+def _carve_path(
+    world: list[list[int]],
+    reachable: set[tuple[int, int]],
+    target_col: int,
+    target_row: int,
+) -> None:
+    """Carve an L-shaped path from the reachable region to *target*.
+
+    Only replaces MOUNTAIN tiles with GRASS/DIRT (chosen via
+    ``_pick_ground_tile``).  Never touches WATER.
+    """
+    rows = len(world)
+    cols = len(world[0]) if rows else 0
+
+    # Find closest reachable tile to target
+    best_dist = float("inf")
+    best_c, best_r = target_col, target_row
+    for c, r in reachable:
+        d = abs(c - target_col) + abs(r - target_row)
+        if d < best_dist:
+            best_dist = d
+            best_c, best_r = c, r
+
+    # Walk horizontal then vertical
+    c, r = target_col, target_row
+    while c != best_c:
+        c += 1 if best_c > c else -1
+        if 0 <= c < cols and 0 <= r < rows:
+            if world[r][c] == MOUNTAIN:
+                world[r][c] = _pick_ground_tile(world, c, r)
+            reachable.add((c, r))
+    while r != best_r:
+        r += 1 if best_r > r else -1
+        if 0 <= c < cols and 0 <= r < rows:
+            if world[r][c] == MOUNTAIN:
+                world[r][c] = _pick_ground_tile(world, c, r)
+            reachable.add((c, r))
+
+
+def _fixup_reachability(
+    world: list[list[int]],
+    spawn_col: int,
+    spawn_row: int,
+    reachable: set[tuple[int, int]],
+) -> None:
+    """Carve paths to unreachable pier/caves; force-place caves if too few exist."""
+    rows = len(world)
+    cols = len(world[0]) if rows else 0
+
+    # Scan for all pier/boat and cave tiles on the map
+    pier_tiles: list[tuple[int, int]] = []
+    cave_tiles: list[tuple[int, int]] = []
+    for r in range(rows):
+        for c in range(cols):
+            tid = world[r][c]
+            if tid in (PIER, BOAT):
+                pier_tiles.append((c, r))
+            elif tid in (CAVE_MOUNTAIN, CAVE_HILL):
+                cave_tiles.append((c, r))
+
+    # Carve to every unreachable pier/boat tile
+    for pc, pr in pier_tiles:
+        if (pc, pr) not in reachable:
+            _carve_path(world, reachable, pc, pr)
+
+    # Carve to enough caves so that >=2 are reachable (closest first)
+    reachable_caves = [(c, r) for c, r in cave_tiles if (c, r) in reachable]
+    unreachable_caves = [(c, r) for c, r in cave_tiles if (c, r) not in reachable]
+    unreachable_caves.sort(
+        key=lambda cr: abs(cr[0] - spawn_col) + abs(cr[1] - spawn_row)
+    )
+    needed = max(0, 2 - len(reachable_caves))
+    for cc, cr in unreachable_caves:
+        if needed <= 0:
+            break
+        _carve_path(world, reachable, cc, cr)
+        needed -= 1
+
+    # If still fewer than 2 caves on the whole island, force-place on reachable land
+    total_reachable_caves = sum(
+        1 for c, r in reachable if world[r][c] in (CAVE_MOUNTAIN, CAVE_HILL)
+    )
+    while total_reachable_caves < 2:
+        placed = False
+        # Prefer tiles adjacent to mountains
+        for c, r in sorted(
+            reachable,
+            key=lambda cr: abs(cr[0] - spawn_col) + abs(cr[1] - spawn_row),
+        ):
+            if world[r][c] not in (GRASS, DIRT):
+                continue
+            if _is_adjacent_to_mountain(world, c, r):
+                world[r][c] = CAVE_MOUNTAIN
+                total_reachable_caves += 1
+                placed = True
+                break
+        if not placed:
+            # No mountain-adjacent tile — place a hill cave
+            for c, r in sorted(
+                reachable,
+                key=lambda cr: abs(cr[0] - spawn_col) + abs(cr[1] - spawn_row),
+            ):
+                if world[r][c] in (GRASS, DIRT):
+                    world[r][c] = CAVE_HILL
+                    total_reachable_caves += 1
+                    placed = True
+                    break
+        if not placed:
+            break

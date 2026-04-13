@@ -8,7 +8,6 @@ import pytest
 from src.ui.treasure import TreasureManager
 from tests.conftest import MockGame
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -43,24 +42,18 @@ class TestInit:
 
 
 class TestOpenChest:
-    def test_always_grants_sail(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_always_grants_sail(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         assert player1.inventory.get("Sail", 0) >= 1
 
-    def test_loot_added_to_inventory(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_loot_added_to_inventory(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         # At least Sail + one bonus item
         assert len(player1.inventory) >= 2
 
-    def test_reveal_popup_queued(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_reveal_popup_queued(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         assert len(tm.reveals) == 1
@@ -69,9 +62,7 @@ class TestOpenChest:
         assert reveal["timer"] == 180.0
         assert "Sail" in reveal["items"]
 
-    def test_particles_spawned(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_particles_spawned(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         # 55 sparkle + 12 lid = 67 total
@@ -94,25 +85,19 @@ class TestOpenChest:
 
 
 class TestTick:
-    def test_timer_decrements(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_timer_decrements(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         tm.tick(1.0)
         assert tm.reveals[0]["timer"] == 179.0
 
-    def test_expired_reveals_culled(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_expired_reveals_culled(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         tm.tick(180.0)
         assert len(tm.reveals) == 0
 
-    def test_partial_cull(
-        self, mock_game: MockGame, player1, player2
-    ) -> None:
+    def test_partial_cull(self, mock_game: MockGame, player1, player2) -> None:
         tm = _make_treasure(mock_game)
         tm.open_chest(player1, 100, 100)
         tm.open_chest(player2, 200, 200)
@@ -134,9 +119,7 @@ class TestTick:
         assert mock_game.treasure_reveals is tm.reveals
         assert len(mock_game.treasure_reveals) == 0
 
-    def test_tick_with_no_reveals_is_noop(
-        self, mock_game: MockGame
-    ) -> None:
+    def test_tick_with_no_reveals_is_noop(self, mock_game: MockGame) -> None:
         tm = _make_treasure(mock_game)
         tm.tick(1.0)  # should not raise
         assert tm.reveals == []
@@ -148,9 +131,7 @@ class TestTick:
 
 
 class TestDraw:
-    def test_draw_no_reveal_does_nothing(
-        self, mock_game: MockGame, player1
-    ) -> None:
+    def test_draw_no_reveal_does_nothing(self, mock_game: MockGame, player1) -> None:
         tm = _make_treasure(mock_game)
         # Should not raise
         tm.draw(player1, 0, 0, 320, 360)

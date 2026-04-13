@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Test full cave enter + exit round-trip."""
+
 from src.game import Game
 from src.config import TILE, CAVE_EXIT, CAVE_MOUNTAIN, CAVE_HILL
 

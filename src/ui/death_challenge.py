@@ -169,9 +169,7 @@ class DeathChallengeManager:
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill((20, 10, 10, 235))
         screen.blit(panel_surf, (panel_x, panel_y))
-        pygame.draw.rect(
-            screen, (200, 50, 50), (panel_x, panel_y, panel_w, panel_h), 3
-        )
+        pygame.draw.rect(screen, (200, 50, 50), (panel_x, panel_y, panel_w, panel_h), 3)
 
         died_surf = font_big.render("YOU DIED", True, (255, 50, 50))
         screen.blit(died_surf, (cx - died_surf.get_width() // 2, panel_y + 14))

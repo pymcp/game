@@ -22,7 +22,6 @@ from src.data.weapons import WEAPONS, WEAPON_UNLOCK_COSTS
 from src.data.pickaxes import PICKAXES, UPGRADE_COSTS
 from src.data.recipes import RECIPES
 
-
 # ---------------------------------------------------------------------------
 # Tab enum
 # ---------------------------------------------------------------------------

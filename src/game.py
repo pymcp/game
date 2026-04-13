@@ -192,12 +192,12 @@ class Game:
 
         # Two Players - find grass tiles near center
         def find_grass_spawn(offset_x):
-            """Find a grass tile near center offset by offset_x."""
+            """Find a grass or dirt tile near center offset by offset_x."""
             start_col = (WORLD_COLS // 2) + (offset_x // TILE)
             start_row = WORLD_ROWS // 2
 
             # Search in expanding square around target position
-            for search_dist in range(10):
+            for search_dist in range(max(WORLD_COLS, WORLD_ROWS)):
                 for dc in range(-search_dist, search_dist + 1):
                     for dr in range(-search_dist, search_dist + 1):
                         if abs(dc) != search_dist and abs(dr) != search_dist:
@@ -205,9 +205,9 @@ class Game:
                         col = start_col + dc
                         row = start_row + dr
                         if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
-                            if overland_map.get_tile(row, col) == GRASS:
+                            if overland_map.get_tile(row, col) in (GRASS, DIRT):
                                 return col * TILE + TILE // 2, row * TILE + TILE // 2
-            # Fallback to center if no grass found
+            # Fallback to center if no walkable tile found
             return (WORLD_COLS // 2) * TILE + TILE // 2, (
                 WORLD_ROWS // 2
             ) * TILE + TILE // 2
@@ -337,7 +337,6 @@ class Game:
             # Already animating — skip straight to closed
             self._sky_view[pid] = False
             self._sky_anim[pid] = None
-
 
     def _init_sky_clouds(self) -> None:
         """Populate the cloud layer with 8 randomly positioned cloud instances."""
@@ -692,9 +691,7 @@ class Game:
             # 0.5. Craft at worktable — standing on or adjacent to WORKTABLE
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 if current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE:
-                    self.inventory.open_to_tab(
-                        player.player_id, InventoryTab.RECIPES
-                    )
+                    self.inventory.open_to_tab(player.player_id, InventoryTab.RECIPES)
                     return
 
         # 1. Cave entry — standing on a cave entrance tile on a surface map
@@ -948,7 +945,9 @@ class Game:
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
                 cc, rr = p_col + dc, p_row + dr
                 if current_map_obj.get_tile(rr, cc) == ANCIENT_STONE:
-                    self.portals.try_activate_ritual_stone(player, current_map_obj, cc, rr)
+                    self.portals.try_activate_ritual_stone(
+                        player, current_map_obj, cc, rr
+                    )
                     return
 
         # 4.6. Adjacent PORTAL_RUINS — show quest status or gather delivery
@@ -1071,7 +1070,6 @@ class Game:
                     int(player.x), int(player.y), (40, 160, 220), player.current_map
                 )
             )
-
 
     # ------------------------------------------------------------------
     # Housing environment transitions
@@ -2101,9 +2099,9 @@ class Game:
                 continue
             pc = int(player.x) // TILE
             pr = int(player.y) // TILE
-            if cur_map.get_tile(pr, pc) == PORTAL_LAVA and not self.sectors.has_ancient_armor(
-                player
-            ):
+            if cur_map.get_tile(
+                pr, pc
+            ) == PORTAL_LAVA and not self.sectors.has_ancient_armor(player):
                 self._lava_hurt_timers[pid] -= dt
                 if self._lava_hurt_timers[pid] <= 0:
                     self._lava_hurt_timers[pid] = 60
@@ -2912,7 +2910,6 @@ class Game:
 
         self.screen.set_clip(None)
 
-
     # ------------------------------------------------------------------
     # Sky view
     # ------------------------------------------------------------------
@@ -3022,7 +3019,9 @@ class Game:
         # --- Ascend/descend flash overlay on top ---
         anim = self._sky_anim[pid]
         if anim is not None and anim["phase"] != "sky":
-            self.player_hud._draw_sky_anim_overlay(player, screen_x, screen_y, view_w, view_h)
+            self.player_hud._draw_sky_anim_overlay(
+                player, screen_x, screen_y, view_w, view_h
+            )
 
     def _draw_sky_clouds(
         self,
@@ -3049,4 +3048,3 @@ class Game:
             cx = screen_x + int(cloud["x"]) % view_w
             cy = screen_y + int(cloud["y"]) % view_h
             self.screen.blit(frame_surf, (cx - fw // 2, cy - fh // 2))
-

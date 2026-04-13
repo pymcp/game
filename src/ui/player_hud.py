@@ -73,9 +73,7 @@ class PlayerHUD:
     # Top stats panel
     # ------------------------------------------------------------------
 
-    def _draw_top_panel(
-        self, player: "Player", screen_x: int, screen_y: int
-    ) -> None:
+    def _draw_top_panel(self, player: "Player", screen_x: int, screen_y: int) -> None:
         game = self.game
         screen = game.screen
         font_small = game.font_ui_sm
@@ -138,9 +136,7 @@ class PlayerHUD:
 
         # Current pickaxe
         pick = PICKAXES[player.pick_level]
-        pygame.draw.rect(
-            screen, pick["color"], (screen_x + 18, screen_y + 74, 10, 10)
-        )
+        pygame.draw.rect(screen, pick["color"], (screen_x + 18, screen_y + 74, 10, 10))
         pick_label = (
             pick["name"]
             if player.pick_level < len(PICKAXES) - 1
@@ -330,9 +326,7 @@ class PlayerHUD:
             )
             screen.blit(hint, (hint_x_fn(hint), hint_y))
         elif tile_id == HOUSE_EXIT:
-            hint = font_tiny.render(
-                f"[{interact_key}] Exit", True, (180, 255, 180)
-            )
+            hint = font_tiny.render(f"[{interact_key}] Exit", True, (180, 255, 180))
             screen.blit(hint, (hint_x_fn(hint), hint_y))
         elif tile_id == WORKTABLE or any(
             current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE
@@ -498,9 +492,7 @@ class PlayerHUD:
         for i, line in enumerate(lines):
             color = (230, 200, 130) if i == 0 else (210, 185, 145)
             rendered = font.render(line, True, color)
-            screen.blit(
-                rendered, (panel_x + padding, panel_y + padding + i * line_h)
-            )
+            screen.blit(rendered, (panel_x + padding, panel_y + padding + i * line_h))
 
     # ------------------------------------------------------------------
     # Sky ascend/descend flash overlay
