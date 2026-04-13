@@ -139,6 +139,10 @@ class Game:
         self.maps[("sector", 0, 0)] = self.maps["overland"]
         # Sector-wipe animation state: {player_id: {"progress": float, "direction": str}}
         self.sector_wipe = {}
+        # Set of (sx, sy) sector coordinates the players have ever visited
+        self.visited_sectors: set = {(0, 0)}
+        # Set of (sx, sy) sector coordinates that contain land (grass tiles)
+        self.land_sectors: set = {(0, 0)}
 
         # Load saved state if a save file exists
         save_data = load_game()
@@ -578,10 +582,13 @@ class Game:
             return self.maps["overland"]
         key = ("sector", sx, sy)
         if key not in self.maps:
-            world_data = generate_ocean_sector(sx, sy, self.world_seed)
+            world_data, has_island = generate_ocean_sector(sx, sy, self.world_seed)
             sector_map = GameMap(world_data, tileset="overland")
             sector_map.enemies = spawn_enemies(world_data)
             self.maps[key] = sector_map
+            # Record if this sector has a full island (not just atolls)
+            if has_island:
+                self.land_sectors.add((sx, sy))
         return self.maps[key]
 
     def _evict_distant_sectors(self):
@@ -662,6 +669,9 @@ class Game:
         player.x = new_x
         player.y = new_y
         self._snap_camera_to_player(player)
+
+        # Record the new sector as visited
+        self.visited_sectors.add((new_sx, new_sy))
 
         # Start the wipe animation
         self.sector_wipe[pid] = {
@@ -985,10 +995,15 @@ class Game:
 
     def check_cave_transitions(self, player, current_map):
         """Check if player stepped on a cave entrance and transition if so."""
-        if player.current_map != "overland":
-            return  # Only check for cave entry when on overland map
+        # Cave entry is only possible when on a surface map (not already in a cave)
+        if isinstance(player.current_map, tuple) and len(player.current_map) == 2:
+            return  # already in a cave
 
-        if current_map != self.maps["overland"]:
+        if current_map is None:
+            return
+
+        # Caves only exist on the overland tileset, not pure-ocean sector maps
+        if current_map.tileset != "overland":
             return
 
         tile_col = int(player.x) // TILE
@@ -1008,6 +1023,8 @@ class Game:
                 self.maps[cave_key] = env.generate()
 
             cave_map = self.maps[cave_key]
+            # Record the origin map so the exit knows where to return
+            cave_map.origin_map = player.current_map
             # Teleport player to cave spawn point (away from exit)
             player.x = cave_map.spawn_col * TILE + TILE // 2
             player.y = cave_map.spawn_row * TILE + TILE // 2
@@ -1019,12 +1036,13 @@ class Game:
             )
 
     def check_cave_exits(self, player, current_map):
-        """Check if player stepped on a cave exit and transition back to overland."""
-        if player.current_map == "overland":
-            return  # Already on overland
+        """Check if player stepped on a cave exit and transition back to their origin map."""
+        # Must be in a cave (2-tuple key)
+        if not (isinstance(player.current_map, tuple) and len(player.current_map) == 2):
+            return
 
-        if current_map == self.maps["overland"]:
-            return  # Not on a cave map
+        if current_map is None:
+            return
 
         # Check if player is standing on a CAVE_EXIT tile
         if not hasattr(current_map, "entrance_col"):
@@ -1035,11 +1053,16 @@ class Game:
 
         tile_id = current_map.get_tile(tile_row, tile_col)
         if tile_id == CAVE_EXIT:
-            # Return to overland map near cave entrance (but NOT on the cave tile itself,
-            # otherwise check_cave_transitions will send us right back in)
+            # Return to the map the player came from
+            origin_key = getattr(current_map, "origin_map", "overland")
+            origin_map = self.maps.get(origin_key)
+            if origin_map is None:
+                # Origin sector was evicted — fall back to overland
+                origin_key = "overland"
+                origin_map = self.maps["overland"]
+
             entrance_col = current_map.entrance_col
             entrance_row = current_map.entrance_row
-            overland = self.maps["overland"]
 
             # Find a walkable adjacent tile that isn't a cave entrance
             placed = False
@@ -1055,19 +1078,19 @@ class Game:
             ]:
                 adj_c = entrance_col + dc
                 adj_r = entrance_row + dr
-                if 0 <= adj_c < overland.cols and 0 <= adj_r < overland.rows:
-                    adj_tile = overland.get_tile(adj_r, adj_c)
+                if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
+                    adj_tile = origin_map.get_tile(adj_r, adj_c)
                     if adj_tile not in (WATER, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL):
                         player.x = adj_c * TILE + TILE // 2
                         player.y = adj_r * TILE + TILE // 2
                         placed = True
                         break
             if not placed:
-                # Fallback: place on the cave tile anyway (rare edge case)
+                # Fallback: place on the entrance tile anyway
                 player.x = entrance_col * TILE + TILE // 2
                 player.y = entrance_row * TILE + TILE // 2
 
-            player.current_map = "overland"
+            player.current_map = origin_key
 
             self._snap_camera_to_player(player)
             self.floats.append(
@@ -2099,6 +2122,76 @@ class Game:
         auto_fire_color = (100, 255, 100) if player.auto_fire else (150, 150, 150)
         auto_fire_text = font_tiny.render(auto_fire_status, True, auto_fire_color)
         self.screen.blit(auto_fire_text, (screen_x + 18, auto_y + 16))
+
+        # Sector minimap (top-right corner)
+        self._draw_sector_minimap(player, screen_x, screen_y, view_w, view_h)
+
+    def _draw_sector_minimap(self, player, screen_x, screen_y, view_w, view_h):
+        """Draw a small sector-grid minimap in the top-right corner of the viewport.
+
+        Only shown when the player is on the surface (not in a cave).
+        Shows a 9x9 window of the infinite sector grid centred on the player's
+        current sector, with visited sectors lit and fog elsewhere.
+        """
+        player_sector = self._get_player_sector(player)
+        if player_sector is None:
+            return  # underground — hide minimap
+
+        cx, cy = player_sector  # current sector coords
+
+        CELL = 10       # px per cell
+        GAP = 1         # px gap between cells
+        WINDOW = 9      # cells across / down (must be odd)
+        half = WINDOW // 2
+
+        panel_w = WINDOW * (CELL + GAP) - GAP + 8
+        panel_h = WINDOW * (CELL + GAP) - GAP + 8 + 14  # extra 14 for header text
+        panel_x = screen_x + view_w - panel_w - 8
+        panel_y = screen_y + 8
+
+        # Background panel
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((20, 20, 30, 200))
+        self.screen.blit(panel_surf, (panel_x, panel_y))
+        pygame.draw.rect(self.screen, (150, 150, 150),
+                         (panel_x, panel_y, panel_w, panel_h), 2)
+
+        # "MAP" label
+        label = self.font_ui_xs.render("MAP", True, (180, 180, 180))
+        self.screen.blit(label, (panel_x + panel_w // 2 - label.get_width() // 2,
+                                  panel_y + 3))
+
+        grid_top = panel_y + 14 + 4  # below label
+
+        for row in range(WINDOW):
+            for col in range(WINDOW):
+                sx = cx + (col - half)
+                sy = cy + (row - half)
+
+                cell_x = panel_x + 4 + col * (CELL + GAP)
+                cell_y = grid_top + row * (CELL + GAP)
+
+                if (sx, sy) in self.visited_sectors:
+                    if (sx, sy) in self.land_sectors:
+                        color = (50, 110, 50)   # has land — muted green
+                    else:
+                        color = (35, 55, 110)   # visited ocean — dark navy
+                else:
+                    color = (25, 25, 35)        # fog / unvisited
+
+                pygame.draw.rect(self.screen, color, (cell_x, cell_y, CELL, CELL))
+
+                # Highlight current sector with a bright border
+                if sx == cx and sy == cy:
+                    pygame.draw.rect(self.screen, (220, 220, 255),
+                                     (cell_x, cell_y, CELL, CELL), 2)
+
+        # Draw a small dot at the exact centre cell to mark the player
+        centre_col = half
+        centre_row = half
+        dot_x = panel_x + 4 + centre_col * (CELL + GAP) + CELL // 2
+        dot_y = grid_top + centre_row * (CELL + GAP) + CELL // 2
+        pygame.draw.circle(self.screen, (255, 255, 255), (dot_x, dot_y), 2)
 
     def _draw_death_challenge(self, player, screen_x, screen_y, view_w, view_h):
         """Draw the death/respawn math challenge overlay for a player's viewport."""

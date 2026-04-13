@@ -81,7 +81,9 @@ def generate_ocean_sector(sx, sy, world_seed):
     returns the same world layout.  Sector (0,0) is the home island and should
     never be generated here — use the existing generate_world() for that.
 
-    Returns a 2-D list of tile IDs (WORLD_ROWS rows × WORLD_COLS cols).
+    Returns a tuple (world, has_island) where world is a 2-D list of tile IDs
+    (WORLD_ROWS rows × WORLD_COLS cols) and has_island is True when the sector
+    contains a full generated island (not just atolls).
     """
     # Deterministic seed derived from sector coordinates and the world seed
     sector_seed = hash((world_seed, sx, sy)) & 0xFFFF_FFFF
@@ -96,7 +98,7 @@ def generate_ocean_sector(sx, sy, world_seed):
         world = generate_world()
         # Re-sync rng state in case callers chain calls (not strictly needed)
         random.setstate(_prev_state)
-        return world
+        return world, True
 
     # --- Ocean-only sector: water + rocks + atolls ---
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
@@ -125,7 +127,7 @@ def generate_ocean_sector(sx, sy, world_seed):
             if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
                 world[ny][nx] = GRASS
 
-    return world
+    return world, False
 
 
 def _generate_island_mask(rows, cols):

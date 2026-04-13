@@ -62,6 +62,7 @@ _CAVE_EXTRA_ATTRS = (
     "spawn_col", "spawn_row",
     "cave_style",
 )
+# origin_map is a map key (string or tuple) — encoded/decoded via key helpers
 
 
 def _serialize_map(game_map):
@@ -80,6 +81,8 @@ def _serialize_map(game_map):
     for attr in _CAVE_EXTRA_ATTRS:
         if hasattr(game_map, attr):
             data[attr] = getattr(game_map, attr)
+    if hasattr(game_map, "origin_map"):
+        data["origin_map"] = _key_to_str(game_map.origin_map)
     return data
 
 
@@ -163,6 +166,8 @@ def _deserialize_map(data):
     for attr in _CAVE_EXTRA_ATTRS:
         if attr in data:
             setattr(game_map, attr, data[attr])
+    if "origin_map" in data:
+        game_map.origin_map = _str_to_key(data["origin_map"])
     return game_map
 
 
@@ -242,6 +247,8 @@ def save_game(game):
         ],
         "workers": [_serialize_worker(w) for w in game.workers],
         "pets": [_serialize_pet(p) for p in game.pets],
+        "visited_sectors": [list(s) for s in game.visited_sectors],
+        "land_sectors": [list(s) for s in game.land_sectors],
     }
 
     with open(SAVE_PATH, "w") as f:
@@ -286,6 +293,10 @@ def apply_save(game, data):
     # Workers and pets
     game.workers = [_deserialize_worker(w) for w in data["workers"]]
     game.pets = [_deserialize_pet(p) for p in data["pets"]]
+
+    # Visited sectors
+    game.visited_sectors = {tuple(s) for s in data.get("visited_sectors", [[0, 0]])}
+    game.land_sectors = {tuple(s) for s in data.get("land_sectors", [[0, 0]])}
 
     # Snap cameras to loaded player positions
     game.cam1_x = game.player1.x - game.viewport_w // 2
