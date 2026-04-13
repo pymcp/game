@@ -9,22 +9,106 @@ from src.world import try_spend, xp_for_level, hits_blocking, out_of_bounds
 from src.effects import Particle, FloatingText
 
 
+class ControlScheme:
+    """Represents a player's control scheme."""
+
+    def __init__(
+        self,
+        move_keys,
+        mining_key,
+        fire_key,
+        upgrade_pick_key,
+        upgrade_weapon_key,
+        build_house_key,
+        move_description="",
+    ):
+        """Initialize control scheme.
+
+        Args:
+            move_keys: Dict with 'left', 'right', 'up', 'down' pygame key constants
+            mining_key: pygame key constant for mining
+            fire_key: pygame key constant for firing weapon
+            upgrade_pick_key: pygame key constant for pickaxe upgrade
+            upgrade_weapon_key: pygame key constant for weapon upgrade
+            build_house_key: pygame key constant for building a house
+            move_description: String description of movement controls (e.g., "WASD", "Arrow Keys")
+        """
+        self.move_keys = move_keys
+        self.mining_key = mining_key
+        self.fire_key = fire_key
+        self.upgrade_pick_key = upgrade_pick_key
+        self.upgrade_weapon_key = upgrade_weapon_key
+        self.build_house_key = build_house_key
+        self.move_description = move_description
+
+    def get_controls_list(self):
+        """Return list of control descriptions for UI display."""
+        return [
+            f"{self.move_description}: Move",
+            f"{pygame.key.name(self.mining_key).upper()}: Mine",
+            f"{pygame.key.name(self.fire_key).upper()}: Fire",
+            f"{pygame.key.name(self.upgrade_pick_key).upper()}: Upgrade Pickaxe",
+            f"{pygame.key.name(self.upgrade_weapon_key).upper()}: Upgrade Weapon",
+            f"{pygame.key.name(self.build_house_key).upper()}: Build House",
+        ]
+
+
+# Pre-configured control schemes
+CONTROL_SCHEME_PLAYER1 = ControlScheme(
+    move_keys={
+        "left": pygame.K_a,
+        "right": pygame.K_d,
+        "up": pygame.K_w,
+        "down": pygame.K_s,
+    },
+    mining_key=pygame.K_SPACE,
+    fire_key=pygame.K_f,
+    upgrade_pick_key=pygame.K_u,
+    upgrade_weapon_key=pygame.K_n,
+    build_house_key=pygame.K_b,
+    move_description="WASD",
+)
+
+CONTROL_SCHEME_PLAYER2 = ControlScheme(
+    move_keys={
+        "left": pygame.K_LEFT,
+        "right": pygame.K_RIGHT,
+        "up": pygame.K_UP,
+        "down": pygame.K_DOWN,
+    },
+    mining_key=pygame.K_KP_0,
+    fire_key=pygame.K_KP_ENTER,
+    upgrade_pick_key=pygame.K_i,
+    upgrade_weapon_key=pygame.K_o,
+    build_house_key=pygame.K_v,
+    move_description="Arrows",
+)
+
+
 class Player:
     """The player character."""
 
     COLLISION_HALF = 10
 
-    def __init__(self, x, y, player_id=1):
+    def __init__(self, x, y, player_id=1, control_scheme=None):
         """Initialize player.
 
         Args:
             x, y: Starting position
-            player_id: 1 for WASD controls, 2 for arrow keys + numpad
+            player_id: 1 or 2 (for reference)
+            control_scheme: ControlScheme instance for this player's controls
         """
         self.x = float(x)
         self.y = float(y)
         self.player_id = player_id
         self.speed = 3.2
+
+        # Control scheme
+        if control_scheme is None:
+            control_scheme = (
+                CONTROL_SCHEME_PLAYER1 if player_id == 1 else CONTROL_SCHEME_PLAYER2
+            )
+        self.controls = control_scheme
 
         # Random color for this player
         self.color = (
@@ -78,34 +162,21 @@ class Player:
     # -- movement / collision ----------------------------------------------
 
     def update_movement(self, keys, dt, world):
-        """Handle input and collision.
-
-        Player 1: WASD only
-        Player 2: Arrow keys only
-        """
+        """Handle input and collision using the player's control scheme."""
         from src.config import GRASS, DIRT, MOUNTAIN
 
         dx = dy = 0
-        if self.player_id == 1:
-            # Player 1: WASD
-            if keys[pygame.K_a]:
-                dx -= 1
-            if keys[pygame.K_d]:
-                dx += 1
-            if keys[pygame.K_w]:
-                dy -= 1
-            if keys[pygame.K_s]:
-                dy += 1
-        else:
-            # Player 2: Arrow keys
-            if keys[pygame.K_LEFT]:
-                dx -= 1
-            if keys[pygame.K_RIGHT]:
-                dx += 1
-            if keys[pygame.K_UP]:
-                dy -= 1
-            if keys[pygame.K_DOWN]:
-                dy += 1
+        move_keys = self.controls.move_keys
+
+        # Check movement keys based on control scheme
+        if keys[move_keys["left"]]:
+            dx -= 1
+        if keys[move_keys["right"]]:
+            dx += 1
+        if keys[move_keys["up"]]:
+            dy -= 1
+        if keys[move_keys["down"]]:
+            dy += 1
 
         if dx and dy:
             dx *= 0.707
@@ -138,27 +209,18 @@ class Player:
     def update_mining(
         self, keys, mouse_buttons, dt, world, tile_hp, cam_x, cam_y, particles, floats
     ):
-        """Handle mining input and tile breaking.
-
-        Player 1: SPACE or mouse click
-        Player 2: KP_0 (numpad 0) or KP_Period
-        """
+        """Handle mining input and tile breaking."""
         from src.config import GRASS, DIRT, MOUNTAIN
 
-        # Determine mining input
-        if self.player_id == 1:
-            mining_input = keys[pygame.K_SPACE] or mouse_buttons[0]
-        else:
-            mining_input = keys[pygame.K_KP_0] or keys[pygame.K_KP_PERIOD]
+        # Determine mining input based on control scheme
+        mining_input = keys[self.controls.mining_key] or mouse_buttons[0]
 
         target_col, target_row = None, None
-        if self.player_id == 1 and mouse_buttons[0]:
+        if mouse_buttons[0]:
             mx, my = pygame.mouse.get_pos()
             target_col = int((mx + cam_x) // TILE)
             target_row = int((my + cam_y) // TILE)
-        elif (self.player_id == 1 and keys[pygame.K_SPACE]) or (
-            self.player_id == 2 and mining_input
-        ):
+        elif keys[self.controls.mining_key]:
             center_col = int(self.x) // TILE
             center_row = int(self.y) // TILE
             best, best_dist = None, 999

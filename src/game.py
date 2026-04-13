@@ -26,6 +26,7 @@ from src.config import (
 from src.data import TILE_INFO, WEAPONS
 from src.world import generate_world, spawn_enemies, try_spend, has_adjacent_house
 from src.entities import Player, Projectile, Worker, Pet
+from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
 from src.ui import draw_hud, draw_tooltip
 
@@ -78,8 +79,12 @@ class Game:
         start_x1, start_y1 = find_grass_spawn(-TILE)
         start_x2, start_y2 = find_grass_spawn(TILE)
 
-        self.player1 = Player(start_x1, start_y1, player_id=1)
-        self.player2 = Player(start_x2, start_y2, player_id=2)
+        self.player1 = Player(
+            start_x1, start_y1, player_id=1, control_scheme=CONTROL_SCHEME_PLAYER1
+        )
+        self.player2 = Player(
+            start_x2, start_y2, player_id=2, control_scheme=CONTROL_SCHEME_PLAYER2
+        )
 
         # Cameras (one for each player's viewport)
         self.cam1_x = self.player1.x - self.viewport_w // 2
@@ -136,19 +141,19 @@ class Game:
                 self.screen = pygame.display.set_mode(
                     (SCREEN_W, SCREEN_H), pygame.RESIZABLE
                 )
-        # Player 1 controls (WASD area)
-        elif key == pygame.K_u:
+        # Player 1 controls
+        elif key == self.player1.controls.upgrade_pick_key:
             self.player1.try_upgrade_pick()
-        elif key == pygame.K_n:
+        elif key == self.player1.controls.upgrade_weapon_key:
             self.player1.try_upgrade_weapon()
-        elif key == pygame.K_b:
+        elif key == self.player1.controls.build_house_key:
             self._try_build_house(self.player1)
-        # Player 2 controls (Arrow keys area)
-        elif key == pygame.K_i:
+        # Player 2 controls
+        elif key == self.player2.controls.upgrade_pick_key:
             self.player2.try_upgrade_pick()
-        elif key == pygame.K_o:
+        elif key == self.player2.controls.upgrade_weapon_key:
             self.player2.try_upgrade_weapon()
-        elif key == pygame.K_v:
+        elif key == self.player2.controls.build_house_key:
             self._try_build_house(self.player2)
 
     def _try_build_house(self, player):
@@ -316,10 +321,10 @@ class Game:
 
     def _update_combat(self, keys, mouse_buttons, dt):
         """Handle weapon firing for both players."""
-        # Player 1: F or Right mouse button
+        # Player 1 firing
         if self.player1.weapon_cooldown > 0:
             self.player1.weapon_cooldown -= dt
-        fire_input_p1 = keys[pygame.K_f] or mouse_buttons[2]
+        fire_input_p1 = keys[self.player1.controls.fire_key] or mouse_buttons[2]
         if fire_input_p1 and self.player1.weapon_cooldown <= 0:
             wpn = WEAPONS[self.player1.weapon_level]
             self.projectiles.append(
@@ -333,10 +338,10 @@ class Game:
             )
             self.player1.weapon_cooldown = wpn["cooldown"]
 
-        # Player 2: KP_Enter (numpad enter)
+        # Player 2 firing
         if self.player2.weapon_cooldown > 0:
             self.player2.weapon_cooldown -= dt
-        fire_input_p2 = keys[pygame.K_KP_ENTER]
+        fire_input_p2 = keys[self.player2.controls.fire_key]
         if fire_input_p2 and self.player2.weapon_cooldown <= 0:
             wpn = WEAPONS[self.player2.weapon_level]
             self.projectiles.append(
@@ -773,26 +778,19 @@ class Game:
             2,
         )
 
-        # Control scheme
-        if player == self.player1:
-            controls = [
-                "WASD: Move",
-                "U: Upgrade Pickaxe",
-                "N: Upgrade Weapon",
-                "B: Build House",
-            ]
-        else:
-            controls = [
-                "Arrows: Move",
-                "I: Upgrade Pickaxe",
-                "O: Upgrade Weapon",
-                "V: Build House",
-            ]
+        # Control scheme (2-column layout)
+        controls = player.controls.get_controls_list()
 
         ctrl_y = ctrl_y_start + 8
         ctrl_header = font_small.render("Controls:", True, (200, 200, 200))
         self.screen.blit(ctrl_header, (screen_x + 18, ctrl_y))
 
+        controls_per_column = 3
+
         for idx, ctrl_text in enumerate(controls):
+            col = idx // controls_per_column
+            row = idx % controls_per_column
+            x_offset = col * 110  # Column width
+            y_offset = ctrl_y + 24 + row * 15
             ctrl_surf = font_tiny.render(ctrl_text, True, (180, 180, 180))
-            self.screen.blit(ctrl_surf, (screen_x + 18, ctrl_y + 24 + idx * 15))
+            self.screen.blit(ctrl_surf, (screen_x + 18 + x_offset, y_offset))

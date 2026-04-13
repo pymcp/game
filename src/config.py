@@ -1,7 +1,7 @@
 """Game configuration and constants."""
 
 # Display
-SCREEN_W, SCREEN_H = 960, 640
+SCREEN_W, SCREEN_H = 1920, 1080
 TILE = 32
 FPS = 60
 
