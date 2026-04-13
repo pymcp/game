@@ -45,6 +45,61 @@ CAVE_COLS = 36
 
 
 # ---------------------------------------------------------------------------
+# Connectivity helpers
+# ---------------------------------------------------------------------------
+
+def _passable_neighbour_count(
+    world: list[list[int]],
+    rows: int,
+    cols: int,
+    col: int,
+    row: int,
+    passable: set[int],
+) -> int:
+    """Return how many cardinal neighbours of (col, row) are passable."""
+    count = 0
+    for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        nc, nr = col + dc, row + dr
+        if 0 <= nr < rows and 0 <= nc < cols and world[nr][nc] in passable:
+            count += 1
+    return count
+
+
+def _seal_unreachable(
+    world: list[list[int]],
+    rows: int,
+    cols: int,
+    spawn_col: int,
+    spawn_row: int,
+    passable: set[int],
+) -> None:
+    """Flood-fill from spawn; convert any unreachable passable tiles to CAVE_WALL."""
+    import collections as _collections
+
+    reachable: set[tuple[int, int]] = set()
+    q: _collections.deque[tuple[int, int]] = _collections.deque()
+    q.append((spawn_col, spawn_row))
+    reachable.add((spawn_col, spawn_row))
+    while q:
+        c, r = q.popleft()
+        for dc, dr in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            nc, nr = c + dc, r + dr
+            if (
+                0 <= nr < rows
+                and 0 <= nc < cols
+                and (nc, nr) not in reachable
+                and world[nr][nc] in passable
+            ):
+                reachable.add((nc, nr))
+                q.append((nc, nr))
+
+    for r in range(rows):
+        for c in range(cols):
+            if world[r][c] in passable and (c, r) not in reachable:
+                world[r][c] = CAVE_WALL
+
+
+# ---------------------------------------------------------------------------
 # Layout generators  (return a 2-D grid: 1 = wall, 0 = floor)
 # ---------------------------------------------------------------------------
 
@@ -205,23 +260,57 @@ class CaveEnvironment(BaseEnvironment):
                     if cave_world[rr][rc] == CAVE_WALL:
                         cave_world[rr][rc] = GRASS
 
-        # Connect all isolated floor regions to the spawn/exit area
+        # All tiles the player can walk on (ores are walkable/mineable)
+        _PASSABLE = {GRASS, CAVE_EXIT, STONE, IRON_ORE, GOLD_ORE, DIAMOND_ORE}
+
+        # Connect all isolated floor regions to the spawn/exit area.
+        # Ores are included in the passable set so clusters scattered above
+        # don't create phantom disconnections in the BFS.
         connect_regions(
             cave_world,
             rows,
             cols,
             spawn_col,
             spawn_row,
-            {GRASS, CAVE_EXIT},
+            _PASSABLE,
             GRASS,
             MAP_BORDER,
         )
 
-        # Place treasure chest deep in the cave (opposite end from the exit)
+        # Place treasure chest deep in the cave (opposite end from the exit).
+        # TREASURE_CHEST is blocking, so only place it where at least 2
+        # cardinal neighbours are passable — avoids sealing a chokepoint.
         chest_col, chest_row = find_floor_near_row(
             cave_world, rows, cols, rng, rows - MAP_BORDER - 1, GRASS, border=MAP_BORDER
         )
-        cave_world[chest_row][chest_col] = TREASURE_CHEST
+        if _passable_neighbour_count(cave_world, rows, cols, chest_col, chest_row, _PASSABLE) >= 2:
+            cave_world[chest_row][chest_col] = TREASURE_CHEST
+        else:
+            # Fallback: scan nearby floor tiles for a safe spot
+            placed = False
+            for dr in range(-3, 4):
+                for dc in range(-3, 4):
+                    nr, nc = chest_row + dr, chest_col + dc
+                    if (
+                        MAP_BORDER <= nr < rows - MAP_BORDER
+                        and MAP_BORDER <= nc < cols - MAP_BORDER
+                        and cave_world[nr][nc] == GRASS
+                        and _passable_neighbour_count(cave_world, rows, cols, nc, nr, _PASSABLE) >= 2
+                    ):
+                        cave_world[nr][nc] = TREASURE_CHEST
+                        chest_row, chest_col = nr, nc
+                        placed = True
+                        break
+                if placed:
+                    break
+            if not placed:
+                # Last resort — place it anyway (better than no chest)
+                cave_world[chest_row][chest_col] = TREASURE_CHEST
+
+        # Final validation: flood-fill from spawn and convert any
+        # unreachable walkable tiles to walls so no area is visible
+        # but inaccessible.
+        _seal_unreachable(cave_world, rows, cols, spawn_col, spawn_row, _PASSABLE)
 
         cave_map = GameMap(cave_world, tileset=tileset)
         cave_map.exit_col = exit_col
