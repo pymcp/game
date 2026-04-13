@@ -47,6 +47,7 @@ from src.world.environments import CaveEnvironment
 from src.entities import Player, Projectile, Worker, Pet
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
+from src.save import save_game, load_game, apply_save
 
 
 class Game:
@@ -139,6 +140,11 @@ class Game:
         # Sector-wipe animation state: {player_id: {"progress": float, "direction": str}}
         self.sector_wipe = {}
 
+        # Load saved state if a save file exists
+        save_data = load_game()
+        if save_data is not None:
+            apply_save(self, save_data)
+
     # -- death challenge ---------------------------------------------------
 
     def _start_death_challenge(self, player):
@@ -213,6 +219,7 @@ class Game:
             self.handle_events()
             self.update(dt)
             self.draw()
+        save_game(self)
         pygame.quit()
 
     # -- events ------------------------------------------------------------
