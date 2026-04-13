@@ -42,6 +42,7 @@ class Worker:
         self.wander_timer = random.uniform(30, 120)
         self.dest_x = self.x
         self.dest_y = self.y
+        self.facing_direction: str = "right"
 
         self._animator: Animator | None = None
         self._animator_checked: bool = False
@@ -98,6 +99,11 @@ class Worker:
             step_y = (dy / dist) * self.speed * dt
             self.x += step_x
             self.y += step_y
+            # Update facing from dominant movement axis
+            if abs(dy) >= abs(dx):
+                self.facing_direction = "down" if dy >= 0 else "up"
+            else:
+                self.facing_direction = "right" if dx > 0 else "left"
             col = int(self.x) // TILE
             row = int(self.y) // TILE
             if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
@@ -213,10 +219,8 @@ class Worker:
 
         # --- Sprite path ---
         if self._animator is not None:
-            frame = self._animator.current_frame()
-            if frame is not None:
-                fw, fh = frame.get_size()
-                surf.blit(frame, (sx - fw // 2, sy - fh // 2))
+            from src.rendering.sprite_draw import sprite_draw
+            if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
                 return
 
         # --- Procedural fallback ---

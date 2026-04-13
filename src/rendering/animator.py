@@ -20,6 +20,15 @@ Manifest JSON schema
 
 The sheet is laid out as rows (states) × columns (frames).  All cells in a
 sheet share the same (width × height) dimensions from ``frame_size``.
+
+Unified entity sheet layout (384×672 px, 96×96 cells):
+  row 0 – idle      (4 frames @ 4 fps)
+  row 1 – up        (4 frames @ 8 fps)
+  row 2 – right     (4 frames @ 8 fps)
+  row 3 – down      (4 frames @ 8 fps)
+  row 4 – left      (4 frames @ 8 fps)  ← may be blank; engine auto-mirrors right
+  row 5 – attacking (4 frames @ 8 fps)  ← blank for non-combat entities → idle fallback
+  row 6 – damaged   (4 frames @ 4 fps)
 """
 
 from __future__ import annotations
@@ -36,12 +45,28 @@ if TYPE_CHECKING:
 class AnimationState(Enum):
     """Named animation states an entity can be in."""
 
+    # Legacy states — kept for world-object and backward-compat usage
     IDLE = "idle"
     WALK = "walk"
     SWIM = "swim"
     HURT = "hurt"
     MOUNTED = "mounted"
     EXTENDING = "extending"
+
+    # Unified directional states (new entity sprite format)
+    UP = "up"
+    DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
+    ATTACKING = "attacking"
+    DAMAGED = "damaged"
+
+
+# When the LEFT state is not present in the manifest, the Animator
+# automatically mirrors the RIGHT state frames horizontally.
+_FLIP_PAIRS: dict[AnimationState, AnimationState] = {
+    AnimationState.LEFT: AnimationState.RIGHT,
+}
 
 
 class Animator:
@@ -55,6 +80,10 @@ class Animator:
 
     Falls back gracefully: if the current state has no entry in the manifest
     ``current_frame()`` returns ``None`` (caller should use procedural draw).
+
+    Auto-flip: if LEFT state is requested but absent from the manifest, RIGHT
+    frames are returned horizontally mirrored.  Flipped surfaces are cached so
+    the transform only happens once per unique (state, frame_index) pair.
     """
 
     def __init__(self, sheet: pygame.Surface, manifest: dict) -> None:
@@ -68,20 +97,25 @@ class Animator:
         self._frame_idx: int = 0
         self._elapsed_ms: float = 0.0
 
+        # Cache for horizontally-flipped frames: (state, frame_idx) → Surface
+        self._flip_cache: dict[tuple[AnimationState, int], pygame.Surface] = {}
+
     # ------------------------------------------------------------------
     # State control
     # ------------------------------------------------------------------
 
     def set_state(self, state: AnimationState) -> None:
-        """Switch to *state* and reset frame counter if state changed."""
+        """Switch to *state* and reset frame counter if state changed.
+
+        If *state* is not in the manifest but has a flip-pair partner that is,
+        the switch still succeeds (current_frame will auto-mirror the partner).
+        """
         if state == self._state:
             return
-        # Only switch if the new state actually exists in the manifest;
-        # otherwise keep the current state (avoids falling to None mid-game).
-        if (
-            state.value in self._manifest["states"]
-            or self._state_data(state) is not None
-        ):
+        partner = _FLIP_PAIRS.get(state)
+        has_state = state.value in self._manifest["states"]
+        has_partner = partner is not None and partner.value in self._manifest["states"]
+        if has_state or has_partner:
             self._state = state
             self._frame_idx = 0
             self._elapsed_ms = 0.0
@@ -92,7 +126,12 @@ class Animator:
 
     def update(self, dt: float) -> None:
         """Advance animation by *dt* game-frames (≈1.0 at 60 fps)."""
+        # Use the flip partner's data for timing when the state itself is absent
         data = self._state_data(self._state)
+        if data is None:
+            partner = _FLIP_PAIRS.get(self._state)
+            if partner is not None:
+                data = self._state_data(partner)
         if data is None or data["frames"] <= 1:
             return
 
@@ -109,8 +148,21 @@ class Animator:
     # ------------------------------------------------------------------
 
     def current_frame(self) -> pygame.Surface | None:
-        """Return the current frame surface, or *None* if state is unknown."""
+        """Return the current frame surface, or *None* if state is unknown.
+
+        If the current state is absent from the manifest but has a flip-pair
+        partner (e.g. LEFT → RIGHT), the partner's frame is returned mirrored
+        horizontally.  Mirrored surfaces are cached per (state, frame_idx) to
+        avoid repeated transform calls.
+        """
         data = self._state_data(self._state)
+        flip_needed = False
+
+        if data is None:
+            partner = _FLIP_PAIRS.get(self._state)
+            if partner is not None:
+                data = self._state_data(partner)
+                flip_needed = data is not None
         if data is None:
             # Try fallback to IDLE
             data = self._state_data(AnimationState.IDLE)
@@ -124,9 +176,20 @@ class Animator:
         col: int = self._frame_idx % max(1, data["frames"])
         rect = pygame.Rect(col * self._fw, row * self._fh, self._fw, self._fh)
         try:
-            return self._sheet.subsurface(rect)
+            frame = self._sheet.subsurface(rect)
         except ValueError:
             return None
+
+        if not flip_needed:
+            return frame
+
+        # Return cached flipped version, creating it on first access
+        cache_key = (self._state, col)
+        cached = self._flip_cache.get(cache_key)
+        if cached is None:
+            cached = pygame.transform.flip(frame, True, False)
+            self._flip_cache[cache_key] = cached
+        return cached
 
     # ------------------------------------------------------------------
     # Internal helpers

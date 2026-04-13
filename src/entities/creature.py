@@ -36,7 +36,7 @@ class Creature:
         self.speed = speed
         self.size = size
         self.body_color: tuple[int, int, int] = body_color
-        self.facing_right: bool = random.choice([True, False])
+        self.facing_direction: str = random.choice(["left", "right"])
 
         # Wander FSM
         self.dest_x: float = self.x
@@ -56,6 +56,20 @@ class Creature:
     # ------------------------------------------------------------------
     # Sprite animator helpers
     # ------------------------------------------------------------------
+
+    @property
+    def facing_right(self) -> bool:
+        """Backward-compat property — True when facing right or up."""
+        return self.facing_direction in ("right", "up")
+
+    def _update_facing(self, dx: float, dy: float) -> None:
+        """Set facing_direction from a movement vector using dominant axis."""
+        if dx == 0 and dy == 0:
+            return
+        if abs(dy) >= abs(dx):
+            self.facing_direction = "down" if dy >= 0 else "up"
+        else:
+            self.facing_direction = "right" if dx > 0 else "left"
 
     def _ensure_animator(self, sprite_id: str) -> None:
         """Lazy-load animator from SpriteRegistry the first time it is needed.
@@ -100,8 +114,8 @@ class Creature:
         nc = int(nx) // TILE
         nr = int(ny) // TILE
 
-        if dx != 0:
-            self.facing_right = dx > 0
+        if dx != 0 or dy != 0:
+            self._update_facing(dx, dy)
 
         if 0 <= nc < cols and 0 <= nr < rows and world[nr][nc] not in BLOCKING_TILES:
             self.x = nx
@@ -132,8 +146,8 @@ class Creature:
             dx *= 0.707
             dy *= 0.707
 
-        if dx != 0:
-            self.facing_right = dx > 0
+        if dx != 0 or dy != 0:
+            self._update_facing(dx, dy)
 
         step = self.speed * 1.5 * dt
         nx = self.x + dx * step

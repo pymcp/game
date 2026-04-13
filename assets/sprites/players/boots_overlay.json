@@ -24,6 +24,11 @@
       "frames": 4,
       "fps": 8.0
     },
+    "left": {
+      "row": 4,
+      "frames": 4,
+      "fps": 8.0
+    },
     "attacking": {
       "row": 5,
       "frames": 4,

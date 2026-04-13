@@ -60,6 +60,8 @@ class Pet:
         self.tail_phase = random.uniform(0, math.pi * 2)
         self.follow_offset_x = random.uniform(-20, 20)
         self.follow_offset_y = random.uniform(10, 30)
+        self.facing_direction: str = "right"
+        self._is_moving: bool = False
 
         self._animator: Animator | None = None
         self._animator_checked: bool = False
@@ -90,12 +92,21 @@ class Pet:
             step_y = (dy / dist) * move_speed
             self.x += step_x
             self.y += step_y
+            # Update facing direction from dominant movement axis
+            if abs(dy) >= abs(dx):
+                self.facing_direction = "down" if dy >= 0 else "up"
+            else:
+                self.facing_direction = "right" if dx > 0 else "left"
+            self._is_moving = True
             col = int(self.x) // TILE
             row = int(self.y) // TILE
             if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
                 if world[row][col] in BLOCKING_TILES:
                     self.x -= step_x
                     self.y -= step_y
+                    self._is_moving = False
+        else:
+            self._is_moving = False
         self.x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x))
         self.y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y))
 
@@ -111,14 +122,9 @@ class Pet:
 
         # --- Sprite path ---
         self._ensure_animator()
-        if self._animator is not None:
-            self._animator.set_state(AnimationState.IDLE)
-            self._animator.update(1.0)
-            frame = self._animator.current_frame()
-            if frame is not None:
-                fw, fh = frame.get_size()
-                surf.blit(frame, (sx - fw // 2, sy - fh // 2))
-                return
+        from src.rendering.sprite_draw import sprite_draw
+        if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
+            return
 
         # --- Procedural fallback ---
         s = self.size

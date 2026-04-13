@@ -70,31 +70,23 @@ class SeaCreature(Creature):
 
         # --- Sprite path ---
         self._ensure_animator(self.kind)
-        if self._animator is not None:
-            if self.rider_id is not None:
-                self._animator.set_state(AnimationState.MOUNTED)
-            else:
-                self._animator.set_state(AnimationState.SWIM)
-            self._animator.update(1.0)  # ~60fps tick; good enough for sprite animation
-            frame = self._animator.current_frame()
-            if frame is not None:
-                fw, fh = frame.get_size()
-                screen.blit(frame, (sx - fw // 2, sy - fh // 2))
-                # Rider overlay drawn procedurally on top of the base sprite
-                if rider_color is not None and self.kind == "dolphin":
-                    r = int(
-                        __import__("src.config", fromlist=["TILE"]).TILE * self.size
-                    )
-                    flip = 1 if self.facing_right else -1
-                    seat_x = sx + flip * (r // 4)
-                    seat_y = sy - r // 2 - 2
-                    pygame.draw.rect(
-                        screen, rider_color, (seat_x - 4, seat_y - 9, 8, 9)
-                    )
-                    pygame.draw.circle(
-                        screen, (240, 200, 160), (seat_x, seat_y - 12), 5
-                    )
-                return
+        from src.rendering.sprite_draw import sprite_draw
+        if sprite_draw(self, screen, offset_x, offset_y, dt=1.0):
+            # Rider overlay drawn procedurally on top of the base sprite
+            if rider_color is not None and self.kind == "dolphin":
+                r = int(
+                    __import__("src.config", fromlist=["TILE"]).TILE * self.size
+                )
+                flip = 1 if self.facing_right else -1
+                seat_x = sx + flip * (r // 4)
+                seat_y = sy - r // 2 - 2
+                pygame.draw.rect(
+                    screen, rider_color, (seat_x - 4, seat_y - 9, 8, 9)
+                )
+                pygame.draw.circle(
+                    screen, (240, 200, 160), (seat_x, seat_y - 12), 5
+                )
+            return
 
         # --- Procedural fallback ---
         r = int(__import__("src.config", fromlist=["TILE"]).TILE * self.size)

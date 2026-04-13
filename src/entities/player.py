@@ -192,6 +192,12 @@ class Player:
         self.facing_dx = 1.0
         self.facing_dy = 0.0
 
+        # Sprite animator (lazily initialised, optional — falls back to procedural)
+        self._animator: object | None = None
+        self._animator_checked: bool = False
+        # Cache for tinted equipment overlay surfaces: slot -> (item_name, Surface)
+        self._overlay_cache: dict[str, tuple[str, object]] = {}
+
         # Mining
         self.mining_target = None
         self.mining_progress = 0.0
@@ -550,11 +556,24 @@ class Player:
 
     # -- drawing -----------------------------------------------------------
 
+    @property
+    def facing_direction(self) -> str:
+        """Cardinal direction the player is currently facing."""
+        return self._facing_dir()
+
     def _facing_dir(self) -> str:
         """Reduce the continuous facing vector to one of four cardinal directions."""
         if abs(self.facing_dy) >= abs(self.facing_dx):
             return "down" if self.facing_dy >= 0 else "up"
         return "left" if self.facing_dx < 0 else "right"
+
+    def _ensure_animator(self) -> None:
+        """Lazy-load the player base sprite animator from SpriteRegistry."""
+        if self._animator_checked:
+            return
+        self._animator_checked = True
+        from src.rendering.registry import SpriteRegistry
+        self._animator = SpriteRegistry.get_instance().make_animator("player_base")
 
     def draw(self, surf: pygame.Surface, cam_x: float, cam_y: float) -> None:
         """Draw player sprite."""
@@ -568,10 +587,81 @@ class Player:
 
         if self.on_boat:
             self._draw_on_boat(surf, psx, psy, body_color)
-        elif self.on_mount:
+            return
+        if self.on_mount:
             return  # the mounted creature renders the rider figure
-        else:
-            self._draw_normal(surf, psx, psy, body_color)
+
+        # --- Sprite path ---
+        self._ensure_animator()
+        if self._animator is not None:
+            self._draw_sprite(surf, cam_x, cam_y, body_color)
+            return
+
+        # --- Procedural fallback ---
+        self._draw_normal(surf, psx, psy, body_color)
+
+    def _draw_sprite(
+        self,
+        surf: pygame.Surface,
+        cam_x: float,
+        cam_y: float,
+        body_color: tuple[int, int, int],
+    ) -> None:
+        """Blit the player base sprite tinted by body_color, then composite equipment overlays."""
+        from src.rendering.sprite_draw import sprite_draw
+        from src.rendering.registry import SpriteRegistry
+        import pygame as pg
+
+        reg = SpriteRegistry.get_instance()
+        sx = int(self.x - cam_x)
+        sy = int(self.y - cam_y)
+
+        # Advance and blit the base frame, tinted to body_color
+        if not sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
+            return
+
+        # Composite equipment overlays for each armor slot
+        for slot in ("helmet", "chest", "legs", "boots"):
+            item = self.equipment.get(slot)
+            if item is None:
+                continue
+            overlay_id = f"{slot}_overlay"
+            result = reg.get(overlay_id) if hasattr(reg, "get") else None
+            if result is None:
+                continue
+            # Use a matching animator for the overlay
+            cache_entry = self._overlay_cache.get(slot)
+            if cache_entry is None or cache_entry[0] != item:
+                overlay_anim = reg.make_animator(overlay_id)
+                self._overlay_cache[slot] = (item, overlay_anim)
+            _, overlay_anim = self._overlay_cache[slot]
+            if overlay_anim is None:
+                continue
+            # Match state to base animator state
+            from src.rendering.animator import AnimationState
+            dir_to_state = {
+                "up": AnimationState.UP, "down": AnimationState.DOWN,
+                "left": AnimationState.LEFT, "right": AnimationState.RIGHT,
+            }
+            anim_state = dir_to_state.get(self.facing_direction, AnimationState.DOWN)
+            overlay_anim.set_state(anim_state)
+            overlay_frame = overlay_anim.current_frame()
+            if overlay_frame is None:
+                continue
+            # Tint overlay by the armor color
+            from src.data.armor import ARMOR_PIECES
+            armor_color = ARMOR_PIECES.get(item, {}).get("color")
+            if armor_color is not None:
+                tinted = overlay_frame.copy()
+                tinted.fill(
+                    (*armor_color, 200),
+                    special_flags=pg.BLEND_RGBA_MULT,
+                )
+                fw, fh = tinted.get_size()
+                surf.blit(tinted, (sx - fw // 2, sy - fh // 2))
+            else:
+                fw, fh = overlay_frame.get_size()
+                surf.blit(overlay_frame, (sx - fw // 2, sy - fh // 2))
 
     def _draw_normal(
         self, surf: pygame.Surface, psx: int, psy: int, body_color: tuple[int, int, int]

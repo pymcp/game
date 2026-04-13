@@ -72,34 +72,25 @@ class OverlandCreature(Creature):
 
         # --- Sprite path ---
         self._ensure_animator(self.kind)
-        if self._animator is not None:
-            self._animator.set_state(
-                AnimationState.WALK if self._is_moving else AnimationState.IDLE
-            )
-            self._animator.update(1.0)
-            frame = self._animator.current_frame()
-            if frame is not None:
-                if not self.facing_right:
-                    frame = pygame.transform.flip(frame, True, False)
-                fw, fh = frame.get_size()
-                screen.blit(frame, (sx - fw // 2, sy - fh // 2))
-                # Rider overlay drawn procedurally on top
-                if rider_color is not None:
-                    r = int(TILE * self.size)
-                    body_h = r
-                    seat_x = sx
-                    seat_y = sy - body_h // 2 - 2
+        from src.rendering.sprite_draw import sprite_draw
+        if sprite_draw(self, screen, offset_x, offset_y, dt=1.0):
+            # Rider overlay drawn procedurally on top
+            if rider_color is not None:
+                r = int(TILE * self.size)
+                body_h = r
+                seat_x = sx
+                seat_y = sy - body_h // 2 - 2
+                pygame.draw.rect(
+                    screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10)
+                )
+                pygame.draw.circle(
+                    screen, (240, 200, 160), (seat_x, seat_y - 14), 5
+                )
+                for side in (-1, 1):
                     pygame.draw.rect(
-                        screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10)
+                        screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8)
                     )
-                    pygame.draw.circle(
-                        screen, (240, 200, 160), (seat_x, seat_y - 14), 5
-                    )
-                    for side in (-1, 1):
-                        pygame.draw.rect(
-                            screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8)
-                        )
-                return
+            return
 
         # --- Procedural fallback ---
         r = int(TILE * self.size)

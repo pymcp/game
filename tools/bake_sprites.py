@@ -4,18 +4,22 @@ Run from the repository root::
 
     python tools/bake_sprites.py
 
-This script renders every enemy type, creature kind, pet kind, and worker
-using the game's existing procedural draw code, and saves the results as
-PNG+JSON sprite-sheet pairs under ``assets/sprites/``.
+Generates unified 7-row × 4-column, 96×96-cell sprite sheets (384×672 px)
+for every enemy type, creature kind, pet kind, and worker.
 
-After this script runs, the SpriteRegistry will automatically load the sheets
-at game startup and entity classes will blit frames instead of re-running the
-procedural draw code every frame.
+Sheet row layout (all entity types share this format):
+  row 0 – idle      (4 frames @ 4 fps)
+  row 1 – up        (4 frames @ 8 fps)
+  row 2 – right     (4 frames @ 8 fps)
+  row 3 – down      (4 frames @ 8 fps)
+  row 4 – left      (4 frames @ 8 fps) ← blank → engine auto-mirrors right
+  row 5 – attacking (4 frames @ 8 fps) ← blank for non-combat → falls back to idle
+  row 6 – damaged   (4 frames @ 4 fps)
 
-Existing PNG files are overwritten so you can safely re-run the script after
-adding new enemy types.  Hand-crafted replacements should be placed in the
-same paths — they will take precedence as long as the matching ``.json``
-manifest is kept consistent with the sheet layout.
+These sheets are PLACEHOLDER art baked from the existing procedural draw code.
+Replace any sheet PNG with hand-drawn or AI-generated art (keeping the same
+384×672 dimensions and matching JSON manifest) and the game will use it
+automatically at next startup.
 """
 
 import json
@@ -51,32 +55,41 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS_DIR = os.path.join(_REPO_ROOT, "assets", "sprites")
 
 # ---------------------------------------------------------------------------
-# Canvas specs  (width, height, center_x, center_y)
-# Each entity type is drawn centred at (cx, cy) on a (width × height) RGBA
-# surface.  Generous padding means art can be freely replaced at any size
-# up to the canvas dimensions.
+# Unified cell dimensions — all entity sprites share this canvas size.
 # ---------------------------------------------------------------------------
-ENEMY_CANVAS: tuple[int, int, int, int] = (64, 64, 32, 32)
+FW: int = 96   # frame width  (pixels)
+FH: int = 96   # frame height (pixels)
+CX: int = 48   # draw centre X within a cell
+CY: int = 48   # draw centre Y within a cell
 
-CREATURE_CANVAS: dict[str, tuple[int, int, int, int]] = {
-    "dolphin": (160, 96, 80, 48),
-    "fish": (48, 48, 24, 24),
-    "jellyfish": (64, 80, 32, 36),
-    "horse": (96, 96, 48, 48),
-}
+# Standard manifest template — identical for every entity type.
+# Row 4 (left) is intentionally absent from the JSON when blank so the
+# Animator's auto-flip logic kicks in.
+_STANDARD_STATES: list[tuple[str, int, int, float]] = [
+    # (name,  row, frames, fps)
+    ("idle",      0, 4, 4.0),
+    ("up",        1, 4, 8.0),
+    ("right",     2, 4, 8.0),
+    ("down",      3, 4, 8.0),
+    # row 4 (left) omitted here → added only when explicit art is generated
+    ("attacking", 5, 4, 8.0),
+    ("damaged",   6, 4, 4.0),
+]
 
-PET_CANVAS: dict[str, tuple[int, int, int, int]] = {
-    "dog": (64, 64, 32, 32),
-    "cat": (64, 64, 32, 32),
-}
 
-WORKER_CANVAS: tuple[int, int, int, int] = (64, 64, 32, 32)
+def _standard_manifest(include_left: bool = False) -> dict:
+    """Build the unified 7-row manifest dict.
 
-# ---------------------------------------------------------------------------
-# Animation frame sequences
-# Each value is a list of ``ticks`` integers passed to the draw() method.
-# Multiple ticks values → multiple columns on the spritesheet row.
-# ---------------------------------------------------------------------------
+    Args:
+        include_left: When True, the manifest includes an explicit left row (row 4).
+                      When False (default), the engine auto-mirrors right frames.
+    """
+    states: dict[str, dict] = {}
+    for name, row, frames, fps in _STANDARD_STATES:
+        states[name] = {"row": row, "frames": frames, "fps": fps}
+    if include_left:
+        states["left"] = {"row": 4, "frames": 4, "fps": 8.0}
+    return {"frame_size": [FW, FH], "states": states}
 
 
 def _ticks_seq(period_ms: float, n_frames: int) -> list[int]:
@@ -84,69 +97,51 @@ def _ticks_seq(period_ms: float, n_frames: int) -> list[int]:
     return [int(i / n_frames * period_ms) for i in range(n_frames)]
 
 
-# Creature animation specs: {kind: {state_name: [ticks, ...], ...}}
-CREATURE_ANIM: dict[str, dict[str, list[int]]] = {
-    "dolphin": {"swim": _ticks_seq(1257, 8)},  # bob: T = 2π/0.005 ≈ 1257 ms
-    "fish": {"swim": [0]},  # static
-    "jellyfish": {"swim": _ticks_seq(1257, 8)},  # tentacle + bob
-    "horse": {  # leg swing: T = 2π/0.015 ≈ 419 ms
-        "walk": _ticks_seq(419, 8),
-        "idle": [0],
-    },
-}
-
-PET_ANIM: dict[str, dict[str, list[int]]] = {
-    "cat": {"idle": _ticks_seq(785, 8)},  # tail wave: T = 2π/0.008 ≈ 785 ms
-    "dog": {"idle": _ticks_seq(524, 8)},  # tail wag:  T = 2π/0.012 ≈ 524 ms
-}
-
-# Workers have no ticks-based animation in the current draw code.
-WORKER_ANIM: dict[str, list[int]] = {"idle": [0], "walk": [0]}
-
-
 # ---------------------------------------------------------------------------
 # Surface helpers
 # ---------------------------------------------------------------------------
 
 
-def _blank(w: int, h: int) -> pygame.Surface:
-    """Return a transparent RGBA surface of (w × h)."""
-    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+def _blank() -> pygame.Surface:
+    """Return a transparent 96×96 RGBA surface."""
+    surf = pygame.Surface((FW, FH), pygame.SRCALPHA)
     surf.fill((0, 0, 0, 0))
     return surf
 
 
-def _pack_sheet(
-    rows: list[list[pygame.Surface]],
-    fw: int,
-    fh: int,
-) -> pygame.Surface:
-    """Pack *rows* of frames into a single sprite-sheet surface.
+def _blank_row() -> list[pygame.Surface]:
+    """Return 4 blank (fully transparent) frames."""
+    return [_blank() for _ in range(4)]
 
-    ``rows[i][j]`` is placed at column j of row i.  All frames share the
-    same (fw × fh) cell size.
+
+def _pack_sheet(rows: list[list[pygame.Surface]]) -> pygame.Surface:
+    """Pack *rows* of exactly 4 frames into a 384×(FH*7) sprite sheet.
+
+    Rows that are None or missing are left transparent.
     """
-    max_cols = max(len(row) for row in rows)
-    sheet = pygame.Surface((fw * max_cols, fh * len(rows)), pygame.SRCALPHA)
+    n_rows = 7
+    n_cols = 4
+    sheet = pygame.Surface((FW * n_cols, FH * n_rows), pygame.SRCALPHA)
     sheet.fill((0, 0, 0, 0))
     for ri, row in enumerate(rows):
-        for ci, frame in enumerate(row):
-            sheet.blit(frame, (ci * fw, ri * fh))
+        if row is None:
+            continue
+        for ci, frame in enumerate(row[:n_cols]):
+            sheet.blit(frame, (ci * FW, ri * FH))
     return sheet
 
 
-def _save(
-    sheet: pygame.Surface,
-    manifest: dict,
-    out_path: str,
-) -> None:
+def _save(name: str, sub_dir: str, sheet: pygame.Surface, manifest: dict) -> None:
     """Write the sheet PNG and companion JSON manifest."""
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    pygame.image.save(sheet, out_path)
-    with open(out_path.replace(".png", ".json"), "w") as fh:
+    out_dir = os.path.join(ASSETS_DIR, sub_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    png_path = os.path.join(out_dir, f"{name}.png")
+    json_path = os.path.join(out_dir, f"{name}.json")
+    pygame.image.save(sheet, png_path)
+    with open(json_path, "w") as fh:
         json.dump(manifest, fh, indent=2)
     w, h = sheet.get_size()
-    print(f"  {os.path.relpath(out_path, _REPO_ROOT)}  ({w}×{h})")
+    print(f"  {sub_dir}/{name}.png  ({w}×{h})")
 
 
 # ---------------------------------------------------------------------------
@@ -154,148 +149,175 @@ def _save(
 # ---------------------------------------------------------------------------
 
 
-def _bake_enemy(type_key: str, out_dir: str) -> None:
-    """Bake a single enemy type into enemies/<type_key>.png."""
-    w, h, cx, cy = ENEMY_CANVAS
+def _bake_enemy(type_key: str) -> None:
+    """Bake a single enemy type into enemies/<type_key>.png (384×672)."""
     e = Enemy(0.0, 0.0, type_key)
-    # For drawing: enemy.draw(surf, cam_x, cam_y) computes sx = e.x - cam_x
-    # We want sx = cx, so cam_x = e.x - cx (and same for y).
-    cam_x = e.x - cx
-    cam_y = e.y - cy
+    cam_x = e.x - CX
+    cam_y = e.y - CY
 
-    rows: list[list[pygame.Surface]] = []
-    states: dict[str, dict] = {}
-
-    def _frame(hurt: bool) -> pygame.Surface:
-        surf = _blank(w, h)
-        e.hurt_flash = 8 if hurt else 0
+    # idle: 4 frames with gently offset ticks to capture any idle sway
+    idle_row: list[pygame.Surface] = []
+    for t in _ticks_seq(120, 4):
+        surf = _blank()
+        e.hurt_flash = 0
         e.draw(surf, cam_x, cam_y)
+        idle_row.append(surf)
+
+    # directional walk rows: enemies are symmetric, so we draw the same
+    # procedural art for every direction — Gemini-generated art will differ.
+    walk_row: list[pygame.Surface] = []
+    for t in _ticks_seq(120, 4):
+        surf = _blank()
+        e.hurt_flash = 0
+        e.draw(surf, cam_x, cam_y)
+        walk_row.append(surf)
+
+    # damaged row: full hurt_flash
+    damaged_row: list[pygame.Surface] = []
+    for _ in range(4):
+        surf = _blank()
+        e.hurt_flash = 8
+        e.draw(surf, cam_x, cam_y)
+        damaged_row.append(surf)
+    e.hurt_flash = 0
+
+    rows = [
+        idle_row,       # 0 idle
+        walk_row,       # 1 up
+        walk_row,       # 2 right
+        walk_row,       # 3 down
+        None,           # 4 left — blank, auto-mirrored from right at runtime
+        None,           # 5 attacking — blank, falls back to idle
+        damaged_row,    # 6 damaged
+    ]
+
+    _save(type_key, "enemies", _pack_sheet(rows), _standard_manifest())
+
+
+def _bake_sea_creature(kind: str) -> None:
+    """Bake a sea creature into creatures/<kind>.png (384×672)."""
+    sc = SeaCreature(0.0, 0.0, kind=kind)
+    cam_x = sc.x - CX
+    cam_y = sc.y - CY
+
+    # Ticks sequences per kind for idle/swim animation cycles
+    swim_period = {"dolphin": 1257, "fish": 1, "jellyfish": 1257}.get(kind, 400)
+    swim_ticks = _ticks_seq(swim_period, 4)
+
+    def _frame(ticks: int, facing: str = "right") -> pygame.Surface:
+        surf = _blank()
+        sc.facing_direction = facing
+        sc.draw(surf, cam_x, cam_y, ticks, rider_color=None)
         return surf
 
-    for row_idx, (state_name, hurt) in enumerate(
-        [("idle", False), ("walk", False), ("hurt", True)]
-    ):
-        rows.append([_frame(hurt)])
-        states[state_name] = {"row": row_idx, "frames": 1, "fps": 1}
+    idle_row = [_frame(t) for t in swim_ticks]
+    right_row = [_frame(t, "right") for t in swim_ticks]
+    left_row = [_frame(t, "left") for t in swim_ticks]
 
-    sheet = _pack_sheet(rows, w, h)
-    manifest = {"frame_size": [w, h], "states": states}
-    _save(sheet, manifest, os.path.join(out_dir, "enemies", f"{type_key}.png"))
+    rows = [
+        idle_row,   # 0 idle
+        idle_row,   # 1 up   (best-effort; genuine up art from Gemini)
+        right_row,  # 2 right
+        idle_row,   # 3 down (best-effort)
+        left_row,   # 4 left — explicit art so no auto-flip needed
+        None,       # 5 attacking — blank
+        idle_row,   # 6 damaged (flash tint supplied by Gemini art)
+    ]
 
-
-def _bake_sea_creature(kind: str, out_dir: str) -> None:
-    """Bake a sea creature kind into creatures/<kind>.png."""
-    w, h, cx, cy = CREATURE_CANVAS[kind]
-    sc = SeaCreature(0.0, 0.0, kind=kind)
-    offset_x = sc.x - cx
-    offset_y = sc.y - cy
-
-    rows: list[list[pygame.Surface]] = []
-    states: dict[str, dict] = {}
-
-    for row_idx, (state_name, ticks_list) in enumerate(CREATURE_ANIM[kind].items()):
-        row_frames: list[pygame.Surface] = []
-        for ticks in ticks_list:
-            surf = _blank(w, h)
-            sc.draw(surf, offset_x, offset_y, ticks, rider_color=None)
-            row_frames.append(surf)
-        rows.append(row_frames)
-        states[state_name] = {
-            "row": row_idx,
-            "frames": len(ticks_list),
-            "fps": 8 if len(ticks_list) > 1 else 1,
-        }
-
-    sheet = _pack_sheet(rows, w, h)
-    manifest = {"frame_size": [w, h], "states": states}
-    _save(sheet, manifest, os.path.join(out_dir, "creatures", f"{kind}.png"))
+    _save(kind, "creatures", _pack_sheet(rows), _standard_manifest(include_left=True))
 
 
-def _bake_overland_creature(kind: str, out_dir: str) -> None:
-    """Bake an overland creature kind into creatures/<kind>.png."""
-    w, h, cx, cy = CREATURE_CANVAS[kind]
+def _bake_overland_creature(kind: str) -> None:
+    """Bake a land creature into creatures/<kind>.png (384×672)."""
     oc = OverlandCreature(0.0, 0.0, kind=kind)
-    offset_x = oc.x - cx
-    offset_y = oc.y - cy
+    cam_x = oc.x - CX
+    cam_y = oc.y - CY
 
-    rows: list[list[pygame.Surface]] = []
-    states: dict[str, dict] = {}
+    walk_period = {"horse": 419}.get(kind, 400)
+    walk_ticks = _ticks_seq(walk_period, 4)
 
-    for row_idx, (state_name, ticks_list) in enumerate(CREATURE_ANIM[kind].items()):
-        row_frames: list[pygame.Surface] = []
-        for ticks in ticks_list:
-            surf = _blank(w, h)
-            oc.draw(surf, offset_x, offset_y, ticks, rider_color=None)
-            row_frames.append(surf)
-        rows.append(row_frames)
-        states[state_name] = {
-            "row": row_idx,
-            "frames": len(ticks_list),
-            "fps": 8 if len(ticks_list) > 1 else 1,
-        }
+    def _frame(ticks: int, facing: str = "right", moving: bool = True) -> pygame.Surface:
+        surf = _blank()
+        oc.facing_direction = facing
+        oc._is_moving = moving
+        oc.draw(surf, cam_x, cam_y, ticks, rider_color=None)
+        return surf
 
-    sheet = _pack_sheet(rows, w, h)
-    manifest = {"frame_size": [w, h], "states": states}
-    _save(sheet, manifest, os.path.join(out_dir, "creatures", f"{kind}.png"))
+    idle_row = [_frame(0, moving=False) for _ in range(4)]
+    right_row = [_frame(t, "right") for t in walk_ticks]
+    left_row  = [_frame(t, "left")  for t in walk_ticks]
+
+    rows = [
+        idle_row,   # 0 idle
+        idle_row,   # 1 up   (best-effort)
+        right_row,  # 2 right
+        idle_row,   # 3 down (best-effort)
+        left_row,   # 4 left — explicit
+        None,       # 5 attacking — blank
+        idle_row,   # 6 damaged (best-effort; Gemini will add flash)
+    ]
+
+    _save(kind, "creatures", _pack_sheet(rows), _standard_manifest(include_left=True))
 
 
-def _bake_pet(kind: str, out_dir: str) -> None:
-    """Bake a pet kind into pets/<kind>.png."""
-    w, h, cx, cy = PET_CANVAS[kind]
+def _bake_pet(kind: str) -> None:
+    """Bake a pet into pets/<kind>.png (384×672)."""
+    # Use deterministic colours so baked sprites are stable across runs.
     pet = Pet(0.0, 0.0, kind=kind)
-    cam_x = pet.x - cx
-    cam_y = pet.y - cy
+    cam_x = pet.x - CX
+    cam_y = pet.y - CY
 
-    rows: list[list[pygame.Surface]] = []
-    states: dict[str, dict] = {}
+    period = {"cat": 785, "dog": 524}.get(kind, 600)
+    anim_ticks = _ticks_seq(period, 4)
 
-    for row_idx, (state_name, ticks_list) in enumerate(PET_ANIM[kind].items()):
-        row_frames: list[pygame.Surface] = []
-        for ticks in ticks_list:
-            surf = _blank(w, h)
-            pet.draw(surf, cam_x, cam_y, ticks)
-            row_frames.append(surf)
-        rows.append(row_frames)
-        states[state_name] = {
-            "row": row_idx,
-            "frames": len(ticks_list),
-            "fps": 8 if len(ticks_list) > 1 else 1,
-        }
+    def _frame(ticks: int) -> pygame.Surface:
+        surf = _blank()
+        pet.draw(surf, cam_x, cam_y, ticks)
+        return surf
 
-    sheet = _pack_sheet(rows, w, h)
-    manifest = {"frame_size": [w, h], "states": states}
-    _save(sheet, manifest, os.path.join(out_dir, "pets", f"{kind}.png"))
+    idle_row = [_frame(t) for t in anim_ticks]
+
+    rows = [
+        idle_row,  # 0 idle
+        idle_row,  # 1 up
+        idle_row,  # 2 right
+        idle_row,  # 3 down
+        None,      # 4 left — blank, auto-flip
+        None,      # 5 attacking — blank
+        idle_row,  # 6 damaged — blank, Gemini art will differ
+    ]
+
+    _save(kind, "pets", _pack_sheet(rows), _standard_manifest())
 
 
-def _bake_worker(out_dir: str) -> None:
-    """Bake the worker into workers/worker.png."""
-    import random
-
-    w, h, cx, cy = WORKER_CANVAS
-    # Use deterministic colours so the baked sprite is stable across runs.
+def _bake_worker() -> None:
+    """Bake the worker into workers/worker.png (384×672)."""
     worker = Worker(0.0, 0.0, player_id=1, home_map="overland")
-    # Override randomised colours with a fixed neutral palette.
+    # Use stable deterministic colours so the baked sprite is reproducible.
     worker.body_color = (80, 120, 200)
     worker.skin_color = (220, 180, 140)
     worker.hat_color = (60, 40, 20)
-    cam_x = worker.x - cx
-    cam_y = worker.y - cy
+    cam_x = worker.x - CX
+    cam_y = worker.y - CY
 
-    rows: list[list[pygame.Surface]] = []
-    states: dict[str, dict] = {}
+    def _frame() -> pygame.Surface:
+        surf = _blank()
+        worker.draw(surf, cam_x, cam_y)
+        return surf
 
-    for row_idx, (state_name, ticks_list) in enumerate(WORKER_ANIM.items()):
-        row_frames: list[pygame.Surface] = []
-        for _ticks in ticks_list:
-            surf = _blank(w, h)
-            worker.draw(surf, cam_x, cam_y)
-            row_frames.append(surf)
-        rows.append(row_frames)
-        states[state_name] = {"row": row_idx, "frames": 1, "fps": 1}
+    idle_row = [_frame() for _ in range(4)]
 
-    sheet = _pack_sheet(rows, w, h)
-    manifest = {"frame_size": [w, h], "states": states}
-    _save(sheet, manifest, os.path.join(out_dir, "workers", "worker.png"))
+    rows = [
+        idle_row,  # 0 idle
+        idle_row,  # 1 up
+        idle_row,  # 2 right
+        idle_row,  # 3 down
+        None,      # 4 left — blank, auto-flip
+        None,      # 5 attacking — blank
+        idle_row,  # 6 damaged
+    ]
+
+    _save("worker", "workers", _pack_sheet(rows), _standard_manifest())
 
 
 # ---------------------------------------------------------------------------
@@ -304,25 +326,25 @@ def _bake_worker(out_dir: str) -> None:
 
 
 def main() -> None:
-    print(f"Baking sprites into {os.path.relpath(ASSETS_DIR, _REPO_ROOT)}/\n")
+    print(f"Baking unified 7×4 96×96 sprites into {os.path.relpath(ASSETS_DIR, _REPO_ROOT)}/\n")
 
     print("Enemies:")
     for type_key in ENEMY_TYPES:
-        _bake_enemy(type_key, ASSETS_DIR)
+        _bake_enemy(type_key)
 
     print("\nSea creatures:")
     for kind in ("dolphin", "fish", "jellyfish"):
-        _bake_sea_creature(kind, ASSETS_DIR)
+        _bake_sea_creature(kind)
 
     print("\nOverland creatures:")
-    _bake_overland_creature("horse", ASSETS_DIR)
+    _bake_overland_creature("horse")
 
     print("\nPets:")
     for kind in ("dog", "cat"):
-        _bake_pet(kind, ASSETS_DIR)
+        _bake_pet(kind)
 
     print("\nWorkers:")
-    _bake_worker(ASSETS_DIR)
+    _bake_worker()
 
     print("\nDone.")
     pygame.quit()

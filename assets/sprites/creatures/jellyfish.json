@@ -1,13 +1,43 @@
 {
   "frame_size": [
-    64,
-    80
+    96,
+    96
   ],
   "states": {
-    "swim": {
+    "idle": {
       "row": 0,
-      "frames": 8,
-      "fps": 8
+      "frames": 4,
+      "fps": 4.0
+    },
+    "up": {
+      "row": 1,
+      "frames": 4,
+      "fps": 8.0
+    },
+    "right": {
+      "row": 2,
+      "frames": 4,
+      "fps": 8.0
+    },
+    "down": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8.0
+    },
+    "attacking": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8.0
+    },
+    "damaged": {
+      "row": 6,
+      "frames": 4,
+      "fps": 4.0
+    },
+    "left": {
+      "row": 4,
+      "frames": 4,
+      "fps": 8.0
     }
   }
 }

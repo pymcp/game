@@ -40,6 +40,7 @@ class Enemy:
         self.hurt_flash = 0
         self.knockback_vx = 0.0
         self.knockback_vy = 0.0
+        self.facing_direction: str = "right"
 
         # Sprite animator — lazily initialised from SpriteRegistry on first use.
         self._animator: Animator | None = None
@@ -113,6 +114,11 @@ class Enemy:
                     self.x = nx
                 if not self._blocked(self.x, ny, world):
                     self.y = ny
+                # Update facing from dominant movement axis
+                if abs(dy) >= abs(dx):
+                    self.facing_direction = "down" if dy >= 0 else "up"
+                else:
+                    self.facing_direction = "right" if dx > 0 else "left"
             if dist < TILE * 0.9:
                 self.state = "attack"
             if dist > SCREEN_W and not self._on_screen(cam_x, cam_y, margin=TILE * 4):
@@ -129,10 +135,20 @@ class Enemy:
         # Update animator state
         self._ensure_animator()
         if self._animator is not None:
+            from src.rendering.animator import AnimationState
             if self.hurt_flash > 0:
-                self._animator.set_state(AnimationState.HURT)
-            elif self.state in ("chase", "attack"):
-                self._animator.set_state(AnimationState.WALK)
+                self._animator.set_state(AnimationState.DAMAGED)
+            elif self.state == "attack":
+                self._animator.set_state(AnimationState.ATTACKING)
+            elif self.state == "chase":
+                from src.rendering.animator import AnimationState as AS
+                dir_map = {
+                    "up": AS.UP, "down": AS.DOWN,
+                    "left": AS.LEFT, "right": AS.RIGHT,
+                }
+                self._animator.set_state(
+                    dir_map.get(self.facing_direction, AS.RIGHT)
+                )
             else:
                 self._animator.set_state(AnimationState.IDLE)
             self._animator.update(dt)
@@ -177,26 +193,21 @@ class Enemy:
         sx = int(self.x - cam_x)
         sy = int(self.y - cam_y)
         surf_w, surf_h = surf.get_size()
-        if sx < -64 or sx > surf_w + 64 or sy < -64 or sy > surf_h + 64:
+        if sx < -96 or sx > surf_w + 96 or sy < -96 or sy > surf_h + 96:
             return
 
         # --- Sprite path ---
         self._ensure_animator()
-        if self._animator is not None:
-            frame = self._animator.current_frame()
-            if frame is not None:
-                fw, fh = frame.get_size()
-                surf.blit(frame, (sx - fw // 2, sy - fh // 2))
-                if self.hp < self.max_hp:
-                    bar_w = 20
-                    bx = sx - bar_w // 2
-                    by = sy - fh // 2 - 5
-                    ratio = max(0.0, self.hp / self.max_hp)
-                    pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3))
-                    pygame.draw.rect(
-                        surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3)
-                    )
-                return
+        from src.rendering.sprite_draw import sprite_draw
+        if sprite_draw(self, surf, cam_x, cam_y, dt=1.0):
+            if self.hp < self.max_hp:
+                bar_w = 24
+                bx = sx - bar_w // 2
+                by = sy - 51
+                ratio = max(0.0, self.hp / self.max_hp)
+                pygame.draw.rect(surf, (60, 60, 60), (bx, by, bar_w, 3))
+                pygame.draw.rect(surf, (220, 40, 40), (bx, by, int(bar_w * ratio), 3))
+            return
 
         # --- Procedural fallback ---
         base = (255, 255, 255) if self.hurt_flash > 0 else self.color
