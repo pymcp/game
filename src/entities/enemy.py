@@ -2,7 +2,7 @@
 
 import math
 import pygame
-from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H
+from src.config import TILE, SCREEN_W, SCREEN_H
 from src.effects import Particle
 
 
@@ -47,13 +47,15 @@ class Enemy:
 
     def _blocked(self, wx, wy, world):
         """Check if position is blocked."""
-        from src.config import WATER, MOUNTAIN, HOUSE
+        from src.config import WATER, MOUNTAIN, HOUSE, CAVE_WALL
 
         col = int(wx) // TILE
         row = int(wy) // TILE
-        if col < 0 or col >= WORLD_COLS or row < 0 or row >= WORLD_ROWS:
+        world_rows = len(world)
+        world_cols = len(world[0]) if world_rows > 0 else 0
+        if col < 0 or col >= world_cols or row < 0 or row >= world_rows:
             return True
-        return world[row][col] in (WATER, MOUNTAIN, HOUSE)
+        return world[row][col] in (WATER, MOUNTAIN, HOUSE, CAVE_WALL)
 
     def update(self, dt, px, py, cam_x, cam_y, world, particles):
         """Update enemy state and position."""
@@ -104,8 +106,10 @@ class Enemy:
             if dist > TILE * 1.5:
                 self.state = "chase"
 
-        self.x = max(TILE, min((WORLD_COLS - 1) * TILE, self.x))
-        self.y = max(TILE, min((WORLD_ROWS - 1) * TILE, self.y))
+        world_rows = len(world)
+        world_cols = len(world[0]) if world_rows > 0 else 1
+        self.x = max(TILE, min((world_cols - 1) * TILE, self.x))
+        self.y = max(TILE, min((world_rows - 1) * TILE, self.y))
 
     def try_attack(self, px, py):
         """Try to attack player. Returns damage if successful, 0 otherwise."""

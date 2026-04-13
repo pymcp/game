@@ -33,3 +33,8 @@ MOUNTAIN = 9
 CAVE_MOUNTAIN = 10  # Cave entrance that looks like mountain (adjacent to mountain)
 CAVE_HILL = 11      # Cave entrance that looks like hill (not adjacent to mountain)
 CAVE_EXIT = 12      # Exit tile inside a cave (returns player to overland)
+CAVE_WALL = 13      # Solid cave wall tile (impassable, non-mineable)
+
+# Settlement tiers: minimum connected-house cluster size to reach each tier
+SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
+SETTLEMENT_TIER_NAMES = ["Cottage", "Hamlet", "Village", "Town", "Large Town", "City"]

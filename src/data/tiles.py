@@ -14,6 +14,7 @@ from src.config import (
     CAVE_MOUNTAIN,
     CAVE_HILL,
     CAVE_EXIT,
+    CAVE_WALL,
 )
 
 TILE_INFO = {
@@ -121,6 +122,14 @@ TILE_INFO = {
         "drop": None,
         "drop_color": None,
     },
+    CAVE_WALL: {
+        "name": "Cave Wall",
+        "color": (45, 38, 32),
+        "mineable": False,
+        "hp": 0,
+        "drop": None,
+        "drop_color": None,
+    },
 }
 
-BLOCKING_TILES = (WATER, MOUNTAIN)
+BLOCKING_TILES = (WATER, MOUNTAIN, CAVE_WALL)

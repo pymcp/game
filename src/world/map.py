@@ -24,6 +24,12 @@ class GameMap:
             for r in range(self.rows)
         ]
 
+        # Enemy list — populated by cave environments; empty for overland
+        self.enemies = []
+
+        # Town cluster cache: maps (row, col) → cluster_size for HOUSE tiles
+        self.town_clusters = {}
+
     def get_tile(self, row, col):
         """Get tile ID at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:

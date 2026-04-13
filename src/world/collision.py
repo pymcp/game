@@ -76,6 +76,44 @@ def has_adjacent_house(world, col, row):
     return False
 
 
+def compute_town_clusters(world):
+    """BFS flood-fill to find all connected HOUSE clusters.
+
+    Returns a dict mapping (row, col) → cluster_size for every HOUSE tile.
+    """
+    from src.config import HOUSE
+
+    rows = len(world)
+    cols = len(world[0]) if rows > 0 else 0
+    visited = set()
+    result = {}
+
+    for start_r in range(rows):
+        for start_c in range(cols):
+            if world[start_r][start_c] == HOUSE and (start_r, start_c) not in visited:
+                cluster = []
+                queue = [(start_r, start_c)]
+                visited.add((start_r, start_c))
+                while queue:
+                    r, c = queue.pop(0)
+                    cluster.append((r, c))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = r + dr, c + dc
+                        if (
+                            0 <= nr < rows
+                            and 0 <= nc < cols
+                            and world[nr][nc] == HOUSE
+                            and (nr, nc) not in visited
+                        ):
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                size = len(cluster)
+                for pos in cluster:
+                    result[pos] = size
+
+    return result
+
+
 def xp_for_level(lvl):
     """XP needed per level: 20, 25, 35, 50, 70, ... (+5 more each tier)."""
     base, inc = 20, 5

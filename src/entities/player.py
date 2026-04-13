@@ -3,7 +3,7 @@
 import math
 import random
 import pygame
-from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H
+from src.config import TILE, WORLD_COLS, WORLD_ROWS, SCREEN_W, SCREEN_H, GRASS, DIRT, MOUNTAIN
 from src.data import PICKAXES, WEAPONS, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS, TILE_INFO
 from src.world import try_spend, xp_for_level, hits_blocking, out_of_bounds
 from src.effects import Particle, FloatingText
@@ -142,6 +142,7 @@ class Player:
         self.level = 1
         self.xp_next = xp_for_level(self.level)
         self.hurt_timer = 0.0
+        self.is_dead = False
 
         # Facing direction (last non-zero movement)
         self.facing_dx = 1.0
@@ -237,7 +238,6 @@ class Player:
         self, keys, mouse_buttons, dt, world, tile_hp, cam_x, cam_y, particles, floats
     ):
         """Handle mining input and tile breaking."""
-        from src.config import GRASS, DIRT, MOUNTAIN
 
         # Determine mining input based on control scheme
         mining_input = (
@@ -245,6 +245,8 @@ class Player:
         )
 
         target_col, target_row = None, None
+        world_cols = len(world[0]) if world else WORLD_COLS
+        world_rows = len(world)
         if mouse_buttons[0]:
             mx, my = pygame.mouse.get_pos()
             target_col = int((mx + cam_x) // TILE)
@@ -256,7 +258,7 @@ class Player:
             for dr in range(-1, 2):
                 for dc in range(-1, 2):
                     c, r = center_col + dc, center_row + dr
-                    if 0 <= c < WORLD_COLS and 0 <= r < WORLD_ROWS:
+                    if 0 <= c < world_cols and 0 <= r < world_rows:
                         if TILE_INFO[world[r][c]]["mineable"]:
                             d = abs(dc) + abs(dr)
                             if d < best_dist:
@@ -266,7 +268,7 @@ class Player:
                 target_col, target_row = best
 
         if mining_input and target_col is not None and target_row is not None:
-            if 0 <= target_col < WORLD_COLS and 0 <= target_row < WORLD_ROWS:
+            if 0 <= target_col < world_cols and 0 <= target_row < world_rows:
                 tile_cx = target_col * TILE + TILE // 2
                 tile_cy = target_row * TILE + TILE // 2
                 dist = math.hypot(self.x - tile_cx, self.y - tile_cy)
@@ -284,8 +286,6 @@ class Player:
                         TILE_INFO[world[target_row][target_col]]["hp"]
                         - self.mining_progress,
                     )
-
-                    import random
 
                     if random.random() < 0.4:
                         pcol = TILE_INFO[world[target_row][target_col]]["color"]

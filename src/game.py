@@ -6,8 +6,6 @@ import random
 from src.config import (
     SCREEN_W,
     SCREEN_H,
-    VIEWPORT_W,
-    VIEWPORT_H,
     TILE,
     FPS,
     BG,
@@ -25,15 +23,16 @@ from src.config import (
     CAVE_MOUNTAIN,
     CAVE_HILL,
     CAVE_EXIT,
+    SETTLEMENT_TIER_SIZES,
+    SETTLEMENT_TIER_NAMES,
 )
-from src.data import TILE_INFO, WEAPONS
-from src.world import generate_world, spawn_enemies, try_spend, has_adjacent_house
+from src.data import TILE_INFO, WEAPONS, PICKAXES, UPGRADE_COSTS, WEAPON_UNLOCK_COSTS
+from src.world import generate_world, spawn_enemies, try_spend, has_adjacent_house, compute_town_clusters
 from src.world.map import GameMap
-from src.world.generation import generate_cave_map
+from src.world.environments import CaveEnvironment
 from src.entities import Player, Projectile, Worker, Pet
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
 from src.effects import Particle, FloatingText
-from src.ui import draw_hud, draw_tooltip
 
 
 class Game:
@@ -46,11 +45,17 @@ class Game:
         self.clock = pygame.time.Clock()
         self.is_fullscreen = False
         self.font = pygame.font.SysFont("monospace", 16)
-        self.big_font = pygame.font.SysFont("monospace", 22, bold=True)
 
-        # Dynamic viewport dimensions
-        self.viewport_w = VIEWPORT_W
-        self.viewport_h = VIEWPORT_H
+        # UI fonts — cached once to avoid re-creating every frame
+        self.font_ui_sm = pygame.font.Font(None, 22)
+        self.font_ui_xs = pygame.font.Font(None, 16)
+        self.font_dc_big = pygame.font.SysFont("monospace", 38, bold=True)
+        self.font_dc_med = pygame.font.SysFont("monospace", 26, bold=True)
+        self.font_dc_sm = pygame.font.SysFont("monospace", 18)
+
+        # Dynamic viewport dimensions (updated each frame from actual screen size)
+        self.viewport_w = SCREEN_W // 2
+        self.viewport_h = SCREEN_H
 
         # Map system - store all maps by key
         # "overland" is the main map, caves are keyed by (col, row)
@@ -58,7 +63,6 @@ class Game:
         self.maps = {
             "overland": GameMap(world_data, tileset="overland")
         }
-        self.current_map_key = "overland"  # Track which map is being viewed (for rendering)
 
         # Get shortcut reference to overland map
         overland_map = self.maps["overland"]
@@ -113,8 +117,73 @@ class Game:
 
         self.running = True
 
-        # Store cave coordinates where players are for easy access
-        self.cave_coords_to_map = {}  # Maps (col, row) to cave GameMap
+        # Death challenge state: {player_id: {"question": str, "answer": int, "input": str, "wrong": bool}}
+        self.death_challenges = {}
+
+    # -- death challenge ---------------------------------------------------
+
+    def _start_death_challenge(self, player):
+        """Pause a dead player and present a math problem they must solve to respawn."""
+        player.is_dead = True
+        player.hurt_timer = 0
+        a = random.randint(1, 20)
+        b = random.randint(1, 20)
+        if random.choice([True, False]):
+            answer = a + b
+            question = f"{a} + {b} = ?"
+        else:
+            if a < b:
+                a, b = b, a
+            answer = a - b
+            question = f"{a} - {b} = ?"
+        self.death_challenges[player.player_id] = {
+            "question": question,
+            "answer": answer,
+            "input": "",
+            "wrong": False,
+        }
+
+    def _submit_death_challenge(self, player):
+        """Check the typed answer; respawn player on correct answer."""
+        challenge = self.death_challenges.get(player.player_id)
+        if challenge is None:
+            return
+        try:
+            typed = int(challenge["input"])
+        except ValueError:
+            challenge["wrong"] = True
+            challenge["input"] = ""
+            return
+        if typed == challenge["answer"]:
+            player.is_dead = False
+            player.hp = player.max_hp
+            del self.death_challenges[player.player_id]
+            self._respawn_player(player)
+            self.floats.append(
+                FloatingText(player.x, player.y - 30, "Respawned!", (100, 255, 100))
+            )
+        else:
+            challenge["wrong"] = True
+            challenge["input"] = ""
+
+    def _respawn_player(self, player):
+        """Teleport a respawning player to a safe grass tile near the world centre."""
+        player.current_map = "overland"
+        overland = self.maps["overland"]
+        for search_dist in range(1, 30):
+            for dc in range(-search_dist, search_dist + 1):
+                for dr in range(-search_dist, search_dist + 1):
+                    if abs(dc) != search_dist and abs(dr) != search_dist:
+                        continue
+                    col = WORLD_COLS // 2 + dc
+                    row = WORLD_ROWS // 2 + dr
+                    if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
+                        if overland.get_tile(row, col) == GRASS:
+                            player.x = col * TILE + TILE // 2
+                            player.y = row * TILE + TILE // 2
+                            return
+        player.x = WORLD_COLS // 2 * TILE + TILE // 2
+        player.y = WORLD_ROWS // 2 * TILE + TILE // 2
 
     # -- main loop ---------------------------------------------------------
 
@@ -141,6 +210,41 @@ class Game:
 
     def _handle_keydown(self, key):
         """Handle key press (for both players based on key)."""
+        # --- Death challenge input handling (takes priority over all other keys) ---
+        active_player = None
+        if self.player1.is_dead and self.player1.player_id in self.death_challenges:
+            active_player = self.player1
+        elif self.player2.is_dead and self.player2.player_id in self.death_challenges:
+            active_player = self.player2
+
+        if active_player is not None:
+            challenge = self.death_challenges[active_player.player_id]
+            digit_map = {
+                pygame.K_0: "0", pygame.K_1: "1", pygame.K_2: "2",
+                pygame.K_3: "3", pygame.K_4: "4", pygame.K_5: "5",
+                pygame.K_6: "6", pygame.K_7: "7", pygame.K_8: "8",
+                pygame.K_9: "9",
+                pygame.K_KP0: "0", pygame.K_KP1: "1", pygame.K_KP2: "2",
+                pygame.K_KP3: "3", pygame.K_KP4: "4", pygame.K_KP5: "5",
+                pygame.K_KP6: "6", pygame.K_KP7: "7", pygame.K_KP8: "8",
+                pygame.K_KP9: "9",
+            }
+            if key in digit_map:
+                challenge["input"] += digit_map[key]
+                challenge["wrong"] = False
+                return
+            elif key in (pygame.K_MINUS, pygame.K_KP_MINUS) and not challenge["input"]:
+                challenge["input"] = "-"
+                challenge["wrong"] = False
+                return
+            elif key == pygame.K_BACKSPACE:
+                challenge["input"] = challenge["input"][:-1]
+                challenge["wrong"] = False
+                return
+            elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self._submit_death_challenge(active_player)
+                return
+
         if key == pygame.K_ESCAPE:
             self.running = False
         elif key == pygame.K_F11:
@@ -153,27 +257,27 @@ class Game:
                 self.screen = pygame.display.set_mode(
                     (SCREEN_W, SCREEN_H), pygame.RESIZABLE
                 )
-        # Player 1 controls
-        elif key == self.player1.controls.upgrade_pick_key:
+        # Player 1 controls (blocked while dead)
+        elif not self.player1.is_dead and key == self.player1.controls.upgrade_pick_key:
             self.player1.try_upgrade_pick()
-        elif key == self.player1.controls.upgrade_weapon_key:
+        elif not self.player1.is_dead and key == self.player1.controls.upgrade_weapon_key:
             self.player1.try_upgrade_weapon()
-        elif key == self.player1.controls.build_house_key:
+        elif not self.player1.is_dead and key == self.player1.controls.build_house_key:
             self._try_build_house(self.player1)
-        elif key == self.player1.controls.toggle_auto_mine_key:
+        elif not self.player1.is_dead and key == self.player1.controls.toggle_auto_mine_key:
             self.player1.toggle_auto_mine()
-        elif key == self.player1.controls.toggle_auto_fire_key:
+        elif not self.player1.is_dead and key == self.player1.controls.toggle_auto_fire_key:
             self.player1.toggle_auto_fire()
-        # Player 2 controls
-        elif key == self.player2.controls.upgrade_pick_key:
+        # Player 2 controls (blocked while dead)
+        elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
             self.player2.try_upgrade_pick()
-        elif key == self.player2.controls.upgrade_weapon_key:
+        elif not self.player2.is_dead and key == self.player2.controls.upgrade_weapon_key:
             self.player2.try_upgrade_weapon()
-        elif key == self.player2.controls.build_house_key:
+        elif not self.player2.is_dead and key == self.player2.controls.build_house_key:
             self._try_build_house(self.player2)
-        elif key == self.player2.controls.toggle_auto_mine_key:
+        elif not self.player2.is_dead and key == self.player2.controls.toggle_auto_mine_key:
             self.player2.toggle_auto_mine()
-        elif key == self.player2.controls.toggle_auto_fire_key:
+        elif not self.player2.is_dead and key == self.player2.controls.toggle_auto_fire_key:
             self.player2.toggle_auto_fire()
 
     def _try_build_house(self, player):
@@ -205,8 +309,6 @@ class Game:
         for _ in range(10):
             self.particles.append(Particle(tile_cx, tile_cy, (160, 82, 45)))
 
-        import random
-
         if random.random() < 0.25:
             self.pets.append(Pet(tile_cx, tile_cy, kind="dog"))
             self.floats.append(
@@ -224,16 +326,306 @@ class Game:
                 FloatingText(tile_cx, tile_cy - 36, "Cat appeared!", (255, 165, 0))
             )
 
-    # -- helper methods for cave system --------------------------------
+        self._update_town_clusters(build_col, build_row, player)
+
+    # -- helpers -----------------------------------------------------------
 
     def get_player_current_map(self, player):
         """Get the GameMap object that the player is currently on."""
         map_key = player.current_map
         if map_key == "overland":
             return self.maps["overland"]
-        elif isinstance(map_key, tuple):  # Cave coordinates (cave_col, cave_row)
+        elif isinstance(map_key, tuple):
             return self.maps.get(map_key)
         return None
+
+    def _snap_camera_to_player(self, player):
+        """Immediately snap a player's camera to centre on that player."""
+        if player.player_id == 1:
+            self.cam1_x = player.x - self.viewport_w // 2
+            self.cam1_y = player.y - self.viewport_h // 2
+        else:
+            self.cam2_x = player.x - self.viewport_w // 2
+            self.cam2_y = player.y - self.viewport_h // 2
+
+    @staticmethod
+    def _get_settlement_tier(cluster_size):
+        """Return (tier_index, tier_name) for a given cluster size."""
+        for i in range(len(SETTLEMENT_TIER_SIZES) - 1, -1, -1):
+            if cluster_size >= SETTLEMENT_TIER_SIZES[i]:
+                return (i, SETTLEMENT_TIER_NAMES[i])
+        return (0, SETTLEMENT_TIER_NAMES[0])
+
+    def _update_town_clusters(self, build_col, build_row, player):
+        """Recompute town clusters after a house is placed and announce tier upgrades."""
+        overland = self.maps["overland"]
+        old_clusters = overland.town_clusters
+
+        # Determine the largest cluster any adjacent tile belonged to before this build
+        old_max_size = 0
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            old_max_size = max(
+                old_max_size,
+                old_clusters.get((build_row + dr, build_col + dc), 0),
+            )
+        old_tier_idx, _ = self._get_settlement_tier(old_max_size)
+
+        # Recompute all clusters
+        new_clusters = compute_town_clusters(overland.world)
+        overland.town_clusters = new_clusters
+
+        new_size = new_clusters.get((build_row, build_col), 1)
+        new_tier_idx, new_tier_name = self._get_settlement_tier(new_size)
+
+        if new_tier_idx > old_tier_idx and new_tier_idx > 0:
+            tile_cx = build_col * TILE + TILE // 2
+            tile_cy = build_row * TILE + TILE // 2
+
+            # Tier-up announcement
+            self.floats.append(
+                FloatingText(tile_cx, tile_cy - 40, f"{new_tier_name}!", (255, 220, 80))
+            )
+            for _ in range(25):
+                self.particles.append(Particle(tile_cx, tile_cy, (255, 200, 60)))
+
+            # Gameplay bonuses scale with tier
+            bonus_workers = new_tier_idx
+            bonus_resources = {
+                1: {"Dirt": 20},
+                2: {"Dirt": 40, "Stone": 20},
+                3: {"Dirt": 60, "Stone": 40, "Iron": 10},
+                4: {"Stone": 60, "Iron": 30, "Gold": 10},
+                5: {"Iron": 50, "Gold": 30, "Diamond": 5},
+            }.get(new_tier_idx, {})
+
+            for res, qty in bonus_resources.items():
+                player.inventory[res] = player.inventory.get(res, 0) + qty
+
+            for _ in range(bonus_workers):
+                self.workers.append(Worker(tile_cx, tile_cy, player_id=player.player_id))
+
+            if bonus_resources:
+                res_text = ", ".join(f"+{v} {k}" for k, v in bonus_resources.items())
+                self.floats.append(
+                    FloatingText(tile_cx, tile_cy - 56, res_text, (120, 255, 120))
+                )
+
+    def _draw_house_tile(self, tx, ty, tier, n, s, e, w, ticks):
+        """Draw a house tile styled to its settlement tier.
+
+        Args:
+            tx, ty: top-left screen position of the tile
+            tier: 0=Cottage, 1=Hamlet, 2=Village, 3=Town, 4=Large Town, 5=City
+            n, s, e, w: True if that direction has an adjacent house tile
+            ticks: pygame.time.get_ticks() for animations
+        """
+        sc = self.screen
+
+        if tier == 0:
+            # -- Isolated Cottage --
+            pygame.draw.rect(sc, (180, 120, 60), (tx + 4, ty + 12, 24, 18))
+            pygame.draw.polygon(
+                sc, (160, 40, 40),
+                [(tx + 2, ty + 12), (tx + 16, ty + 2), (tx + 30, ty + 12)],
+            )
+            pygame.draw.rect(sc, (100, 60, 30), (tx + 12, ty + 19, 8, 11))
+            pygame.draw.rect(sc, (180, 220, 255), (tx + 7, ty + 15, 5, 5))
+            pygame.draw.rect(sc, (80, 60, 40), (tx + 7, ty + 15, 5, 5), 1)
+
+        elif tier == 1:
+            # -- Hamlet: warm cottage with chimney, wood grain, amber window --
+            wall_c = (185, 130, 70)
+            roof_c = (178, 55, 55)
+            pygame.draw.rect(sc, wall_c, (tx + 3, ty + 11, 26, 19))
+            # Wood-grain horizontal lines
+            for ly in range(ty + 15, ty + 30, 4):
+                pygame.draw.line(sc, (150, 100, 45), (tx + 3, ly), (tx + 29, ly), 1)
+            # Roof
+            if n:
+                pygame.draw.rect(sc, roof_c, (tx + 3, ty + 7, 26, 5))
+            else:
+                pygame.draw.polygon(
+                    sc, roof_c,
+                    [(tx + 1, ty + 11), (tx + 16, ty + 1), (tx + 31, ty + 11)],
+                )
+            # Chimney
+            pygame.draw.rect(sc, (120, 100, 85), (tx + 21, ty + 3, 4, 9))
+            pygame.draw.rect(sc, (90, 80, 70), (tx + 20, ty + 2, 6, 3))
+            # Door with arch top
+            pygame.draw.rect(sc, (110, 65, 30), (tx + 12, ty + 21, 8, 9))
+            pygame.draw.ellipse(sc, (110, 65, 30), (tx + 11, ty + 17, 10, 8))
+            # Amber lit window
+            pygame.draw.rect(sc, (255, 215, 120), (tx + 5, ty + 14, 5, 5))
+            pygame.draw.rect(sc, (80, 60, 40), (tx + 5, ty + 14, 5, 5), 1)
+            # Second window (right side)
+            pygame.draw.rect(sc, (255, 215, 120), (tx + 22, ty + 14, 5, 5))
+            pygame.draw.rect(sc, (80, 60, 40), (tx + 22, ty + 14, 5, 5), 1)
+            # Path connectors on linked sides
+            path_c = (175, 158, 128)
+            if s:
+                pygame.draw.rect(sc, path_c, (tx + 13, ty + 30, 6, 2))
+            if e:
+                pygame.draw.rect(sc, path_c, (tx + 30, ty + 22, 2, 5))
+            if w:
+                pygame.draw.rect(sc, path_c, (tx, ty + 22, 2, 5))
+
+        elif tier == 2:
+            # -- Village: row-house with brick walls, parapet, double windows --
+            wall_c = (195, 105, 55)   # orange brick
+            brick_c = (155, 78, 38)   # mortar / darker brick
+            roof_c = (160, 82, 60)    # terracotta parapet
+            # Wall extends to adjacent sides seamlessly
+            lx = tx if w else tx + 3
+            rx = tx + 32 if e else tx + 29
+            ty2 = ty if n else ty + 6
+            by2 = ty + 32 if s else ty + 30
+            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
+            # Brick mortar lines
+            for ly in range(ty2 + 5, by2, 5):
+                pygame.draw.line(sc, brick_c, (lx, ly), (rx, ly), 1)
+            # Parapet / roof on exposed north
+            if not n:
+                pygame.draw.rect(sc, roof_c, (lx, ty2 - 4, rx - lx, 5))
+                for bx in range(lx, rx, 6):
+                    pygame.draw.rect(sc, (130, 65, 45), (bx, ty2 - 7, 4, 3))
+            # Two windows side by side
+            for wx in (tx + 5, tx + 20):
+                pygame.draw.rect(sc, (200, 225, 255), (wx, ty + 10, 6, 8))
+                pygame.draw.line(sc, (130, 100, 75), (wx + 3, ty + 10), (wx + 3, ty + 18), 1)
+            # Arched doorway on south-exposed face
+            if not s:
+                pygame.draw.rect(sc, (105, 58, 28), (tx + 13, ty + 22, 6, 8))
+                pygame.draw.ellipse(sc, (105, 58, 28), (tx + 11, ty + 18, 10, 8))
+
+        elif tier == 3:
+            # -- Town: stone walls, slate parapet with crenellations, 4-window grid --
+            wall_c = (130, 125, 118)  # stone gray
+            stone_c = (108, 104, 98)  # stone shadow
+            roof_c = (88, 90, 102)    # slate
+            lx = tx if w else tx + 2
+            rx = tx + 32 if e else tx + 30
+            ty2 = ty if n else ty + 3
+            by2 = ty + 32 if s else ty + 30
+            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
+            # Stone block texture (horizontal courses)
+            for iy in range(ty2 + 6, by2, 7):
+                pygame.draw.line(sc, stone_c, (lx, iy), (rx, iy), 1)
+            # Vertical joints (offset each row)
+            row_i = 0
+            for iy in range(ty2 + 6, by2, 7):
+                offset = 5 if row_i % 2 == 0 else 1
+                for ix in range(lx + offset, rx, 10):
+                    pygame.draw.line(sc, stone_c, (ix, iy - 6), (ix, iy), 1)
+                row_i += 1
+            # Slate roof + crenellations on exposed north
+            if not n:
+                pygame.draw.rect(sc, roof_c, (lx, ty2 - 5, rx - lx, 6))
+                for bx in range(lx, rx, 5):
+                    pygame.draw.rect(sc, (68, 70, 82), (bx, ty2 - 8, 3, 3))
+            # 2×2 window grid
+            win_c = (145, 175, 215)
+            for wy, wx in [(ty + 8, tx + 5), (ty + 8, tx + 19),
+                           (ty + 18, tx + 5), (ty + 18, tx + 19)]:
+                pygame.draw.rect(sc, win_c, (wx, wy, 5, 6))
+                pygame.draw.line(sc, (85, 110, 150), (wx + 2, wy), (wx + 2, wy + 6), 1)
+                pygame.draw.line(sc, (85, 110, 150), (wx, wy + 3), (wx + 5, wy + 3), 1)
+            # Recessed door
+            if not s:
+                pygame.draw.rect(sc, (55, 42, 28), (tx + 12, ty + 23, 8, 7))
+
+        elif tier == 4:
+            # -- Large Town: deep red brick, multi-row windows, iron roof, awning --
+            wall_c = (158, 78, 65)    # deep red brick
+            brick_c = (122, 55, 44)   # dark mortar
+            roof_c = (55, 58, 68)     # iron grey
+            lx = tx if w else tx + 1
+            rx = tx + 32 if e else tx + 31
+            ty2 = ty if n else ty + 2
+            by2 = ty + 32 if s else ty + 31
+            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
+            # Dense brick courses
+            for iy in range(ty2 + 4, by2, 5):
+                pygame.draw.line(sc, brick_c, (lx, iy), (rx, iy), 1)
+            # Brick bonds (alternating vertical joints)
+            row_i = 0
+            for iy in range(ty2 + 4, by2, 5):
+                offset = 4 if row_i % 2 == 0 else 0
+                for ix in range(lx + offset, rx, 8):
+                    pygame.draw.line(sc, brick_c, (ix, iy - 4), (ix, iy), 1)
+                row_i += 1
+            # Iron roof parapet
+            if not n:
+                pygame.draw.rect(sc, roof_c, (lx, ty2 - 4, rx - lx, 5))
+                for bx in range(lx, rx, 4):
+                    pygame.draw.rect(sc, (35, 38, 48), (bx, ty2 - 6, 2, 2))
+            # 3 rows × 2 columns of windows
+            win_c = (185, 205, 245)
+            for wy in (ty + 4, ty + 13, ty + 22):
+                for wx in (tx + 5, tx + 21):
+                    pygame.draw.rect(sc, win_c, (wx, wy, 5, 7))
+                    pygame.draw.line(sc, (130, 150, 200), (wx + 2, wy), (wx + 2, wy + 7), 1)
+                    pygame.draw.line(sc, (130, 150, 200), (wx, wy + 3), (wx + 5, wy + 3), 1)
+            # Merchant awning on exposed south
+            if not s:
+                pygame.draw.rect(sc, (195, 85, 55), (tx + 3, ty + 24, 26, 3))
+                for ax in range(tx + 3, tx + 29, 4):
+                    pygame.draw.line(sc, (220, 100, 70), (ax, ty + 24), (ax + 2, ty + 27), 1)
+
+        else:
+            # -- City (tier 5): dark slate, gothic arch windows, spire --
+            pulse = int(math.sin(ticks * 0.002) * 10)
+            wall_c = (72, 78, 95)          # slate blue-grey
+            stone_c = (56, 62, 78)         # deep shadow
+            roof_c = (38, 42, 58)          # dark steel
+            gold_c = (200, 170, 80 + pulse)  # animated gold trim
+            lx = tx
+            rx = tx + 32
+            ty2 = ty
+            by2 = ty + 32
+            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
+            # Stone block grid
+            for iy in range(ty2 + 5, by2, 6):
+                for ix in range(lx, rx, 9):
+                    pygame.draw.rect(sc, stone_c, (ix, iy, 8, 5), 1)
+            # Spire on exposed north
+            if not n:
+                mid = tx + 16
+                pygame.draw.polygon(
+                    sc, roof_c,
+                    [(mid - 3, ty2), (mid + 3, ty2), (mid + 1, ty2 - 9), (mid - 1, ty2 - 9)],
+                )
+                pygame.draw.polygon(
+                    sc, gold_c,
+                    [(mid - 1, ty2 - 9), (mid + 1, ty2 - 9), (mid, ty2 - 14)],
+                )
+                pygame.draw.rect(sc, roof_c, (lx, ty2 - 4, rx - lx, 5))
+                # Gold crenellation trim
+                for bx in range(lx, rx, 5):
+                    pygame.draw.rect(sc, gold_c, (bx, ty2 - 5, 3, 2))
+            # Gothic arch windows (3 rows × 2 cols)
+            win_c = (110, 145, 205)
+            for wy in (ty + 3, ty + 13, ty + 21):
+                for wx in (tx + 4, tx + 21):
+                    # Arch body
+                    pygame.draw.rect(sc, win_c, (wx, wy + 3, 6, 6))
+                    pygame.draw.ellipse(sc, win_c, (wx, wy, 6, 6))
+                    # Gold arch trim
+                    pygame.draw.ellipse(sc, gold_c, (wx, wy, 6, 6), 1)
+            # Iron-bound door on exposed south
+            if not s:
+                pygame.draw.rect(sc, (40, 32, 22), (tx + 12, ty + 24, 8, 8))
+                pygame.draw.ellipse(sc, (40, 32, 22), (tx + 11, ty + 20, 10, 8))
+                pygame.draw.ellipse(sc, gold_c, (tx + 11, ty + 20, 10, 8), 1)
+
+    def _nearest_living_player(self, map_key, enemy):
+        """Return the nearest living player on map_key, or None if none present."""
+        candidates = [
+            p for p in (self.player1, self.player2)
+            if p.current_map == map_key and not p.is_dead
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda p: math.hypot(p.x - enemy.x, p.y - enemy.y))
 
     def check_cave_transitions(self, player, current_map):
         """Check if player stepped on a cave entrance and transition if so."""
@@ -256,8 +648,8 @@ class Game:
             # Generate or load the cave map
             cave_key = (tile_col, tile_row)
             if cave_key not in self.maps:
-                # Generate new cave map
-                self.maps[cave_key] = generate_cave_map(tile_col, tile_row)
+                env = CaveEnvironment(tile_col, tile_row, cave_type=tile_id)
+                self.maps[cave_key] = env.generate()
 
             cave_map = self.maps[cave_key]
             # Teleport player to cave spawn point (away from exit)
@@ -265,15 +657,7 @@ class Game:
             player.y = cave_map.spawn_row * TILE + TILE // 2
             player.current_map = cave_key
 
-            # Update camera to follow player into cave
-            if player.player_id == 1:
-                self.cam1_x = player.x - self.viewport_w // 2
-                self.cam1_y = player.y - self.viewport_h // 2
-            else:
-                self.cam2_x = player.x - self.viewport_w // 2
-                self.cam2_y = player.y - self.viewport_h // 2
-
-            # Floating text notification
+            self._snap_camera_to_player(player)
             self.floats.append(
                 FloatingText(
                     player.x, player.y - 30, "Entered cave!", (100, 150, 255)
@@ -322,14 +706,7 @@ class Game:
 
             player.current_map = "overland"
 
-            # Update camera to follow player out of cave
-            if player.player_id == 1:
-                self.cam1_x = player.x - self.viewport_w // 2
-                self.cam1_y = player.y - self.viewport_h // 2
-            else:
-                self.cam2_x = player.x - self.viewport_w // 2
-                self.cam2_y = player.y - self.viewport_h // 2
-
+            self._snap_camera_to_player(player)
             self.floats.append(
                 FloatingText(
                     player.x, player.y - 30, "Exited cave!", (100, 255, 150)
@@ -352,53 +729,59 @@ class Game:
         map1 = self.get_player_current_map(self.player1)
         map2 = self.get_player_current_map(self.player2)
 
-        # Check for cave transitions
-        self.check_cave_transitions(self.player1, map1)
-        self.check_cave_transitions(self.player2, map2)
+        # Check for cave transitions (only for living players)
+        if not self.player1.is_dead:
+            self.check_cave_transitions(self.player1, map1)
+        if not self.player2.is_dead:
+            self.check_cave_transitions(self.player2, map2)
 
         # Update maps after potential transitions
         map1 = self.get_player_current_map(self.player1)
         map2 = self.get_player_current_map(self.player2)
 
-        # Check for cave exits
-        self.check_cave_exits(self.player1, map1)
-        self.check_cave_exits(self.player2, map2)
+        # Check for cave exits (only for living players)
+        if not self.player1.is_dead:
+            self.check_cave_exits(self.player1, map1)
+        if not self.player2.is_dead:
+            self.check_cave_exits(self.player2, map2)
 
         # Update maps again after potential exits
         map1 = self.get_player_current_map(self.player1)
         map2 = self.get_player_current_map(self.player2)
 
-        # Player 1 movement & mining
-        self.player1.update_movement(keys, dt, map1.world)
-        self.player1.update_mining(
-            keys,
-            mouse_buttons,
-            dt,
-            map1.world,
-            map1.tile_hp,
-            self.cam1_x,
-            self.cam1_y,
-            self.particles,
-            self.floats,
-        )
-        if self.player1.hurt_timer > 0:
-            self.player1.hurt_timer -= dt
+        # Player 1 movement & mining (skipped while dead)
+        if not self.player1.is_dead:
+            self.player1.update_movement(keys, dt, map1.world)
+            self.player1.update_mining(
+                keys,
+                mouse_buttons,
+                dt,
+                map1.world,
+                map1.tile_hp,
+                self.cam1_x,
+                self.cam1_y,
+                self.particles,
+                self.floats,
+            )
+            if self.player1.hurt_timer > 0:
+                self.player1.hurt_timer -= dt
 
-        # Player 2 movement & mining
-        self.player2.update_movement(keys, dt, map2.world)
-        self.player2.update_mining(
-            keys,
-            mouse_buttons,
-            dt,
-            map2.world,
-            map2.tile_hp,
-            self.cam2_x,
-            self.cam2_y,
-            self.particles,
-            self.floats,
-        )
-        if self.player2.hurt_timer > 0:
-            self.player2.hurt_timer -= dt
+        # Player 2 movement & mining (skipped while dead)
+        if not self.player2.is_dead:
+            self.player2.update_movement(keys, dt, map2.world)
+            self.player2.update_mining(
+                keys,
+                mouse_buttons,
+                dt,
+                map2.world,
+                map2.tile_hp,
+                self.cam2_x,
+                self.cam2_y,
+                self.particles,
+                self.floats,
+            )
+            if self.player2.hurt_timer > 0:
+                self.player2.hurt_timer -= dt
 
         # Workers (each assigned to a specific player) - only on overland map
         overland_map = self.maps["overland"]
@@ -427,6 +810,7 @@ class Game:
 
         # Enemies
         self._update_enemies(dt)
+        self._update_cave_enemies(dt)
 
         # Weapon firing (for both players)
         self._update_combat(keys, mouse_buttons, dt)
@@ -470,91 +854,115 @@ class Game:
     def _update_enemies(self, dt):
         """Update all enemies and check for attacks on both players."""
         overland_map = self.maps["overland"]
+        avg_cam_x = (self.cam1_x + self.cam2_x) / 2
+        avg_cam_y = (self.cam1_y + self.cam2_y) / 2
         for enemy in self.enemies:
-            # Enemies only attack players on overland map
-            player1_on_overland = self.player1.current_map == "overland"
-            player2_on_overland = self.player2.current_map == "overland"
-
-            if not (player1_on_overland or player2_on_overland):
-                continue  # No players to attack on overland
-
-            # Enemies attack whichever player is closer (if on overland)
-            if player1_on_overland and player2_on_overland:
-                dist1 = math.hypot(self.player1.x - enemy.x, self.player1.y - enemy.y)
-                dist2 = math.hypot(self.player2.x - enemy.x, self.player2.y - enemy.y)
-                target_x, target_y = (
-                    (self.player1.x, self.player1.y)
-                    if dist1 < dist2
-                    else (self.player2.x, self.player2.y)
-                )
-                target_player = self.player1 if dist1 < dist2 else self.player2
-            elif player1_on_overland:
-                target_x, target_y = self.player1.x, self.player1.y
-                target_player = self.player1
-            else:
-                target_x, target_y = self.player2.x, self.player2.y
-                target_player = self.player2
-
-            # Use average camera for enemy update (they share the world)
-            avg_cam_x = (self.cam1_x + self.cam2_x) / 2
-            avg_cam_y = (self.cam1_y + self.cam2_y) / 2
+            target_player = self._nearest_living_player("overland", enemy)
+            if target_player is None:
+                continue
             enemy.update(
-                dt, target_x, target_y, avg_cam_x, avg_cam_y, overland_map.world, self.particles
+                dt, target_player.x, target_player.y,
+                avg_cam_x, avg_cam_y, overland_map.world, self.particles,
             )
-
-            dmg = enemy.try_attack(target_x, target_y)
+            dmg = enemy.try_attack(target_player.x, target_player.y)
             if dmg > 0:
                 target_player.take_damage(dmg, self.particles, self.floats)
+                if target_player.hp <= 0 and not target_player.is_dead:
+                    self._start_death_challenge(target_player)
+
+    def _update_cave_enemies(self, dt):
+        """Update enemies inside caves that currently contain at least one player."""
+        active_caves = {
+            p.current_map for p in (self.player1, self.player2)
+            if not p.is_dead and isinstance(p.current_map, tuple)
+        }
+        for cave_key in active_caves:
+            cave_map = self.maps.get(cave_key)
+            if cave_map is None:
+                continue
+
+            # Camera for on-screen culling: average of players in this cave
+            cave_cams = [
+                (self.cam1_x, self.cam1_y) if p is self.player1 else (self.cam2_x, self.cam2_y)
+                for p in (self.player1, self.player2)
+                if p.current_map == cave_key and not p.is_dead
+            ]
+            cam_x = sum(c[0] for c in cave_cams) / len(cave_cams)
+            cam_y = sum(c[1] for c in cave_cams) / len(cave_cams)
+
+            for enemy in cave_map.enemies:
+                target_player = self._nearest_living_player(cave_key, enemy)
+                if target_player is None:
+                    continue
+                enemy.update(
+                    dt, target_player.x, target_player.y,
+                    cam_x, cam_y, cave_map.world, self.particles,
+                )
+                dmg = enemy.try_attack(target_player.x, target_player.y)
+                if dmg > 0:
+                    target_player.take_damage(dmg, self.particles, self.floats)
+                    if target_player.hp <= 0 and not target_player.is_dead:
+                        self._start_death_challenge(target_player)
+
+            cave_map.enemies = [e for e in cave_map.enemies if e.hp > 0]
 
     def _update_combat(self, keys, mouse_buttons, dt):
         """Handle weapon firing for both players."""
-        # Player 1 firing
+        # Player 1 firing (skipped while dead)
         if self.player1.weapon_cooldown > 0:
             self.player1.weapon_cooldown -= dt
-        fire_input_p1 = (
-            keys[self.player1.controls.fire_key]
-            or mouse_buttons[2]
-            or self.player1.auto_fire
-        )
-        if fire_input_p1 and self.player1.weapon_cooldown <= 0:
-            wpn = WEAPONS[self.player1.weapon_level]
-            self.projectiles.append(
-                Projectile(
-                    self.player1.x,
-                    self.player1.y,
-                    self.player1.facing_dx,
-                    self.player1.facing_dy,
-                    wpn,
-                    player_id=1,
-                )
+        if not self.player1.is_dead:
+            fire_input_p1 = (
+                keys[self.player1.controls.fire_key]
+                or mouse_buttons[2]
+                or self.player1.auto_fire
             )
-            self.player1.weapon_cooldown = wpn["cooldown"]
+            if fire_input_p1 and self.player1.weapon_cooldown <= 0:
+                wpn = WEAPONS[self.player1.weapon_level]
+                self.projectiles.append(
+                    Projectile(
+                        self.player1.x,
+                        self.player1.y,
+                        self.player1.facing_dx,
+                        self.player1.facing_dy,
+                        wpn,
+                        player_id=1,
+                        map_key=self.player1.current_map,
+                    )
+                )
+                self.player1.weapon_cooldown = wpn["cooldown"]
 
-        # Player 2 firing
+        # Player 2 firing (skipped while dead)
         if self.player2.weapon_cooldown > 0:
             self.player2.weapon_cooldown -= dt
-        fire_input_p2 = keys[self.player2.controls.fire_key] or self.player2.auto_fire
-        if fire_input_p2 and self.player2.weapon_cooldown <= 0:
-            wpn = WEAPONS[self.player2.weapon_level]
-            self.projectiles.append(
-                Projectile(
-                    self.player2.x,
-                    self.player2.y,
-                    self.player2.facing_dx,
-                    self.player2.facing_dy,
-                    wpn,
-                    player_id=2,
+        if not self.player2.is_dead:
+            fire_input_p2 = keys[self.player2.controls.fire_key] or self.player2.auto_fire
+            if fire_input_p2 and self.player2.weapon_cooldown <= 0:
+                wpn = WEAPONS[self.player2.weapon_level]
+                self.projectiles.append(
+                    Projectile(
+                        self.player2.x,
+                        self.player2.y,
+                        self.player2.facing_dx,
+                        self.player2.facing_dy,
+                        wpn,
+                        player_id=2,
+                        map_key=self.player2.current_map,
+                    )
                 )
-            )
-            self.player2.weapon_cooldown = wpn["cooldown"]
+                self.player2.weapon_cooldown = wpn["cooldown"]
 
     def _update_projectiles(self, dt):
-        """Update all projectiles and check for hits."""
+        """Update all projectiles and check for hits against enemies on the same map."""
         for proj in self.projectiles:
             proj.update(dt)
             if proj.alive:
-                proj.check_hits(self.enemies, self.particles, self.floats)
-            # Award XP only to the player that fired this projectile
+                if proj.map_key == "overland":
+                    proj.check_hits(self.enemies, self.particles, self.floats)
+                elif isinstance(proj.map_key, tuple):
+                    cave_map = self.maps.get(proj.map_key)
+                    if cave_map:
+                        proj.check_hits(cave_map.enemies, self.particles, self.floats)
             if proj.player_id == 1:
                 self.player1.xp += proj.xp_earned
             elif proj.player_id == 2:
@@ -623,7 +1031,6 @@ class Game:
         # Stone border colors
         border_outer = (60, 50, 40)  # Dark stone
         border_inner = (100, 85, 70)  # Light stone
-        border_accent = (180, 160, 140)  # Stone accent
 
         # Left border
         if cam_x < 0:
@@ -684,6 +1091,7 @@ class Game:
                 )
 
         # Draw terrain for this viewport
+        ticks = pygame.time.get_ticks()
         start_col = max(0, int(cam_x) // TILE)
         end_col = min(world_cols, int(cam_x + view_w) // TILE + 2)
         start_row = max(0, int(cam_y) // TILE)
@@ -848,23 +1256,13 @@ class Game:
                             1,
                         )
                 elif tid == HOUSE:
-                    pygame.draw.rect(
-                        self.screen, (180, 120, 60), (sx + 4, sy + 12, 24, 18)
-                    )
-                    pygame.draw.polygon(
-                        self.screen,
-                        (160, 40, 40),
-                        [(sx + 2, sy + 12), (sx + 16, sy + 2), (sx + 30, sy + 12)],
-                    )
-                    pygame.draw.rect(
-                        self.screen, (100, 60, 30), (sx + 12, sy + 19, 8, 11)
-                    )
-                    pygame.draw.rect(
-                        self.screen, (180, 220, 255), (sx + 7, sy + 15, 5, 5)
-                    )
-                    pygame.draw.rect(
-                        self.screen, (80, 60, 40), (sx + 7, sy + 15, 5, 5), 1
-                    )
+                    cluster_size = current_map.town_clusters.get((r, c), 1)
+                    tier, _ = self._get_settlement_tier(cluster_size)
+                    hn = current_map.get_tile(r - 1, c) == HOUSE
+                    hs = current_map.get_tile(r + 1, c) == HOUSE
+                    he = current_map.get_tile(r, c + 1) == HOUSE
+                    hw = current_map.get_tile(r, c - 1) == HOUSE
+                    self._draw_house_tile(sx, sy, tier, hn, hs, he, hw, ticks)
                 elif tid in (CAVE_MOUNTAIN, CAVE_HILL):
                     # Draw cave entrance
                     # Darker base color already set by tileset color
@@ -904,31 +1302,42 @@ class Game:
         for f in self.floats:
             f.draw(self.screen, self.font, cam_x - screen_x, cam_y - screen_y)
 
-        # Workers, pets, and enemies only exist on overland map
+        # Workers, pets, and overland enemies only on overland map
         if player.current_map == "overland":
             for w in self.workers:
                 w.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
-            ticks = pygame.time.get_ticks()
             for pet in self.pets:
                 pet.draw(self.screen, cam_x - screen_x, cam_y - screen_y, ticks)
             for enemy in self.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+        else:
+            # Draw enemies belonging to the cave the player is currently in
+            cave_map = self.get_player_current_map(player)
+            if cave_map is not None:
+                for enemy in cave_map.enemies:
+                    enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
+        # Draw projectiles on this map only
+        current_map_key = player.current_map
         for proj in self.projectiles:
-            proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+            if proj.map_key == current_map_key:
+                proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
-        # Draw both players in this viewport (visible to both players)
-        self.player1.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
-        self.player2.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
+        # Draw players that share this map
+        for p in (self.player1, self.player2):
+            if p.current_map == current_map_key:
+                p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
         self._draw_player_ui(player, screen_x, screen_y, view_w, view_h)
+        if player.is_dead:
+            self._draw_death_challenge(player, screen_x, screen_y, view_w, view_h)
         self.screen.set_clip(None)
 
     def _draw_player_ui(self, player, screen_x, screen_y, view_w, view_h):
         """Draw UI for a single player's viewport."""
-        font_small = pygame.font.Font(None, 22)
-        font_tiny = pygame.font.Font(None, 16)
+        font_small = self.font_ui_sm
+        font_tiny = self.font_ui_xs
 
         # Top HUD Panel (Stats & Inventory)
         top_panel_h = 240
@@ -1000,6 +1409,73 @@ class Game:
         wpn_text = font_tiny.render(f"Weapon: {wpn['name']}", True, (255, 150, 100))
         self.screen.blit(wpn_text, (screen_x + 18, inv_y + 82))
 
+        # Upgrades panel
+        upg_panel_y = screen_y + 8 + 240 + 6
+        upg_panel_w = 240
+
+        def _cost_str(cost_dict, inventory):
+            """Format a cost dict as 'Item: need/have' entries."""
+            parts = []
+            for item, needed in cost_dict.items():
+                have = inventory.get(item, 0)
+                color_flag = have >= needed
+                parts.append((f"{item}: {have}/{needed}", color_flag))
+            return parts
+
+        upg_lines = []  # list of (label, [(text, met), ...]) or (label, None) for MAX
+
+        # Pickaxe upgrade
+        pick_name = PICKAXES[player.pick_level]["name"]
+        if player.pick_level < len(UPGRADE_COSTS):
+            next_pick = PICKAXES[player.pick_level + 1]["name"]
+            pick_cost = _cost_str(UPGRADE_COSTS[player.pick_level], player.inventory)
+            upg_lines.append((f"Pick ({pick_name}→{next_pick}):", pick_cost))
+        else:
+            upg_lines.append((f"Pick ({pick_name}):", None))
+
+        # Weapon unlock
+        wpn_name = WEAPONS[player.weapon_level]["name"]
+        if player.weapon_level < len(WEAPON_UNLOCK_COSTS):
+            next_wpn = WEAPONS[player.weapon_level + 1]["name"]
+            wpn_cost = _cost_str(WEAPON_UNLOCK_COSTS[player.weapon_level], player.inventory)
+            upg_lines.append((f"Wpn ({wpn_name}→{next_wpn}):", wpn_cost))
+        else:
+            upg_lines.append((f"Wpn ({wpn_name}):", None))
+
+        # House
+        house_cost = _cost_str({"Dirt": 20}, player.inventory)
+        build_key = pygame.key.name(player.controls.build_house_key).upper()
+        upg_lines.append((f"House ({build_key}):", house_cost))
+
+        # Calculate panel height: header + 2 rows per entry (label + costs)
+        upg_panel_h = 14 + len(upg_lines) * 30
+        upg_surf = pygame.Surface((upg_panel_w, upg_panel_h), pygame.SRCALPHA)
+        upg_surf.fill((20, 20, 30, 200))
+        self.screen.blit(upg_surf, (screen_x + 8, upg_panel_y))
+        pygame.draw.rect(
+            self.screen, (150, 150, 150),
+            (screen_x + 8, upg_panel_y, upg_panel_w, upg_panel_h), 2
+        )
+
+        upg_header = font_small.render("Upgrades:", True, (200, 200, 200))
+        self.screen.blit(upg_header, (screen_x + 18, upg_panel_y + 4))
+
+        entry_y = upg_panel_y + 20
+        for label, cost_parts in upg_lines:
+            label_surf = font_tiny.render(label, True, (200, 200, 200))
+            self.screen.blit(label_surf, (screen_x + 18, entry_y))
+            if cost_parts is None:
+                max_surf = font_tiny.render("MAX", True, (100, 255, 100))
+                self.screen.blit(max_surf, (screen_x + 18, entry_y + 13))
+            else:
+                cx = screen_x + 18
+                for text, met in cost_parts:
+                    col = (100, 255, 100) if met else (255, 100, 100)
+                    ts = font_tiny.render(text, True, col)
+                    self.screen.blit(ts, (cx, entry_y + 13))
+                    cx += ts.get_width() + 6
+            entry_y += 30
+
         # Auto toggle status
         auto_status_y = inv_y + 100
         auto_mine_key = pygame.key.name(player.controls.toggle_auto_mine_key).upper()
@@ -1052,3 +1528,55 @@ class Game:
             y_offset = ctrl_y + 24 + row * 15
             ctrl_surf = font_tiny.render(ctrl_text, True, (180, 180, 180))
             self.screen.blit(ctrl_surf, (screen_x + 18 + x_offset, y_offset))
+
+    def _draw_death_challenge(self, player, screen_x, screen_y, view_w, view_h):
+        """Draw the death/respawn math challenge overlay for a player's viewport."""
+        challenge = self.death_challenges.get(player.player_id)
+        if challenge is None:
+            return
+
+        # Semi-transparent dark overlay over the whole viewport
+        overlay = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.screen.blit(overlay, (screen_x, screen_y))
+
+        font_big = self.font_dc_big
+        font_med = self.font_dc_med
+        font_small = self.font_dc_sm
+
+        cx = screen_x + view_w // 2
+        cy = screen_y + view_h // 2
+
+        panel_w, panel_h = 360, 210
+        panel_x = cx - panel_w // 2
+        panel_y = cy - panel_h // 2
+
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf.fill((20, 10, 10, 235))
+        self.screen.blit(panel_surf, (panel_x, panel_y))
+        pygame.draw.rect(self.screen, (200, 50, 50), (panel_x, panel_y, panel_w, panel_h), 3)
+
+        # "YOU DIED" header
+        died_surf = font_big.render("YOU DIED", True, (255, 50, 50))
+        self.screen.blit(died_surf, (cx - died_surf.get_width() // 2, panel_y + 14))
+
+        # Instruction
+        desc_surf = font_small.render("Solve to respawn at full health:", True, (200, 200, 200))
+        self.screen.blit(desc_surf, (cx - desc_surf.get_width() // 2, panel_y + 62))
+
+        # Math question
+        q_surf = font_med.render(challenge["question"], True, (255, 255, 100))
+        self.screen.blit(q_surf, (cx - q_surf.get_width() // 2, panel_y + 88))
+
+        # Answer input field
+        input_display = challenge["input"] if challenge["input"] else "_"
+        input_color = (255, 80, 80) if challenge.get("wrong") else (100, 255, 100)
+        input_surf = font_med.render(input_display, True, input_color)
+        self.screen.blit(input_surf, (cx - input_surf.get_width() // 2, panel_y + 130))
+
+        # Hint / wrong-answer message
+        if challenge.get("wrong"):
+            hint_surf = font_small.render("Wrong answer — try again!", True, (255, 80, 80))
+        else:
+            hint_surf = font_small.render("Type your answer and press Enter", True, (140, 140, 140))
+        self.screen.blit(hint_surf, (cx - hint_surf.get_width() // 2, panel_y + 175))
