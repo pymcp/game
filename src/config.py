@@ -43,7 +43,7 @@ SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
 SETTLEMENT_TIER_NAMES = ["Cottage", "Hamlet", "Village", "Town", "Large Town", "City"]
 
 HOUSE_BUILD_COST = 20  # Dirt required to build a house
-PIER_BUILD_COST = 5   # Wood required to build a pier
-BOAT_BUILD_COST = 1   # Wood required to build a boat (+ 1 Sail)
+PIER_BUILD_COST = 5  # Wood required to build a pier
+BOAT_BUILD_COST = 1  # Wood required to build a boat (+ 1 Sail)
 SECTOR_WIPE_DURATION = 0.5  # Seconds for the edge-crossing scroll wipe
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island

@@ -177,6 +177,8 @@ class Player:
 
         # Sailing / boat state
         self.on_boat = False
+        self.boat_col = None  # last water tile column the boat occupied
+        self.boat_row = None  # last water tile row the boat occupied
 
         # Map tracking - "overland" or (cave_col, cave_row) or ("island", n)
         self.current_map = "overland"
@@ -382,6 +384,14 @@ class Player:
             if self.hurt_timer > 0 and int(self.hurt_timer * 4) % 2
             else self.color
         )
+
+        if self.on_boat:
+            self._draw_on_boat(surf, psx, psy, body_color)
+        else:
+            self._draw_normal(surf, psx, psy, body_color)
+
+    def _draw_normal(self, surf, psx, psy, body_color):
+        """Draw the standard standing player."""
         pygame.draw.rect(
             surf, body_color, (psx - 10, psy - 14, 20, 28), border_radius=4
         )
@@ -391,3 +401,93 @@ class Player:
         pygame.draw.line(
             surf, pick_color, (psx + 15, psy - 19), (psx + 21, psy - 13), 3
         )
+
+    def _draw_on_boat(self, surf, psx, psy, body_color):
+        """Draw the player seated in a boat (boat prominent in foreground)."""
+        import math
+
+        ticks = pygame.time.get_ticks()
+        bob = int(math.sin(ticks * 0.004) * 2)  # gentle ±2px vertical bob
+
+        # --- Player (seated, shifted up inside hull) ---
+        # Torso (shorter — sitting)
+        pygame.draw.rect(
+            surf, body_color, (psx - 8, psy - 22 + bob, 16, 18), border_radius=3
+        )
+        # Head
+        pygame.draw.circle(surf, (240, 200, 160), (psx, psy - 28 + bob), 8)
+
+        # --- Boat hull (drawn over player legs — foreground) ---
+        hull_color = (120, 80, 35)
+        hull_dark = (80, 52, 20)
+        # Main hull body
+        pygame.draw.polygon(
+            surf,
+            hull_color,
+            [
+                (psx - 26, psy - 6 + bob),
+                (psx + 26, psy - 6 + bob),
+                (psx + 20, psy + 14 + bob),
+                (psx - 20, psy + 14 + bob),
+            ],
+        )
+        # Hull rim highlight
+        pygame.draw.polygon(
+            surf,
+            (160, 115, 55),
+            [
+                (psx - 26, psy - 6 + bob),
+                (psx + 26, psy - 6 + bob),
+                (psx + 24, psy - 1 + bob),
+                (psx - 24, psy - 1 + bob),
+            ],
+        )
+        # Keel line
+        pygame.draw.line(
+            surf, hull_dark, (psx - 3, psy + 14 + bob), (psx + 3, psy + 14 + bob), 3
+        )
+        # Gunwale (top edge of hull sides)
+        pygame.draw.line(
+            surf, hull_dark, (psx - 26, psy - 6 + bob), (psx + 26, psy - 6 + bob), 2
+        )
+
+        # --- Mast & sail ---
+        mast_x = psx + 4
+        mast_top = psy - 46 + bob
+        mast_base = psy - 6 + bob
+        pygame.draw.line(surf, (88, 62, 28), (mast_x, mast_top), (mast_x, mast_base), 2)
+        # Billowing sail
+        sail_bulge = 14 + int(math.sin(ticks * 0.002) * 3)
+        pygame.draw.polygon(
+            surf,
+            (240, 232, 210),
+            [
+                (mast_x + 1, mast_top + 2),
+                (mast_x + 1, mast_base - 4),
+                (mast_x + sail_bulge + 14, mast_top + (mast_base - mast_top) // 2),
+            ],
+        )
+        # Sail outline
+        pygame.draw.polygon(
+            surf,
+            (180, 170, 150),
+            [
+                (mast_x + 1, mast_top + 2),
+                (mast_x + 1, mast_base - 4),
+                (mast_x + sail_bulge + 14, mast_top + (mast_base - mast_top) // 2),
+            ],
+            1,
+        )
+
+        # --- Wake lines below hull ---
+        wake_y = psy + 14 + bob
+        for i in range(1, 4):
+            frac = i * 0.3
+            w_color = (60 + i * 15, 110 + i * 18, 175 + i * 12)
+            pygame.draw.line(
+                surf,
+                w_color,
+                (psx - int(frac * 22), wake_y + i * 4),
+                (psx + int(frac * 22), wake_y + i * 4),
+                1,
+            )

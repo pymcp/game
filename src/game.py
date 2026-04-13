@@ -307,15 +307,9 @@ class Game:
             and key == self.player1.controls.toggle_auto_fire_key
         ):
             self.player1.toggle_auto_fire()
-        elif (
-            not self.player1.is_dead
-            and key == self.player1.controls.interact_key
-        ):
+        elif not self.player1.is_dead and key == self.player1.controls.interact_key:
             self._try_interact(self.player1)
-        elif (
-            not self.player1.is_dead
-            and key == self.player1.controls.build_pier_key
-        ):
+        elif not self.player1.is_dead and key == self.player1.controls.build_pier_key:
             self._try_build_pier(self.player1)
         # Player 2 controls (blocked while dead)
         elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
@@ -336,15 +330,9 @@ class Game:
             and key == self.player2.controls.toggle_auto_fire_key
         ):
             self.player2.toggle_auto_fire()
-        elif (
-            not self.player2.is_dead
-            and key == self.player2.controls.interact_key
-        ):
+        elif not self.player2.is_dead and key == self.player2.controls.interact_key:
             self._try_interact(self.player2)
-        elif (
-            not self.player2.is_dead
-            and key == self.player2.controls.build_pier_key
-        ):
+        elif not self.player2.is_dead and key == self.player2.controls.build_pier_key:
             self._try_build_pier(self.player2)
 
     def _try_build_house(self, player):
@@ -445,7 +433,8 @@ class Game:
         if player.on_boat:
             self.floats.append(
                 FloatingText(
-                    int(player.x), int(player.y) - 36,
+                    int(player.x),
+                    int(player.y) - 36,
                     "Sail to the edge of the map!",
                     (100, 200, 255),
                 )
@@ -461,7 +450,9 @@ class Game:
                 player.inventory["Sail"] = player.inventory.get("Sail", 0) + 1
                 tx = cc * TILE + TILE // 2
                 ty = rr * TILE + TILE // 2
-                self.floats.append(FloatingText(tx, ty - 20, "Got a Sail!", (255, 220, 80)))
+                self.floats.append(
+                    FloatingText(tx, ty - 20, "Got a Sail!", (255, 220, 80))
+                )
                 for _ in range(15):
                     self.particles.append(Particle(tx, ty, (255, 200, 60)))
                 return
@@ -477,7 +468,8 @@ class Game:
                     if not try_spend(player.inventory, cost):
                         self.floats.append(
                             FloatingText(
-                                tx, ty - 20,
+                                tx,
+                                ty - 20,
                                 f"Need {BOAT_BUILD_COST} Wood + 1 Sail!",
                                 (255, 100, 100),
                             )
@@ -487,7 +479,9 @@ class Game:
                     current_map_obj.set_tile_hp(rr, cc, 0)
                     btx = cc * TILE + TILE // 2
                     bty = rr * TILE + TILE // 2
-                    self.floats.append(FloatingText(btx, bty - 20, "Boat built!", (100, 200, 255)))
+                    self.floats.append(
+                        FloatingText(btx, bty - 20, "Boat built!", (100, 200, 255))
+                    )
                     for _ in range(12):
                         self.particles.append(Particle(btx, bty, (80, 160, 220)))
                     return
@@ -509,12 +503,16 @@ class Game:
         ty = p_row * TILE + TILE // 2
 
         if current_map_obj.get_tile(p_row, p_col) not in (GRASS, DIRT):
-            self.floats.append(FloatingText(tx, ty - 20, "Build on land!", (255, 100, 100)))
+            self.floats.append(
+                FloatingText(tx, ty - 20, "Build on land!", (255, 100, 100))
+            )
             return
 
         if not try_spend(player.inventory, {"Wood": PIER_BUILD_COST}):
             self.floats.append(
-                FloatingText(tx, ty - 20, f"Need {PIER_BUILD_COST} Wood!", (255, 100, 100))
+                FloatingText(
+                    tx, ty - 20, f"Need {PIER_BUILD_COST} Wood!", (255, 100, 100)
+                )
             )
             return
 
@@ -531,8 +529,10 @@ class Game:
             c1, r1 = p_col + dc, p_row + dr
             c2, r2 = p_col + dc * 2, p_row + dr * 2
             if (
-                0 <= c1 < cols and 0 <= r1 < rows
-                and 0 <= c2 < cols and 0 <= r2 < rows
+                0 <= c1 < cols
+                and 0 <= r1 < rows
+                and 0 <= c2 < cols
+                and 0 <= r2 < rows
                 and current_map_obj.get_tile(r1, c1) == WATER
                 and current_map_obj.get_tile(r2, c2) == WATER
             ):
@@ -540,12 +540,16 @@ class Game:
                 current_map_obj.set_tile_hp(r1, c1, 0)
                 current_map_obj.set_tile(r2, c2, PIER)
                 current_map_obj.set_tile_hp(r2, c2, 0)
-                self.floats.append(FloatingText(tx, ty - 20, "Pier built!", (200, 160, 60)))
+                self.floats.append(
+                    FloatingText(tx, ty - 20, "Pier built!", (200, 160, 60))
+                )
                 return
 
         # Refund
         player.inventory["Wood"] = player.inventory.get("Wood", 0) + PIER_BUILD_COST
-        self.floats.append(FloatingText(tx, ty - 20, "No water to build on!", (255, 100, 100)))
+        self.floats.append(
+            FloatingText(tx, ty - 20, "No water to build on!", (255, 100, 100))
+        )
 
     def _get_player_sector(self, player):
         """Return the (sx, sy) sector coordinates for a player's current map.
@@ -644,7 +648,9 @@ class Game:
         self._get_or_generate_sector(new_sx, new_sy)
 
         # Move the player to the new sector
-        new_key = ("sector", new_sx, new_sy) if (new_sx != 0 or new_sy != 0) else "overland"
+        new_key = (
+            ("sector", new_sx, new_sy) if (new_sx != 0 or new_sy != 0) else "overland"
+        )
         player.current_map = new_key
         player.x = new_x
         player.y = new_y
@@ -1111,6 +1117,33 @@ class Game:
             self.check_sector_transitions(self.player2)
         # ----------------------------------------------------------------
 
+        # -- Boat disembark detection (before movement) -------------------
+        for player in (self.player1, self.player2):
+            if player.is_dead or not player.on_boat:
+                continue
+            cur_map = self.get_player_current_map(player)
+            if cur_map is None:
+                continue
+            pc = int(player.x) // TILE
+            pr = int(player.y) // TILE
+            if cur_map.get_tile(pr, pc) == WATER:
+                # Track the last water tile while sailing
+                player.boat_col = pc
+                player.boat_row = pr
+            else:
+                player.on_boat = False
+                # Restore the boat tile at the last water position
+                if player.boat_col is not None and player.boat_row is not None:
+                    cur_map.set_tile(player.boat_row, player.boat_col, BOAT)
+                    cur_map.set_tile_hp(player.boat_row, player.boat_col, 0)
+                    player.boat_col = None
+                    player.boat_row = None
+                # Snap centre to the middle of the land tile so no part of the
+                # hitbox overlaps water when collision resumes next movement step
+                player.x = pc * TILE + TILE // 2
+                player.y = pr * TILE + TILE // 2
+        # ----------------------------------------------------------------
+
         # Player 1 movement & mining (skipped while dead)
         if not self.player1.is_dead:
             self.player1.update_movement(keys, dt, map1.world)
@@ -1156,10 +1189,17 @@ class Game:
             pr = int(player.y) // TILE
             if cur_map.get_tile(pr, pc) == BOAT:
                 player.on_boat = True
+                player.boat_col = pc
+                player.boat_row = pr
                 cur_map.set_tile(pr, pc, WATER)
                 cur_map.set_tile_hp(pr, pc, 0)
                 self.floats.append(
-                    FloatingText(int(player.x), int(player.y) - 20, "On the boat!", (100, 200, 255))
+                    FloatingText(
+                        int(player.x),
+                        int(player.y) - 20,
+                        "On the boat!",
+                        (100, 200, 255),
+                    )
                 )
         # ----------------------------------------------------------------
 
@@ -1687,25 +1727,43 @@ class Game:
                     pygame.draw.rect(self.screen, plank_c, (sx + 2, sy + 2, 28, 28))
                     # Plank lines
                     for lx in range(sx + 6, sx + 29, 7):
-                        pygame.draw.line(self.screen, edge_c, (lx, sy + 2), (lx, sy + 30), 1)
+                        pygame.draw.line(
+                            self.screen, edge_c, (lx, sy + 2), (lx, sy + 30), 1
+                        )
                     pygame.draw.rect(self.screen, edge_c, (sx + 2, sy + 2, 28, 28), 1)
                 elif tid == BOAT:
                     # Small moored boat
                     pygame.draw.polygon(
-                        self.screen, (120, 80, 40),
-                        [(sx + 4, sy + 18), (sx + 28, sy + 18),
-                         (sx + 24, sy + 28), (sx + 8, sy + 28)],
+                        self.screen,
+                        (120, 80, 40),
+                        [
+                            (sx + 4, sy + 18),
+                            (sx + 28, sy + 18),
+                            (sx + 24, sy + 28),
+                            (sx + 8, sy + 28),
+                        ],
                     )
                     # Mast
-                    pygame.draw.line(self.screen, (80, 55, 25), (sx + 16, sy + 4), (sx + 16, sy + 18), 2)
+                    pygame.draw.line(
+                        self.screen,
+                        (80, 55, 25),
+                        (sx + 16, sy + 4),
+                        (sx + 16, sy + 18),
+                        2,
+                    )
                     # Sail
                     pygame.draw.polygon(
-                        self.screen, (235, 225, 195),
+                        self.screen,
+                        (235, 225, 195),
                         [(sx + 17, sy + 5), (sx + 17, sy + 17), (sx + 27, sy + 11)],
                     )
                     # Cabin
-                    pygame.draw.rect(self.screen, (160, 110, 55), (sx + 10, sy + 12, 8, 7))
-                    pygame.draw.rect(self.screen, (180, 220, 255), (sx + 12, sy + 13, 3, 3))
+                    pygame.draw.rect(
+                        self.screen, (160, 110, 55), (sx + 10, sy + 12, 8, 7)
+                    )
+                    pygame.draw.rect(
+                        self.screen, (180, 220, 255), (sx + 12, sy + 13, 3, 3)
+                    )
                 elif tid == TREASURE_CHEST:
                     # Golden chest with lock
                     chest_body = (185, 130, 40)
@@ -1716,19 +1774,36 @@ class Game:
                     # Lid
                     pygame.draw.rect(self.screen, chest_body, (sx + 4, sy + 8, 24, 8))
                     pygame.draw.polygon(
-                        self.screen, chest_band,
-                        [(sx + 4, sy + 16), (sx + 28, sy + 16),
-                         (sx + 28, sy + 19), (sx + 4, sy + 19)],
+                        self.screen,
+                        chest_band,
+                        [
+                            (sx + 4, sy + 16),
+                            (sx + 28, sy + 16),
+                            (sx + 28, sy + 19),
+                            (sx + 4, sy + 19),
+                        ],
                     )
                     # Lock
                     pygame.draw.rect(self.screen, chest_dark, (sx + 13, sy + 17, 6, 5))
-                    pygame.draw.ellipse(self.screen, chest_dark, (sx + 13, sy + 14, 6, 6))
+                    pygame.draw.ellipse(
+                        self.screen, chest_dark, (sx + 13, sy + 14, 6, 6)
+                    )
                     # Shimmer sparkle
                     sp = int(math.sin(ticks * 0.006) * 2) + 2
-                    pygame.draw.line(self.screen, (255, 240, 130),
-                                     (sx + 8, sy + 4 + sp), (sx + 8 + 3, sy + 4 + sp - 3), 1)
-                    pygame.draw.line(self.screen, (255, 240, 130),
-                                     (sx + 8, sy + 4 + sp), (sx + 8 - 3, sy + 4 + sp + 3), 1)
+                    pygame.draw.line(
+                        self.screen,
+                        (255, 240, 130),
+                        (sx + 8, sy + 4 + sp),
+                        (sx + 8 + 3, sy + 4 + sp - 3),
+                        1,
+                    )
+                    pygame.draw.line(
+                        self.screen,
+                        (255, 240, 130),
+                        (sx + 8, sy + 4 + sp),
+                        (sx + 8 - 3, sy + 4 + sp + 3),
+                        1,
+                    )
                 elif tid in (CAVE_MOUNTAIN, CAVE_HILL):
                     # Draw cave entrance
                     # Darker base color already set by tileset color

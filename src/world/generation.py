@@ -49,11 +49,7 @@ def generate_world():
             for __ in range(size):
                 nx = cx + random.randint(-2, 2)
                 ny = cy + random.randint(-2, 2)
-                if (
-                    0 <= nx < WORLD_COLS
-                    and 0 <= ny < WORLD_ROWS
-                    and land_mask[ny][nx]
-                ):
+                if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS and land_mask[ny][nx]:
                     world[ny][nx] = tile_id
 
     scatter(DIRT, 60, 4, 12)
@@ -329,7 +325,8 @@ def spawn_enemies(world):
     from src.entities import Enemy
 
     overland_types = [
-        k for k, v in ENEMY_TYPES.items()
+        k
+        for k, v in ENEMY_TYPES.items()
         if EnemyEnvironment.OVERLAND in v.get("environments", [])
     ]
     enemies = []
@@ -374,8 +371,10 @@ def _place_pier_and_chest(world):
                 c1, r1 = c + dc, r + dr
                 c2, r2 = c + dc * 2, r + dr * 2
                 if (
-                    0 <= c1 < cols and 0 <= r1 < rows
-                    and 0 <= c2 < cols and 0 <= r2 < rows
+                    0 <= c1 < cols
+                    and 0 <= r1 < rows
+                    and 0 <= c2 < cols
+                    and 0 <= r2 < rows
                     and world[r1][c1] == WATER
                     and world[r2][c2] == WATER
                 ):

@@ -20,8 +20,16 @@ from src.world.environments.base import BaseEnvironment
 from src.world.map import GameMap
 
 # Enemy pools derived from ENEMY_TYPES definitions
-_MOUNTAIN_CAVE_ENEMIES = [k for k, v in ENEMY_TYPES.items() if EnemyEnvironment.CAVE_MOUNTAIN in v.get("environments", [])]
-_HILL_CAVE_ENEMIES = [k for k, v in ENEMY_TYPES.items() if EnemyEnvironment.CAVE_HILL in v.get("environments", [])]
+_MOUNTAIN_CAVE_ENEMIES = [
+    k
+    for k, v in ENEMY_TYPES.items()
+    if EnemyEnvironment.CAVE_MOUNTAIN in v.get("environments", [])
+]
+_HILL_CAVE_ENEMIES = [
+    k
+    for k, v in ENEMY_TYPES.items()
+    if EnemyEnvironment.CAVE_HILL in v.get("environments", [])
+]
 
 CAVE_ROWS = 50
 CAVE_COLS = 50
