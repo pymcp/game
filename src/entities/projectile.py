@@ -9,7 +9,7 @@ from src.effects.particle import Particle
 class Projectile:
     """A projectile fired in a direction. Configured by a WEAPONS entry."""
 
-    def __init__(self, x, y, dir_x, dir_y, weapon):
+    def __init__(self, x, y, dir_x, dir_y, weapon, player_id=1):
         self.x = float(x)
         self.y = float(y)
         self.dir_x = dir_x
@@ -26,6 +26,7 @@ class Projectile:
         self.alive = True
         self.hit_enemies = set()
         self.xp_earned = 0
+        self.player_id = player_id
 
     def update(self, dt):
         """Move projectile and check distance."""

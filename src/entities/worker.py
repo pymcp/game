@@ -11,10 +11,12 @@ from src.effects import Particle, FloatingText
 class Worker:
     """An AI-controlled character that wanders and mines for the player."""
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, player_id=1):
         self.x = float(x)
         self.y = float(y)
         self.speed = random.uniform(1.4, 2.2)
+        self.player_id = player_id
+        self.xp_earned = 0
 
         self.body_color = tuple(random.randint(60, 220) for _ in range(3))
         self.skin_color = random.choice(
@@ -147,6 +149,8 @@ class Worker:
                             tile_cx, tile_cy, f"+1 {info['drop']}", info["drop_color"]
                         )
                     )
+                    # Award XP to the player for resources mined
+                    self.xp_earned += 5
                 for _ in range(8):
                     particles.append(Particle(tile_cx, tile_cy, info["color"]))
                 new_tile = DIRT if world[tr][tc] == MOUNTAIN else GRASS

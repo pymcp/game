@@ -196,7 +196,7 @@ class Game:
                 FloatingText(tile_cx, tile_cy - 20, "Dog spawned!", (180, 130, 70))
             )
         else:
-            self.workers.append(Worker(tile_cx, tile_cy))
+            self.workers.append(Worker(tile_cx, tile_cy, player_id=player.player_id))
             self.floats.append(
                 FloatingText(tile_cx, tile_cy - 20, "Worker spawned!", (100, 220, 255))
             )
@@ -246,10 +246,10 @@ class Game:
         if self.player2.hurt_timer > 0:
             self.player2.hurt_timer -= dt
 
-        # Workers (distribute resources randomly to either player)
+        # Workers (each assigned to a specific player)
         for w in self.workers:
-            # Randomly choose which player gets the resources
-            target_player = random.choice([self.player1, self.player2])
+            # Get the player this worker is assigned to
+            target_player = self.player1 if w.player_id == 1 else self.player2
             w.update(
                 dt,
                 self.world,
@@ -258,6 +258,9 @@ class Game:
                 self.particles,
                 self.floats,
             )
+            # Award XP to the player this worker is assigned to
+            target_player.xp += w.xp_earned
+            w.xp_earned = 0
 
         # Pets
         for pet in self.pets:
@@ -346,6 +349,7 @@ class Game:
                     self.player1.facing_dx,
                     self.player1.facing_dy,
                     wpn,
+                    player_id=1,
                 )
             )
             self.player1.weapon_cooldown = wpn["cooldown"]
@@ -363,6 +367,7 @@ class Game:
                     self.player2.facing_dx,
                     self.player2.facing_dy,
                     wpn,
+                    player_id=2,
                 )
             )
             self.player2.weapon_cooldown = wpn["cooldown"]
@@ -373,11 +378,11 @@ class Game:
             proj.update(dt)
             if proj.alive:
                 proj.check_hits(self.enemies, self.particles, self.floats)
-            # Award XP to the player that fired it (track which one based on position)
-            # For now, split XP between both players
-            xp_each = proj.xp_earned // 2
-            self.player1.xp += xp_each
-            self.player2.xp += xp_each
+            # Award XP only to the player that fired this projectile
+            if proj.player_id == 1:
+                self.player1.xp += proj.xp_earned
+            elif proj.player_id == 2:
+                self.player2.xp += proj.xp_earned
             proj.xp_earned = 0
         self.projectiles = [proj for proj in self.projectiles if proj.alive]
 
