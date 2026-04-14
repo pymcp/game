@@ -156,7 +156,14 @@ class Game:
         SpriteRegistry.get_instance().load_all(_sprites_dir)
 
         # Load tile atlas sprite sheets
-        from src.rendering.tile_registry import TileSpriteRegistry
+        from src.rendering.tile_registry import (
+            TileSpriteRegistry,
+            TILE_ID_TO_NAME as _TID2N,
+            STANDALONE_TILE_IDS as _STANDALONE_IDS,
+            compute_adjacency as _compute_adj,
+            compute_scene_object_adjacency as _cso_adj,
+        )
+        from src.data.tiles import BLOCKING_TILES as _BLOCKING
 
         _tiles_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(__file__)), "assets", "tiles"
@@ -2882,15 +2889,7 @@ class Game:
         start_row = max(0, int(cam_y) // TILE)
         end_row = min(world_rows, int(cam_y + view_h) // TILE + 2)
 
-        from src.rendering.tile_registry import (
-            TileSpriteRegistry as _TileReg,
-            TILE_ID_TO_NAME as _TID2N,
-            STANDALONE_TILE_IDS as _STANDALONE_IDS,
-            compute_adjacency as _compute_adj,
-            compute_scene_object_adjacency as _cso_adj,
-        )
-
-        _tile_reg = _TileReg.get_instance()
+        _tile_reg = TileSpriteRegistry.get_instance()
         _tileset = current_map.tileset
 
         for r in range(start_row, end_row):
@@ -2972,7 +2971,8 @@ class Game:
                 tile_color = current_map.get_tileset_color(tid)
                 pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
         # Draw WorldObjects (mineables, interactables, transition tiles)
-        for obj in current_map.objects_in_viewport(cam_x, cam_y, view_w, view_h):
+        _viewport_objs = current_map.objects_in_viewport(cam_x, cam_y, view_w, view_h)
+        for obj in _viewport_objs:
             tile_name = _TID2N.get(obj.tile_id)
             if tile_name is None:
                 continue
@@ -2988,9 +2988,7 @@ class Game:
                     frame_surf, (dx, dy) = result
                     self.screen.blit(frame_surf, (osx + dx, osy + dy))
             else:
-                from src.data import TILE_INFO as _TI
-
-                info = _TI.get(obj.tile_id)
+                info = TILE_INFO.get(obj.tile_id)
                 if info and info.get("mineable") and info.get("hp", 0) > 0:
                     max_hp = info["hp"]
                     damage_pct = 1.0 - obj.hp / max_hp
@@ -3029,8 +3027,6 @@ class Game:
                 hitbox_surf = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
 
                 # --- Terrain blocking tiles: full tile rect (red) -----------
-                from src.data.tiles import BLOCKING_TILES as _BLOCKING
-
                 for r in range(start_row, end_row):
                     for c in range(start_col, end_col):
                         tid = current_map.get_tile(r, c)
@@ -3050,9 +3046,7 @@ class Game:
                             )
 
                 # --- WorldObjects: hitbox (orange) + interact radius (cyan) --
-                for obj in current_map.objects_in_viewport(
-                    cam_x, cam_y, view_w, view_h
-                ):
+                for obj in _viewport_objs:
                     ox = int(obj.x - cam_x)
                     oy = int(obj.y - cam_y)
                     if obj.interact_radius > 0:

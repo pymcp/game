@@ -422,7 +422,7 @@ class Player:
         new_py = self.y + dy * self.speed * dt
 
         # On a boat, water tiles are passable
-        boat_pass = (WATER,) if self.on_boat else ()
+        boat_pass = frozenset({WATER}) if self.on_boat else frozenset()
 
         # X axis - stop if blocked, no bouncing
         if not out_of_bounds(new_px, self.y, h, world):

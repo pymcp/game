@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 from typing import TYPE_CHECKING
 
 from src.config import TILE, WORLD_COLS, WORLD_ROWS
@@ -43,7 +44,7 @@ def hits_blocking(
     cx: float,
     cy: float,
     half: float,
-    extra_passable: tuple[int, ...] = (),
+    extra_passable: frozenset[int] = frozenset(),
 ) -> bool:
     """Check if a circle (center cx,cy, radius half) hits any blocking tile.
 
@@ -126,10 +127,12 @@ def compute_town_clusters(world: list[list[int]]) -> dict[tuple[int, int], int]:
         for start_c in range(cols):
             if world[start_r][start_c] == HOUSE and (start_r, start_c) not in visited:
                 cluster = []
-                queue = [(start_r, start_c)]
+                queue: collections.deque[tuple[int, int]] = collections.deque(
+                    [(start_r, start_c)]
+                )
                 visited.add((start_r, start_c))
                 while queue:
-                    r, c = queue.pop(0)
+                    r, c = queue.popleft()
                     cluster.append((r, c))
                     for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                         nr, nc = r + dr, c + dc

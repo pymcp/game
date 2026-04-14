@@ -566,21 +566,23 @@ TILE_INFO = {
     },
 }
 
-BLOCKING_TILES = (
-    WATER,
-    MOUNTAIN,
-    CAVE_WALL,
-    TREASURE_CHEST,
-    REEF,
-    PORTAL_WALL,
-    WOOD_WALL,
-    ICE_PEAK,
-    LAVA_POOL,
-    MAGMA_STONE,
-    RUINS_WALL,
-    SANDSTONE,
-    BROKEN_LADDER,
-    SKY_LADDER,
+BLOCKING_TILES: frozenset[int] = frozenset(
+    {
+        WATER,
+        MOUNTAIN,
+        CAVE_WALL,
+        TREASURE_CHEST,
+        REEF,
+        PORTAL_WALL,
+        WOOD_WALL,
+        ICE_PEAK,
+        LAVA_POOL,
+        MAGMA_STONE,
+        RUINS_WALL,
+        SANDSTONE,
+        BROKEN_LADDER,
+        SKY_LADDER,
+    }
 )
 
 # Tile IDs that belong to the objects layer (drawn on top of terrain).
