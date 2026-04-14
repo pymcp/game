@@ -1,7 +1,14 @@
 """Collision detection and world queries."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from src.config import TILE, WORLD_COLS, WORLD_ROWS
 from src.data import BLOCKING_TILES
+
+if TYPE_CHECKING:
+    from src.world.world_object import WorldObject
 
 
 def tile_at(world: list[list[int]], wx: float, wy: float) -> int:
@@ -75,6 +82,20 @@ def try_spend(inventory: dict[str, int], cost: dict[str, int]) -> bool:
         if inventory[k] <= 0:
             del inventory[k]
     return True
+
+
+def check_object_collision(
+    world_objects: "list[WorldObject]",
+    cx: float,
+    cy: float,
+    mover_radius: float,
+) -> bool:
+    """Return True if a circle at *(cx, cy)* with *mover_radius* overlaps any
+    WorldObject that has a non-zero hitbox_radius."""
+    for obj in world_objects:
+        if obj.blocks_movement(cx, cy, mover_radius):
+            return True
+    return False
 
 
 def has_adjacent_house(world: list[list[int]], col: int, row: int) -> bool:

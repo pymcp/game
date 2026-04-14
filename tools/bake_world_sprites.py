@@ -45,7 +45,7 @@ def _save(name: str, sheet: pygame.Surface, manifest: dict) -> None:
 
 
 def bake_sign() -> None:
-    fw, fh = 64, 64
+    fw, fh = 32, 32
     surf = pygame.Surface((fw, fh), pygame.SRCALPHA)
     surf.fill((0, 0, 0, 0))
 
@@ -89,7 +89,7 @@ def bake_sign() -> None:
 
 
 def bake_broken_ladder() -> None:
-    fw, fh = 64, 128
+    fw, fh = 32, 64
     surf = pygame.Surface((fw, fh), pygame.SRCALPHA)
     surf.fill((0, 0, 0, 0))
 
@@ -138,7 +138,7 @@ def bake_broken_ladder() -> None:
 
 
 # ===========================================================================
-# SKY_LADDER  (64×128, row0=idle 1-frame; row1=extending 8-frames)
+# SKY_LADDER  (32×64, row0=idle 1-frame; row1=extending 8-frames)
 # ===========================================================================
 
 
@@ -175,7 +175,7 @@ def _draw_ladder_frame(
 
 
 def bake_sky_ladder() -> None:
-    fw, fh = 64, 128
+    fw, fh = 32, 64
     n_extend = 8
     total_rows = 1 + n_extend
     sheet = pygame.Surface((fw, fh * total_rows), pygame.SRCALPHA)
@@ -265,7 +265,7 @@ def _draw_cloud(
 
 
 def bake_cloud() -> None:
-    fw, fh = 128, 64
+    fw, fh = 64, 32
     n_frames = 4
     sheet = pygame.Surface((fw * n_frames, fh), pygame.SRCALPHA)
     sheet.fill((0, 0, 0, 0))

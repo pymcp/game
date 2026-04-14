@@ -4,7 +4,7 @@ Run from the repository root::
 
     python tools/bake_sprites.py
 
-Generates unified 7-row × 4-column, 96×96-cell sprite sheets (384×672 px)
+Generates unified 7-row × 4-column, 64×64-cell sprite sheets (256×448 px)
 for every enemy type, creature kind, pet kind, and worker.
 
 Sheet row layout (all entity types share this format):
@@ -18,7 +18,7 @@ Sheet row layout (all entity types share this format):
 
 These sheets are PLACEHOLDER art baked from the existing procedural draw code.
 Replace any sheet PNG with hand-drawn or AI-generated art (keeping the same
-384×672 dimensions and matching JSON manifest) and the game will use it
+256×448 dimensions and matching JSON manifest) and the game will use it
 automatically at next startup.
 """
 
@@ -56,8 +56,8 @@ ASSETS_DIR = os.path.join(_REPO_ROOT, "assets", "sprites")
 # ---------------------------------------------------------------------------
 # Unified cell dimensions — all entity sprites share this canvas size.
 # ---------------------------------------------------------------------------
-FW: int = 96  # frame width  (pixels)
-FH: int = 96  # frame height (pixels)
+FW: int = 64  # frame width  (pixels)
+FH: int = 64  # frame height (pixels)
 CX: int = 48  # draw centre X within a cell
 CY: int = 48  # draw centre Y within a cell
 

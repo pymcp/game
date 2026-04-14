@@ -24,12 +24,13 @@ INIT_BUFFER = 2  # slots in every direction from home sector for initial CA gene
 REALM_PADDING = 5
 
 
-def carve_chamber(world: list[list[int]], slot_col: int, slot_row: int) -> None:
+def carve_chamber(game_map: GameMap, slot_col: int, slot_row: int) -> None:
     """Carve a 4×4 PORTAL_FLOOR chamber at the given slot top-left position."""
+    world = game_map.world
     for r in range(slot_row + 2, slot_row + SLOT_SIZE - 2):
         for c in range(slot_col + 2, slot_col + SLOT_SIZE - 2):
             world[r][c] = PORTAL_FLOOR
-    # Scatter 2–4 VOID_ORE in the new chamber's floor
+    # Scatter 2–4 VOID_ORE in the new chamber's objects layer
     floor_tiles = [
         (c, r)
         for r in range(slot_row + 2, slot_row + SLOT_SIZE - 2)
@@ -37,7 +38,7 @@ def carve_chamber(world: list[list[int]], slot_col: int, slot_row: int) -> None:
     ]
     count = random.randint(2, 4)
     for fc, fr in random.sample(floor_tiles, min(count, len(floor_tiles))):
-        world[fr][fc] = VOID_ORE
+        game_map.set_object(fr, fc, VOID_ORE)
 
 
 def _carve_lava_river(
@@ -141,10 +142,10 @@ class PortalRealmEnvironment(BaseEnvironment):
             if world[r][c] == PORTAL_FLOOR
         ]
         ore_count = min(15, len(floor_tiles))
-        for c, r in rng.sample(floor_tiles, ore_count):
-            world[r][c] = VOID_ORE
-
         game_map = GameMap(world, tileset=self.TILESET)
+        for c, r in rng.sample(floor_tiles, ore_count):
+            game_map.set_object(r, c, VOID_ORE)
+
         game_map.spawn_col = spawn_col
         game_map.spawn_row = spawn_row
         game_map.origin_sx = -INIT_BUFFER  # = -2

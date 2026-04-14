@@ -51,7 +51,7 @@ from __future__ import annotations
 import json
 import os
 from enum import IntEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
@@ -202,6 +202,48 @@ def compute_adjacency(game_map: GameMap, row: int, col: int, tile_id: int) -> in
     e: int = 1 if game_map.get_tile(row, col + 1) == tile_id else 0
     s: int = 1 if game_map.get_tile(row + 1, col) == tile_id else 0
     w: int = 1 if game_map.get_tile(row, col - 1) == tile_id else 0
+    return (n << 3) | (e << 2) | (s << 1) | w
+
+
+def compute_object_adjacency(
+    game_map: GameMap, row: int, col: int, tile_id: int
+) -> int:
+    """Return a 4-bit adjacency mask for an object *tile_id* at *(row, col)*.
+
+    Checks game_map.objects neighbours rather than the terrain layer.
+    """
+    n: int = 1 if game_map.get_object(row - 1, col) == tile_id else 0
+    e: int = 1 if game_map.get_object(row, col + 1) == tile_id else 0
+    s: int = 1 if game_map.get_object(row + 1, col) == tile_id else 0
+    w: int = 1 if game_map.get_object(row, col - 1) == tile_id else 0
+    return (n << 3) | (e << 2) | (s << 1) | w
+
+
+def compute_scene_object_adjacency(
+    scene: "Any",  # type: ignore[name-defined]
+    row: int,
+    col: int,
+    tile_id: int,
+) -> int:
+    """Return a 4-bit adjacency mask for a WorldObject *tile_id* at *(row, col)*.
+
+    Checks ``scene._obj_index`` (the WorldObjects spatial index) rather than
+    the legacy GameMap.objects layer.  Bit encoding: bit-3=N, bit-2=E,
+    bit-1=S, bit-0=W.
+    """
+    idx_map: dict = getattr(scene, "_obj_index", {})
+    world_objects: list = getattr(scene, "world_objects", [])
+
+    def _tile_at(r: int, c: int) -> int:
+        idx = idx_map.get((c, r))
+        if idx is None:
+            return -1
+        return world_objects[idx].tile_id
+
+    n: int = 1 if _tile_at(row - 1, col) == tile_id else 0
+    e: int = 1 if _tile_at(row, col + 1) == tile_id else 0
+    s: int = 1 if _tile_at(row + 1, col) == tile_id else 0
+    w: int = 1 if _tile_at(row, col - 1) == tile_id else 0
     return (n << 3) | (e << 2) | (s << 1) | w
 
 

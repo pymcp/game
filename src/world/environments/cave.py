@@ -18,7 +18,7 @@ from src.config import (
     MAP_BORDER,
     BiomeType,
 )
-from src.data import ENEMY_TYPES, EnemyEnvironment
+from src.data import ENEMY_TYPES, EnemyEnvironment, OBJECT_TILE_IDS
 from src.world.environments.base import BaseEnvironment
 from src.world.environments.utils import (
     cellular_automata,
@@ -195,6 +195,9 @@ class CaveEnvironment(BaseEnvironment):
             for r in range(rows)
         ]
 
+        # Separate objects layer for ores and other mineable deposits
+        cave_objects: list[list[int | None]] = [[None] * cols for _ in range(rows)]
+
         # Scatter minerals only on floor tiles; mountain caves get more rare ore
         floor_tiles = [
             (c, r)
@@ -203,7 +206,7 @@ class CaveEnvironment(BaseEnvironment):
             if cave_world[r][c] == GRASS
         ]
 
-        def scatter_ore(tile_id, count, cmin, cmax):
+        def scatter_ore(tile_id: int, count: int, cmin: int, cmax: int) -> None:
             for _ in range(count):
                 if not floor_tiles:
                     break
@@ -216,7 +219,7 @@ class CaveEnvironment(BaseEnvironment):
                         and 0 <= ny < rows
                         and cave_world[ny][nx] == GRASS
                     ):
-                        cave_world[ny][nx] = tile_id
+                        cave_objects[ny][nx] = tile_id
 
         if self.cave_type == CAVE_MOUNTAIN:
             scatter_ore(STONE, 20, 4, 8)
@@ -261,12 +264,10 @@ class CaveEnvironment(BaseEnvironment):
                     if cave_world[rr][rc] == CAVE_WALL:
                         cave_world[rr][rc] = GRASS
 
-        # All tiles the player can walk on (ores are walkable/mineable)
-        _PASSABLE = {GRASS, CAVE_EXIT, STONE, IRON_ORE, GOLD_ORE, DIAMOND_ORE}
+        # All tiles the player can walk on (ores are now in the objects layer)
+        _PASSABLE = {GRASS, CAVE_EXIT}
 
         # Connect all isolated floor regions to the spawn/exit area.
-        # Ores are included in the passable set so clusters scattered above
-        # don't create phantom disconnections in the BFS.
         connect_regions(
             cave_world,
             rows,
@@ -331,6 +332,13 @@ class CaveEnvironment(BaseEnvironment):
         cave_map.entrance_col = self.cave_col
         cave_map.entrance_row = self.cave_row
         cave_map.cave_style = "labyrinth" if is_labyrinth else "cavern"
+
+        # Populate objects layer so ores are on the correct layer
+        for r in range(rows):
+            for c in range(cols):
+                if cave_objects[r][c] is not None:
+                    cave_map.set_object(r, c, cave_objects[r][c])
+
         cave_map.enemies = self.spawn_enemies(cave_map, rng=rng)
 
         return cave_map

@@ -9,3 +9,5 @@
 * If you're updating anything relating to sprites, make sure the corresponding Gemini GEM instruction file is also updated and let me know that it has been updated.
 * Maintain .claude/skills for any domain specific instructions you think you should know
 * Don't use subagents to do modifications when in planning mode. Just plan
+* Always take another pass at the code you're about to write, to see if it could be refactored/done better
+* Always ask questions if you have conflicting information that I could help with

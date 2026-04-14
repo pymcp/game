@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import random
 import pytest
 
@@ -25,6 +26,7 @@ from src.world.generation import (
     _pick_ground_tile,
     _carve_path,
     _fixup_reachability,
+    _consolidate_mountain_ranges,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,18 +62,19 @@ class TestFindSpawnTile:
         cc = WORLD_COLS // 2
         world[cr][cc] = GRASS
         col, row = _find_spawn_tile(world)
-        assert world[row][col] in (GRASS, DIRT)
+        assert world[row][col] == GRASS
         assert (col, row) == (cc, cr)
 
-    def test_finds_dirt_when_center_is_water(self) -> None:
+    def test_skips_dirt_prefers_grass(self) -> None:
         world = _make_world()
-        # Place DIRT a few tiles away from center
+        # DIRT at cc+1 (closer), GRASS at cc+3 (farther) — GRASS must be chosen
         cr = WORLD_ROWS // 2
-        cc = WORLD_COLS // 2 + 3
-        world[cr][cc] = DIRT
+        cc = WORLD_COLS // 2
+        world[cr][cc + 1] = DIRT
+        world[cr][cc + 3] = GRASS
         col, row = _find_spawn_tile(world)
-        assert world[row][col] == DIRT
-        assert (col, row) == (cc, cr)
+        assert world[row][col] == GRASS
+        assert (col, row) == (cc + 3, cr)
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +231,127 @@ class TestFixupReachability:
 
 
 # ---------------------------------------------------------------------------
+# _consolidate_mountain_ranges
+# ---------------------------------------------------------------------------
+
+
+def _count_mountain_ranges(
+    world: list[list[int]], mountain_tile: int = MOUNTAIN
+) -> int:
+    """Count 8-connected MOUNTAIN components in *world*."""
+    rows = len(world)
+    cols = len(world[0]) if rows else 0
+    visited = [[False] * cols for _ in range(rows)]
+    count = 0
+    for sr in range(rows):
+        for sc in range(cols):
+            if world[sr][sc] != mountain_tile or visited[sr][sc]:
+                continue
+            count += 1
+            stack = [(sc, sr)]
+            visited[sr][sc] = True
+            while stack:
+                c, r = stack.pop()
+                for dc in (-1, 0, 1):
+                    for dr in (-1, 0, 1):
+                        if dc == 0 and dr == 0:
+                            continue
+                        nc, nr = c + dc, r + dr
+                        if (
+                            0 <= nc < cols
+                            and 0 <= nr < rows
+                            and not visited[nr][nc]
+                            and world[nr][nc] == mountain_tile
+                        ):
+                            visited[nr][nc] = True
+                            stack.append((nc, nr))
+    return count
+
+
+class TestConsolidateMountainRanges:
+    def test_already_within_budget(self) -> None:
+        """Two separate ranges, max_ranges=4 — nothing should change."""
+        world = _make_world(rows=20, cols=20, fill=GRASS)
+        # Range A at top-left
+        for c in range(2, 5):
+            world[2][c] = MOUNTAIN
+        # Range B at bottom-right
+        for c in range(15, 18):
+            world[17][c] = MOUNTAIN
+        assert _count_mountain_ranges(world) == 2
+        _consolidate_mountain_ranges(world, mountain_tile=MOUNTAIN, max_ranges=4)
+        assert _count_mountain_ranges(world) <= 4
+
+    def test_consolidates_nearby_excess_ranges(self) -> None:
+        """Six single-tile mountains on the same row, 4 tiles apart.
+
+        They are NOT 8-connected (consecutive Chebyshev distance = 4 > 1) so
+        each is its own range.  Each consecutive pair is exactly 4 cardinal
+        steps apart, so BFS with connect_radius=4 can bridge them.
+        After consolidation with max_ranges=2 all six should merge into ≤ 2.
+        """
+        world = _make_world(rows=30, cols=30, fill=GRASS)
+        # Six mountains in a row, 4 columns apart — separated but bridgeable
+        positions = [(5, 15), (9, 15), (13, 15), (17, 15), (21, 15), (25, 15)]
+        for c, r in positions:
+            world[r][c] = MOUNTAIN
+        assert _count_mountain_ranges(world) == 6, (
+            "pre-condition: mountains must not be 8-connected to each other"
+        )
+        _consolidate_mountain_ranges(
+            world, mountain_tile=MOUNTAIN, max_ranges=2, connect_radius=4
+        )
+        assert _count_mountain_ranges(world) <= 2
+
+    def test_leaves_distant_ranges_alone(self) -> None:
+        """Ranges farther than connect_radius apart must not be bridged."""
+        world = _make_world(rows=30, cols=30, fill=GRASS)
+        world[2][2] = MOUNTAIN   # range A — far corner
+        world[28][28] = MOUNTAIN  # range B — opposite corner
+        assert _count_mountain_ranges(world) == 2
+        _consolidate_mountain_ranges(
+            world, mountain_tile=MOUNTAIN, max_ranges=1, connect_radius=4
+        )
+        # Both ranges are ~37 steps apart — neither should be merged
+        assert _count_mountain_ranges(world) == 2
+
+    def test_never_bridges_over_water(self) -> None:
+        """Water tiles between ranges must never be turned into mountains."""
+        world = _make_world(rows=20, cols=20, fill=GRASS)
+        # Two ranges separated by a column of WATER
+        for r in range(20):
+            world[r][10] = WATER  # vertical water barrier
+        for r in range(3, 7):
+            world[r][3] = MOUNTAIN  # range A on the left
+        for r in range(3, 7):
+            world[r][16] = MOUNTAIN  # range B on the right
+        _consolidate_mountain_ranges(world, mountain_tile=MOUNTAIN, max_ranges=1)
+        # Water column must still be fully WATER
+        for r in range(20):
+            assert world[r][10] == WATER, f"row {r} col 10 was overwritten"
+
+    def test_generate_world_consolidation_smoke(self) -> None:
+        """generate_world() runs the consolidation pass without error.
+
+        The algorithm is a greedy single-pass: it processes excess ranges
+        largest-first and bridges each to the current keeper_set.  Because
+        organic scatter enriches keeper_set over time, a range processed early
+        may end up seemingly reachable in the final world from a keeper tile
+        that did not exist during its BFS pass — this is expected behaviour.
+        The unit tests above verify the core invariants in isolation.
+        """
+        for seed in range(5):
+            random.seed(seed)
+            world, _ = generate_world()
+            has_mountain = any(
+                world[r][c] == MOUNTAIN
+                for r in range(len(world))
+                for c in range(len(world[0]))
+            )
+            assert has_mountain, f"seed={seed}: generate_world produced no mountain tiles"
+
+
+# ---------------------------------------------------------------------------
 # Full integration: generate_world always produces reachable maps
 # ---------------------------------------------------------------------------
 
@@ -236,7 +360,7 @@ class TestGenerateWorldReachability:
     @pytest.mark.parametrize("seed", range(20))
     def test_reachability(self, seed: int) -> None:
         random.seed(seed)
-        world = generate_world()
+        world, _objects = generate_world()
         spawn_col, spawn_row = _find_spawn_tile(world)
         ok, _ = _validate_overland_reachability(world, spawn_col, spawn_row)
         assert (

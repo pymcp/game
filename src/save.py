@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from src.world.map import GameMap
 from src.world.scene import MapScene
-from src.config import BiomeType
+from src.config import BiomeType, GRASS as _GRASS_ID
+from src.data.tiles import OBJECT_TILE_IDS
 from src.entities.player import (
     Player,
     ControlScheme,
@@ -25,7 +26,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 SAVE_DIR = os.path.join(_PROJECT_ROOT, "saves")
 SAVE_PATH = os.path.join(SAVE_DIR, "save.json")
 _LEGACY_SAVE_PATH = os.path.join(_PROJECT_ROOT, "save.json")
-SAVE_VERSION = 10
+SAVE_VERSION = 11
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +141,8 @@ def _serialize_map(game_map: "GameMap | MapScene") -> dict:
         "tileset": raw.tileset,
         "biome": raw.biome.value,
         "tile_hp": raw.tile_hp,
+        "objects": raw.objects,
+        "object_hp": raw.object_hp,
         "town_clusters": tc,
         "enemies": enemies,
         "workers": [_serialize_worker(w) for w in scene_workers],
@@ -279,6 +282,27 @@ def _deserialize_map(data: dict) -> MapScene:
     game_map = GameMap(data["world"], tileset=data["tileset"])
     game_map.biome = BiomeType(data.get("biome", BiomeType.STANDARD.value))
     game_map.tile_hp = data["tile_hp"]
+    # Restore objects layer from save; v10 saves lack this key so we migrate
+    # inline by extracting OBJECT_TILE_IDS from the terrain grid.
+    if "objects" in data:
+        raw_objects = data["objects"]
+        raw_object_hp = data.get("object_hp", [])
+        for r in range(game_map.rows):
+            for c in range(game_map.cols):
+                if r < len(raw_objects) and c < len(raw_objects[r]):
+                    obj = raw_objects[r][c]
+                    if obj is not None:
+                        game_map.set_object(r, c, obj)
+                        if raw_object_hp and r < len(raw_object_hp) and c < len(raw_object_hp[r]):
+                            game_map.object_hp[r][c] = raw_object_hp[r][c]
+    else:
+        # v10 migration: extract object tiles from terrain into objects layer
+        for r in range(game_map.rows):
+            for c in range(game_map.cols):
+                tile_id = game_map.world[r][c]
+                if tile_id in OBJECT_TILE_IDS:
+                    game_map.set_object(r, c, tile_id)
+                    game_map.world[r][c] = _GRASS_ID
     game_map.town_clusters = {
         (int(k.split(":")[0]), int(k.split(":")[1])): v
         for k, v in data["town_clusters"].items()
@@ -513,9 +537,13 @@ def load_game() -> dict | None:
     try:
         with open(SAVE_PATH, "r") as f:
             data = json.load(f)
-        if data.get("version") != SAVE_VERSION:
-            return None
-        return data
+        if data.get("version") == SAVE_VERSION:
+            return data
+        # v10 → v11: objects layer added (migration happens per-map in _deserialize_map)
+        if data.get("version") == 10:
+            data["version"] = SAVE_VERSION
+            return data
+        return None
     except (json.JSONDecodeError, KeyError, OSError):
         return None
 

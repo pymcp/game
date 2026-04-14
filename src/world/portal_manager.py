@@ -27,6 +27,7 @@ from src.data import PortalQuestType
 from src.effects import FloatingText, Particle
 from src.world.map import GameMap
 from src.world.scene import MapScene
+from src.world.generation import finalize_scene
 
 if TYPE_CHECKING:
     from src.entities.player import Player
@@ -467,7 +468,7 @@ class PortalManager:
         slot_col = slot_pad + ix * slot_size
         slot_row = slot_pad + iy * slot_size
 
-        carve_chamber(realm_map.world, slot_col, slot_row)
+        carve_chamber(realm_map, slot_col, slot_row)
         connect_regions(
             realm_map.world,
             realm_map.rows,
@@ -544,7 +545,9 @@ class PortalManager:
 
         if "portal_realm" not in game.maps:
             env = PortalRealmEnvironment()
-            game.maps["portal_realm"] = MapScene(env.generate())
+            _realm_scene = MapScene(env.generate())
+            finalize_scene(_realm_scene, PORTAL_FLOOR)
+            game.maps["portal_realm"] = _realm_scene
             for mk, quest in self.portal_quests.items():
                 if quest.get("restored"):
                     self.add_realm_portal(mk)

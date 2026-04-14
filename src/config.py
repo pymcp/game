@@ -2,7 +2,7 @@
 
 # Display
 SCREEN_W, SCREEN_H = 1920, 1080
-TILE = 64
+TILE = 32
 FPS = 60
 
 # Split-screen for 2 players (each gets half the width)
@@ -10,8 +10,8 @@ VIEWPORT_W = SCREEN_W // 2
 VIEWPORT_H = SCREEN_H
 
 # World size in tiles
-WORLD_COLS = 60
-WORLD_ROWS = 45
+WORLD_COLS = 120
+WORLD_ROWS = 90
 
 # Minimum solid-wall border for enclosed maps (cave, underwater, portal realm).
 # Ensures the first walkable tile is always beyond the HUD panels:
@@ -118,3 +118,7 @@ SCUBA_BUILD_COST = 5  # Wood required to craft Scuba Gear at a house
 SECTOR_WIPE_DURATION = 30  # frames for the edge-crossing scroll wipe (~0.5 s at 60 fps)
 PORTAL_WARP_DURATION = 180  # frames for the portal vortex warp effect (~3 s at 60 fps)
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island
+
+# WorldObject hitbox constants (pixel radii)
+WORLD_OBJ_HITBOX_RADIUS: int = TILE // 2  # solid WorldObjects block movement at this radius
+INTERACT_RADIUS: int = int(TILE * 1.5)    # E-key interact range for WorldObjects and creatures

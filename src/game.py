@@ -82,6 +82,7 @@ from src.world import (
 )
 from src.world.map import GameMap
 from src.world.scene import MapScene
+from src.world.generation import finalize_scene
 from src.world.environments import (
     CaveEnvironment,
     UnderwaterEnvironment,
@@ -175,11 +176,16 @@ class Game:
 
         # Map system - store all maps by key
         # "overland" is the main map, caves are keyed by (col, row)
-        world_data = generate_world()
+        world_data, objects_data = generate_world()
         overland_gmap = GameMap(world_data, tileset="overland")
+        for r in range(overland_gmap.rows):
+            for c in range(overland_gmap.cols):
+                if objects_data[r][c] is not None:
+                    overland_gmap.set_object(r, c, objects_data[r][c])
         # Seed enemies before wrapping so MapScene transfers them immediately.
         overland_gmap.enemies = spawn_enemies(overland_gmap.world)
         overland_scene = MapScene(overland_gmap)
+        finalize_scene(overland_scene, GRASS)
         # Spawn land creatures on the home island into the overland scene.
         home_env = OverlandEnvironment(map_key="overland")
         overland_scene.creatures.extend(home_env.spawn_creatures(overland_gmap))
@@ -190,7 +196,7 @@ class Game:
 
         # Two Players - find grass tiles near center
         def find_grass_spawn(offset_x):
-            """Find a grass or dirt tile near center offset by offset_x."""
+            """Find a grass tile near center offset by offset_x."""
             start_col = (WORLD_COLS // 2) + (offset_x // TILE)
             start_row = WORLD_ROWS // 2
 
@@ -203,7 +209,7 @@ class Game:
                         col = start_col + dc
                         row = start_row + dr
                         if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
-                            if overland_map.get_tile(row, col) in (GRASS, DIRT):
+                            if overland_map.get_tile(row, col) == GRASS:
                                 return col * TILE + TILE // 2, row * TILE + TILE // 2
             # Fallback to center if no walkable tile found
             return (WORLD_COLS // 2) * TILE + TILE // 2, (
@@ -736,7 +742,9 @@ class Game:
                     env = CaveEnvironment(
                         p_col, p_row, cave_type=tile_id, biome=surface_biome
                     )
-                    self.maps[cave_key] = MapScene(env.generate())
+                    _cave_scene = MapScene(env.generate())
+                    finalize_scene(_cave_scene, GRASS)
+                    self.maps[cave_key] = _cave_scene
                 cave_map = self.maps[cave_key]
                 cave_map.origin_map = player.current_map
                 player.x = cave_map.spawn_col * TILE + TILE // 2
@@ -1082,6 +1090,7 @@ class Game:
             underwater_map = env.generate()
             underwater_map.origin_map = player.current_map
             dive_scene = MapScene(underwater_map)
+            finalize_scene(dive_scene, SAND)
             self.maps[dive_key] = dive_scene
             # Spawn sea creatures into this scene
             dive_scene.creatures.extend(env.spawn_creatures(underwater_map))
@@ -1141,7 +1150,9 @@ class Game:
             house_map.entrance_col = entry_col
             house_map.entrance_row = entry_row
             house_map.origin_map = player.current_map
-            self.maps[house_key] = MapScene(house_map)
+            _house_scene = MapScene(house_map)
+            finalize_scene(_house_scene, WOOD_FLOOR)
+            self.maps[house_key] = _house_scene
         else:
             house_map = self.maps[house_key]
             # Always refresh origin_map so re-entering from a different sector works
@@ -1216,7 +1227,9 @@ class Game:
             sub_map.entrance_col = sh_col
             sub_map.entrance_row = sh_row
             sub_map.origin_map = parent_key
-            self.maps[sub_key] = MapScene(sub_map)
+            _sub_scene = MapScene(sub_map)
+            finalize_scene(_sub_scene, WOOD_FLOOR)
+            self.maps[sub_key] = _sub_scene
         else:
             sub_map = self.maps[sub_key]
             sub_map.origin_map = parent_key
@@ -1977,7 +1990,9 @@ class Game:
                 env = CaveEnvironment(
                     tile_col, tile_row, cave_type=tile_id, biome=surface_biome
                 )
-                self.maps[cave_key] = MapScene(env.generate())
+                _cave_scene2 = MapScene(env.generate())
+                finalize_scene(_cave_scene2, GRASS)
+                self.maps[cave_key] = _cave_scene2
 
             cave_map = self.maps[cave_key]
             # Record the origin map so the exit knows where to return
@@ -2220,7 +2235,9 @@ class Game:
                 )
                 base_speed1 = self.player1.speed
                 self.player1.speed = base_speed1 * p1_speed_mult
-                self.player1.update_movement(keys, dt, map1.world)
+                self.player1.update_movement(
+                    keys, dt, map1.world, world_objects=list(map1.world_objects)
+                )
                 self.player1.speed = base_speed1
             self.player1.update_mining(
                 keys,
@@ -2233,6 +2250,8 @@ class Game:
                 self.particles,
                 self.floats,
                 self.player1.current_map,
+                game_map=map1.map,
+                scene=map1,
             )
         if not self.player1.is_dead:
             if self.player1.hurt_timer > 0:
@@ -2256,7 +2275,9 @@ class Game:
                 )
                 base_speed2 = self.player2.speed
                 self.player2.speed = base_speed2 * p2_speed_mult
-                self.player2.update_movement(keys, dt, map2.world)
+                self.player2.update_movement(
+                    keys, dt, map2.world, world_objects=list(map2.world_objects)
+                )
                 self.player2.speed = base_speed2
             self.player2.update_mining(
                 keys,
@@ -2269,6 +2290,8 @@ class Game:
                 self.particles,
                 self.floats,
                 self.player2.current_map,
+                game_map=map2.map,
+                scene=map2,
             )
         if not self.player2.is_dead:
             if self.player2.hurt_timer > 0:
@@ -2852,6 +2875,7 @@ class Game:
             TILE_ID_TO_NAME as _TID2N,
             STANDALONE_TILE_IDS as _STANDALONE_IDS,
             compute_adjacency as _compute_adj,
+            compute_scene_object_adjacency as _cso_adj,
         )
 
         _tile_reg = _TileReg.get_instance()
@@ -2935,6 +2959,39 @@ class Game:
                 # --- Fallback: flat colored rect ---
                 tile_color = current_map.get_tileset_color(tid)
                 pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
+        # Draw WorldObjects (mineables, interactables, transition tiles)
+        for obj in current_map.objects_in_viewport(cam_x, cam_y, view_w, view_h):
+            tile_name = _TID2N.get(obj.tile_id)
+            if tile_name is None:
+                continue
+            osx = int(obj.x) - TILE // 2 - int(cam_x) + screen_x
+            osy = int(obj.y) - TILE // 2 - int(cam_y) + screen_y
+            if obj.tile_id in _STANDALONE_IDS:
+                tile_color = current_map.get_tileset_color(obj.tile_id)
+                pygame.draw.rect(self.screen, tile_color, (osx, osy, TILE, TILE))
+                fps = _tile_reg.get_standalone_fps(tile_name)
+                fidx = int(ticks * fps / 1000.0) if fps > 0 else 0
+                result = _tile_reg.get_standalone(tile_name, fidx, _tileset)
+                if result is not None:
+                    frame_surf, (dx, dy) = result
+                    self.screen.blit(frame_surf, (osx + dx, osy + dy))
+            else:
+                from src.data import TILE_INFO as _TI
+
+                info = _TI.get(obj.tile_id)
+                if info and info.get("mineable") and info.get("hp", 0) > 0:
+                    max_hp = info["hp"]
+                    damage_pct = 1.0 - obj.hp / max_hp
+                    fidx = min(3, int(damage_pct * 4))
+                else:
+                    fidx = 0
+                adj = _cso_adj(current_map, obj.row, obj.col, obj.tile_id)
+                frame = _tile_reg.get_frame(tile_name, adj, fidx, _tileset)
+                if frame is not None:
+                    self.screen.blit(frame, (osx, osy))
+                else:
+                    tile_color = current_map.get_tileset_color(obj.tile_id)
+                    pygame.draw.rect(self.screen, tile_color, (osx, osy, TILE, TILE))
         # Draw all entities that belong to this scene
         scene = self.maps.get(player.current_map)
         if scene is not None:

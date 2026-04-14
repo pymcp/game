@@ -45,8 +45,8 @@ os.makedirs(OUT_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Unified cell size (matches bake_sprites.py)
 # ---------------------------------------------------------------------------
-FW: int = 96
-FH: int = 96
+FW: int = 64
+FH: int = 64
 CX: int = 48
 CY: int = 48
 

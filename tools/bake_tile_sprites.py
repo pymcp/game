@@ -97,7 +97,7 @@ from src.data.tiles import TILE_INFO  # noqa: E402
 # Constants
 # ---------------------------------------------------------------------------
 
-CELL = 64  # must match TILE
+CELL = 32  # must match TILE
 COLS = 4  # animation frames per variant
 ROWS_PER_TILE = 16  # one per adjacency mask
 

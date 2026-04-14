@@ -1,7 +1,7 @@
 {
   "frame_size": [
-    96,
-    96
+    64,
+    64
   ],
   "states": {
     "idle": {

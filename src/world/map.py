@@ -38,6 +38,15 @@ class GameMap:
         self.ladder_col: int = -1
         self.ladder_row: int = -1
 
+        # Objects layer — ores, trees and other resource deposits layered on
+        # top of the terrain grid.  None = empty cell.
+        self.objects: list[list[int | None]] = [
+            [None] * self.cols for _ in range(self.rows)
+        ]
+        self.object_hp: list[list[int]] = [
+            [0] * self.cols for _ in range(self.rows)
+        ]
+
     def get_tile(self, row: int, col: int) -> int | None:
         """Get tile ID at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:
@@ -60,6 +69,39 @@ class GameMap:
         """Set tile HP at position."""
         if 0 <= row < self.rows and 0 <= col < self.cols:
             self.tile_hp[row][col] = hp
+
+    # ------------------------------------------------------------------
+    # Objects layer helpers
+    # ------------------------------------------------------------------
+
+    def get_object(self, row: int, col: int) -> int | None:
+        """Return the object tile ID at *row*, *col*, or None if empty."""
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            return self.objects[row][col]
+        return None
+
+    def set_object(self, row: int, col: int, tid: int) -> None:
+        """Place object *tid* at *row*, *col* and initialise its HP."""
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            self.objects[row][col] = tid
+            self.object_hp[row][col] = TILE_INFO.get(tid, {}).get("hp", 0)
+
+    def clear_object(self, row: int, col: int) -> None:
+        """Remove the object at *row*, *col*."""
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            self.objects[row][col] = None
+            self.object_hp[row][col] = 0
+
+    def get_object_hp(self, row: int, col: int) -> int:
+        """Return current HP of the object at *row*, *col*."""
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            return self.object_hp[row][col]
+        return 0
+
+    def set_object_hp(self, row: int, col: int, hp: int) -> None:
+        """Set HP of the object at *row*, *col*."""
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            self.object_hp[row][col] = hp
 
     def get_tileset_color(self, tile_id: int) -> tuple[int, int, int]:
         """Get the color for a tile based on the current tileset.

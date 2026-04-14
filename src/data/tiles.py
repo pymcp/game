@@ -56,6 +56,8 @@ from src.config import (
     SIGN,
     BROKEN_LADDER,
     SKY_LADDER,
+    INTERACT_RADIUS,
+    WORLD_OBJ_HITBOX_RADIUS,
 )
 
 TILE_INFO = {
@@ -82,6 +84,8 @@ TILE_INFO = {
         "hp": 30,
         "drop": "Stone",
         "drop_color": (136, 140, 141),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     IRON_ORE: {
         "name": "Iron Ore",
@@ -90,6 +94,8 @@ TILE_INFO = {
         "hp": 45,
         "drop": "Iron",
         "drop_color": (180, 130, 100),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     GOLD_ORE: {
         "name": "Gold Ore",
@@ -98,6 +104,8 @@ TILE_INFO = {
         "hp": 60,
         "drop": "Gold",
         "drop_color": (230, 200, 50),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     DIAMOND_ORE: {
         "name": "Diamond",
@@ -106,6 +114,8 @@ TILE_INFO = {
         "hp": 80,
         "drop": "Diamond",
         "drop_color": (100, 220, 255),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     TREE: {
         "name": "Tree",
@@ -114,6 +124,8 @@ TILE_INFO = {
         "hp": 20,
         "drop": "Wood",
         "drop_color": (139, 105, 60),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     WATER: {
         "name": "Water",
@@ -130,6 +142,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     MOUNTAIN: {
         "name": "Mountain",
@@ -146,6 +160,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     CAVE_HILL: {
         "name": "Cave (Hill)",
@@ -154,6 +170,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     CAVE_EXIT: {
         "name": "Cave Exit",
@@ -162,6 +180,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     CAVE_WALL: {
         "name": "Cave Wall",
@@ -178,6 +198,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     BOAT: {
         "name": "Boat",
@@ -194,6 +216,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": INTERACT_RADIUS,
     },
     SAND: {
         "name": "Sand",
@@ -210,6 +234,8 @@ TILE_INFO = {
         "hp": 35,
         "drop": "Coral",
         "drop_color": (240, 80, 130),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     REEF: {
         "name": "Reef",
@@ -226,6 +252,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     PORTAL_RUINS: {
         "name": "Portal Ruins",
@@ -234,6 +262,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": INTERACT_RADIUS,
     },
     PORTAL_ACTIVE: {
         "name": "Active Portal",
@@ -242,6 +272,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     ANCIENT_STONE: {
         "name": "Ancient Stone",
@@ -250,6 +282,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": INTERACT_RADIUS,
     },
     PORTAL_WALL: {
         "name": "Portal Wall",
@@ -290,6 +324,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": INTERACT_RADIUS,
     },
     HOUSE_EXIT: {
         "name": "House Exit",
@@ -298,6 +334,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     DIRT_PATH: {
         "name": "Dirt Path",
@@ -322,6 +360,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     STONE_PATH: {
         "name": "Stone Path",
@@ -371,6 +411,8 @@ TILE_INFO = {
         "hp": 60,
         "drop": "Frost Crystal",
         "drop_color": (140, 230, 255),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     # --- Volcano biome ---
     ASH_GROUND: {
@@ -404,6 +446,8 @@ TILE_INFO = {
         "hp": 70,
         "drop": "Obsidian",
         "drop_color": (180, 60, 20),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     # --- Zombie / Ruins biome ---
     DEAD_GRASS: {
@@ -429,6 +473,8 @@ TILE_INFO = {
         "hp": 25,
         "drop": "Bones",
         "drop_color": (175, 165, 150),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     GRAVE: {
         "name": "Grave",
@@ -437,6 +483,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": 0,
     },
     # --- Desert biome ---
     DESERT_CRYSTAL_ORE: {
@@ -446,6 +494,8 @@ TILE_INFO = {
         "hp": 55,
         "drop": "Desert Crystal",
         "drop_color": (195, 145, 55),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     SANDSTONE: {
         "name": "Sandstone",
@@ -462,6 +512,8 @@ TILE_INFO = {
         "hp": 15,
         "drop": "Wood",
         "drop_color": (139, 105, 60),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     VOID_ORE: {
         "name": "Void Ore",
@@ -470,6 +522,8 @@ TILE_INFO = {
         "hp": 80,
         "drop": "Void Stone",
         "drop_color": (180, 120, 255),
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": 0,
     },
     PORTAL_LAVA: {
         "name": "Portal Lava",
@@ -487,6 +541,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": 0,
+        "interact_radius": INTERACT_RADIUS,
     },
     BROKEN_LADDER: {
         "name": "Broken Ladder",
@@ -495,6 +551,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": INTERACT_RADIUS,
     },
     SKY_LADDER: {
         "name": "Sky Ladder",
@@ -503,6 +561,8 @@ TILE_INFO = {
         "hp": 0,
         "drop": None,
         "drop_color": None,
+        "hitbox_radius": WORLD_OBJ_HITBOX_RADIUS,
+        "interact_radius": INTERACT_RADIUS,
     },
 }
 
@@ -522,3 +582,61 @@ BLOCKING_TILES = (
     BROKEN_LADDER,
     SKY_LADDER,
 )
+
+# Tile IDs that belong to the objects layer (drawn on top of terrain).
+# These are resource deposits, vegetation, and decorations — never structural
+# blockers.  Terrain beneath them is always a walkable floor tile.
+# Backward-compat alias: code that still uses OBJECT_TILE_IDS continues to work.
+OBJECT_TILE_IDS: frozenset[int] = frozenset({
+    TREE,
+    STONE,
+    IRON_ORE,
+    GOLD_ORE,
+    DIAMOND_ORE,
+    CORAL,
+    FROST_CRYSTAL_ORE,
+    MAGMA_ORE,
+    BONE_PILE,
+    GRAVE,
+    DESERT_CRYSTAL_ORE,
+    CACTUS_TILE,
+    VOID_ORE,
+})
+
+# Expanded set: all tile IDs that are represented as WorldObjects rather than
+# terrain tiles.  Includes every mineable, interactable, and transition tile.
+WORLD_OBJECT_TILE_IDS: frozenset[int] = frozenset({
+    # Mineables / resources (same as old OBJECT_TILE_IDS)
+    TREE,
+    STONE,
+    IRON_ORE,
+    GOLD_ORE,
+    DIAMOND_ORE,
+    CORAL,
+    FROST_CRYSTAL_ORE,
+    MAGMA_ORE,
+    BONE_PILE,
+    GRAVE,
+    DESERT_CRYSTAL_ORE,
+    CACTUS_TILE,
+    VOID_ORE,
+    # Solid interactables
+    TREASURE_CHEST,
+    BROKEN_LADDER,
+    SKY_LADDER,
+    ANCIENT_STONE,
+    PORTAL_RUINS,
+    WORKTABLE,
+    # Walkable interactables / signs
+    SIGN,
+    # Transition triggers (walkable, interaction opens map transition)
+    HOUSE,
+    CAVE_MOUNTAIN,
+    CAVE_HILL,
+    CAVE_EXIT,
+    HOUSE_EXIT,
+    SETTLEMENT_HOUSE,
+    DIVE_EXIT,
+    PIER,
+    PORTAL_ACTIVE,
+})

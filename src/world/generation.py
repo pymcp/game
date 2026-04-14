@@ -41,8 +41,8 @@ from src.config import (
     CACTUS_TILE,
     BiomeType,
 )
-from src.data import ENEMY_TYPES, EnemyEnvironment
-from src.data.tiles import BLOCKING_TILES
+from src.data import ENEMY_TYPES, EnemyEnvironment, OBJECT_TILE_IDS
+from src.data.tiles import BLOCKING_TILES, WORLD_OBJECT_TILE_IDS
 
 # Tiles the player can walk across on the overland map.
 _OVERLAND_WALKABLE: frozenset[int] = frozenset(
@@ -50,8 +50,73 @@ _OVERLAND_WALKABLE: frozenset[int] = frozenset(
 )
 
 
-def generate_world() -> list[list[int]]:
-    """Return a 2-D list of tile-type IDs using simple noise-like placement.
+def finalize_scene(
+    scene: "MapScene",  # type: ignore[name-defined]
+    default_floor: int,
+    *,
+    process_terrain: bool = False,
+) -> None:
+    """Promote WorldObject-tier tiles into ``scene.world_objects``.
+
+    Scans the scene's legacy ``GameMap.objects`` layer (always), and
+    optionally the terrain grid (``process_terrain=True``), for tile IDs in
+    ``WORLD_OBJECT_TILE_IDS``.  Each found tile is converted into a
+    ``WorldObject`` at that grid cell, the source cell is cleared, and the
+    WorldObject is appended to the scene.
+
+    *process_terrain=False* (default) — safe to call immediately after scene
+    creation; only migrates the legacy objects layer.  Terrain tiles are left
+    untouched so existing tile-based interaction code keeps working.
+
+    *process_terrain=True* — also extracts WorldObject-tier tiles from the
+    terrain grid, replacing them with *default_floor*.  Use only after
+    ``_try_interact`` and all interaction-hint code have been ported to the
+    WorldObject system.
+
+    Args:
+        scene:            The ``MapScene`` to process in-place.
+        default_floor:    Tile ID written into cleared terrain cells
+                          (e.g. GRASS for overland, SAND for underwater).
+        process_terrain:  When True, also scan the terrain grid.
+    """
+    from src.world.world_object import WorldObject
+
+    game_map = object.__getattribute__(scene, "map")
+    world = game_map.world
+    rows = game_map.rows
+    cols = game_map.cols
+
+    # --- terrain grid (opt-in) ---
+    if process_terrain:
+        for r in range(rows):
+            for c in range(cols):
+                tid = world[r][c]
+                if tid in WORLD_OBJECT_TILE_IDS:
+                    world[r][c] = default_floor
+                    game_map.tile_hp[r][c] = 0
+                    scene.add_world_object(WorldObject.from_tile(tid, c, r))
+
+    # --- legacy objects layer (always processed) ---
+    legacy_objects: list[list] | None = getattr(game_map, "objects", None)
+    if legacy_objects is not None:
+        legacy_hp: list[list] | None = getattr(game_map, "object_hp", None)
+        for r in range(rows):
+            for c in range(cols):
+                tid = legacy_objects[r][c]
+                if tid is not None and tid in WORLD_OBJECT_TILE_IDS:
+                    obj = WorldObject.from_tile(tid, c, r)
+                    if legacy_hp is not None:
+                        stored_hp = legacy_hp[r][c]
+                        if stored_hp > 0:
+                            obj.hp = stored_hp
+                    legacy_objects[r][c] = None
+                    if legacy_hp is not None:
+                        legacy_hp[r][c] = 0
+                    scene.add_world_object(obj)
+
+
+def generate_world() -> tuple[list[list[int]], list[list[int | None]]]:
+    """Return terrain tiles and objects layer using simple noise-like placement.
 
     Retries up to 5 times to guarantee the spawn point can reach the
     pier/boat and at least 2 caves.  If retries are exhausted, carves
@@ -59,24 +124,26 @@ def generate_world() -> list[list[int]]:
     """
     max_attempts = 5
     world: list[list[int]] = []
+    objects: list[list[int | None]] = []
     reachable: set[tuple[int, int]] = set()
     spawn_col = spawn_row = 0
     for _attempt in range(max_attempts):
-        world = _generate_world_inner()
+        world, objects = _generate_world_inner()
         spawn_col, spawn_row = _find_spawn_tile(world)
         ok, reachable = _validate_overland_reachability(world, spawn_col, spawn_row)
         if ok:
-            return world
+            return world, objects
 
     # Fallback: carve paths to unreachable targets on the last world
     _fixup_reachability(world, spawn_col, spawn_row, reachable)
-    return world
+    return world, objects
 
 
-def _generate_world_inner() -> list[list[int]]:
+def _generate_world_inner() -> tuple[list[list[int]], list[list[int | None]]]:
     """Core island generation logic (one attempt)."""
     # Start entirely as ocean; the island mask determines land vs water
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+    objects: list[list[int | None]] = [[None] * WORLD_COLS for _ in range(WORLD_ROWS)]
 
     land_mask = _generate_island_mask(WORLD_ROWS, WORLD_COLS)
 
@@ -86,7 +153,7 @@ def _generate_world_inner() -> list[list[int]]:
             if land_mask[r][c]:
                 world[r][c] = GRASS
 
-    def scatter(tile_id, count, cluster_min, cluster_max):
+    def scatter(tile_id: int, count: int, cluster_min: int, cluster_max: int) -> None:
         for _ in range(count):
             cx = random.randint(0, WORLD_COLS - 1)
             cy = random.randint(0, WORLD_ROWS - 1)
@@ -97,7 +164,10 @@ def _generate_world_inner() -> list[list[int]]:
                 nx = cx + random.randint(-2, 2)
                 ny = cy + random.randint(-2, 2)
                 if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS and land_mask[ny][nx]:
-                    world[ny][nx] = tile_id
+                    if tile_id in OBJECT_TILE_IDS:
+                        objects[ny][nx] = tile_id
+                    else:
+                        world[ny][nx] = tile_id
 
     scatter(DIRT, 60, 4, 12)
     scatter(STONE, 45, 3, 10)
@@ -112,13 +182,16 @@ def _generate_world_inner() -> list[list[int]]:
     # Generate rivers from mountains with lakes
     _generate_rivers_and_lakes(world)
 
+    # Consolidate into at most 4 connected mountain ranges
+    _consolidate_mountain_ranges(world, mountain_tile=MOUNTAIN, max_ranges=4)
+
     # Generate cave entrances
     _place_cave_entrances(world)
 
     # Place a starting pier + treasure chest for testing
     _place_pier_and_chest(world)
 
-    return world
+    return world, objects
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +257,9 @@ def get_sector_biome(world_seed: int, sx: int, sy: int) -> BiomeType:
     )[0]
 
 
-def generate_biome_island(rng: random.Random, biome: BiomeType) -> list[list[int]]:
+def generate_biome_island(
+    rng: random.Random, biome: BiomeType
+) -> tuple[list[list[int]], list[list[int | None]]]:
     """Generate a full island world using biome-specific tiles.
 
     Reuses the same island mask and helper functions as generate_world(), but
@@ -204,6 +279,7 @@ def generate_biome_island(rng: random.Random, biome: BiomeType) -> list[list[int
     random.setstate(rng.getstate())
 
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+    objects: list[list[int | None]] = [[None] * WORLD_COLS for _ in range(WORLD_ROWS)]
     land_mask = _generate_island_mask(WORLD_ROWS, WORLD_COLS)
 
     # Stamp biome floor on all land tiles
@@ -223,7 +299,10 @@ def generate_biome_island(rng: random.Random, biome: BiomeType) -> list[list[int
                 nx = cx + random.randint(-2, 2)
                 ny = cy + random.randint(-2, 2)
                 if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS and land_mask[ny][nx]:
-                    world[ny][nx] = tile_id
+                    if tile_id in OBJECT_TILE_IDS:
+                        objects[ny][nx] = tile_id
+                    else:
+                        world[ny][nx] = tile_id
 
     # Biome ore
     scatter(ore_tile, ore_count, ore_cmin, ore_cmax)
@@ -255,6 +334,11 @@ def generate_biome_island(rng: random.Random, biome: BiomeType) -> list[list[int
                     if world[adj_row][adj_col] in (floor_tile, GRASS, DIRT):
                         world[adj_row][adj_col] = mountain_tile
 
+    # Consolidate nearby ranges while terrain water is still WATER
+    # (must run before interior-water replacement so FROZEN_LAKE / LAVA_POOL
+    # tiles don't fool the water-barrier check)
+    _consolidate_mountain_ranges(world, mountain_tile=mountain_tile, max_ranges=4)
+
     # Interior water bodies — only for non-ocean water tiles, replace water interior
     if water_tile != WATER:
         for r in range(WORLD_ROWS):
@@ -278,22 +362,22 @@ def generate_biome_island(rng: random.Random, biome: BiomeType) -> list[list[int
     rng.setstate(random.getstate())
     random.setstate(_prev_state)
 
-    return world
+    return world, objects
 
 
 def generate_ocean_sector(
     sx: int, sy: int, world_seed: int
-) -> tuple[list[list[int]], bool, "BiomeType"]:
+) -> tuple[list[list[int]], list[list[int | None]], bool, "BiomeType"]:
     """Generate a deterministic 80×60 ocean sector at grid position (sx, sy).
 
     The result is fully reproducible: calling with the same arguments always
     returns the same world layout.  Sector (0,0) is the home island and should
     never be generated here — use the existing generate_world() for that.
 
-    Returns a tuple (world, has_island, biome) where world is a 2-D list of tile IDs
-    (WORLD_ROWS rows × WORLD_COLS cols), has_island is True when the sector
-    contains a full generated island (not just atolls), and biome is the BiomeType
-    of the island.
+    Returns a tuple (world, objects, has_island, biome) where world is a 2-D
+    list of tile IDs (WORLD_ROWS rows × WORLD_COLS cols), objects is the
+    separate objects layer, has_island is True when the sector contains a full
+    generated island (not just atolls), and biome is the BiomeType of the island.
     """
     # Deterministic seed derived from sector coordinates and the world seed
     sector_seed = hash((world_seed, sx, sy)) & 0xFFFF_FFFF
@@ -307,14 +391,15 @@ def generate_ocean_sector(
             # Generate a full island world using the same seeded rng
             _prev_state = random.getstate()
             random.setstate(rng.getstate())
-            world = generate_world()
+            world, objects = generate_world()
             random.setstate(_prev_state)
         else:
-            world = generate_biome_island(rng, biome)
-        return world, True, biome
+            world, objects = generate_biome_island(rng, biome)
+        return world, objects, True, biome
 
     # --- Ocean-only sector: water + rocks + atolls ---
     world = [[WATER for _ in range(WORLD_COLS)] for _ in range(WORLD_ROWS)]
+    objects: list[list[int | None]] = [[None] * WORLD_COLS for _ in range(WORLD_ROWS)]
 
     # Rock shoals: tight clusters of MOUNTAIN tiles (impassable, navigable around)
     num_shoals = rng.randint(2, 6)
@@ -340,7 +425,7 @@ def generate_ocean_sector(
             if 0 <= nx < WORLD_COLS and 0 <= ny < WORLD_ROWS:
                 world[ny][nx] = GRASS
 
-    return world, False, BiomeType.STANDARD
+    return world, objects, False, BiomeType.STANDARD
 
 
 def _generate_island_mask(rows: int, cols: int) -> list[list[bool]]:
@@ -382,6 +467,142 @@ def _generate_island_mask(rows: int, cols: int) -> list[list[bool]]:
             mask[r][c] = dist < island_radius + noise
 
     return mask
+
+
+def _consolidate_mountain_ranges(
+    world: list[list[int]],
+    mountain_tile: int = MOUNTAIN,
+    max_ranges: int = 4,
+    connect_radius: int = 4,
+) -> None:
+    """Organically connect nearby mountain regions to reduce fragmentation.
+
+    Labels every mountain-tile component (8-connected flood fill) and treats
+    the top *max_ranges* largest components as keeper anchors.  Each smaller
+    excess range is bridged to a keeper **only if** a non-WATER land path of
+    at most *connect_radius* cardinal steps exists between them.  Ranges that
+    are farther away or water-isolated are left completely unchanged.
+
+    When a bridge is stamped, each path cell randomly scatters 1-2 extra
+    mountain tiles within a 1-tile radius (~60 % chance each) so the ridge
+    blends naturally into the existing range instead of appearing as a thin
+    single-tile corridor.
+    """
+    rows = len(world)
+    cols = len(world[0]) if rows else 0
+
+    # --- 1. Label all mountain components using 8-connected flood fill ------
+    label: list[list[int]] = [[-1] * cols for _ in range(rows)]
+    component_cells: list[list[tuple[int, int]]] = []
+
+    for sr in range(rows):
+        for sc in range(cols):
+            if world[sr][sc] != mountain_tile or label[sr][sc] != -1:
+                continue
+            comp_id = len(component_cells)
+            cells: list[tuple[int, int]] = []
+            stack: list[tuple[int, int]] = [(sc, sr)]
+            label[sr][sc] = comp_id
+            while stack:
+                c, r = stack.pop()
+                cells.append((c, r))
+                for dc in (-1, 0, 1):
+                    for dr in (-1, 0, 1):
+                        if dc == 0 and dr == 0:
+                            continue
+                        nc, nr = c + dc, r + dr
+                        if (
+                            0 <= nc < cols
+                            and 0 <= nr < rows
+                            and label[nr][nc] == -1
+                            and world[nr][nc] == mountain_tile
+                        ):
+                            label[nr][nc] = comp_id
+                            stack.append((nc, nr))
+            component_cells.append(cells)
+
+    if len(component_cells) <= max_ranges:
+        return  # Already within budget — nothing to do
+
+    # --- 2. Keepers = top max_ranges by size --------------------------------
+    order = sorted(range(len(component_cells)), key=lambda i: -len(component_cells[i]))
+    keeper_ids: set[int] = set(order[:max_ranges])
+    merge_ids: list[int] = order[max_ranges:]
+
+    # Flat set of all keeper mountain cells (grows as bridges are added)
+    keeper_set: set[tuple[int, int]] = set()
+    for kid in keeper_ids:
+        keeper_set.update(component_cells[kid])
+
+    # --- 3. Depth-limited BFS bridge ----------------------------------------
+    #   For each excess range, multi-source BFS over non-WATER land up to
+    #   connect_radius steps.  If a keeper cell is reached, stamp the path
+    #   organically; otherwise leave the range untouched.
+    for mid in merge_ids:
+        src_cells = component_cells[mid]
+        if not src_cells:
+            continue
+
+        # Depth-limited multi-source BFS from the excess range
+        parent: dict[tuple[int, int], tuple[int, int] | None] = {
+            cell: None for cell in src_cells
+        }
+        depth: dict[tuple[int, int], int] = {cell: 0 for cell in src_cells}
+        bfs_q: collections.deque[tuple[int, int]] = collections.deque(src_cells)
+        reached_keeper: tuple[int, int] | None = None
+        came_from: tuple[int, int] | None = None
+
+        while bfs_q and reached_keeper is None:
+            c, r = bfs_q.popleft()
+            if depth[(c, r)] >= connect_radius:
+                continue
+            for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nc, nr = c + dc, r + dr
+                if (nc, nr) in keeper_set:
+                    reached_keeper = (nc, nr)
+                    came_from = (c, r)
+                    break
+                if (
+                    0 <= nc < cols
+                    and 0 <= nr < rows
+                    and (nc, nr) not in parent
+                    and world[nr][nc] != WATER
+                ):
+                    parent[(nc, nr)] = (c, r)
+                    depth[(nc, nr)] = depth[(c, r)] + 1
+                    bfs_q.append((nc, nr))
+
+        if reached_keeper is None:
+            # Outside connect_radius or water-isolated — leave alone
+            continue
+
+        # Collect bridge path (from search frontier back to source cell)
+        path: list[tuple[int, int]] = []
+        pos: tuple[int, int] | None = came_from
+        while pos is not None and parent.get(pos) is not None:
+            path.append(pos)
+            pos = parent[pos]
+
+        # Stamp bridge organically: centre path + random scatter for width
+        for pc, pr in path:
+            if world[pr][pc] != WATER:
+                world[pr][pc] = mountain_tile
+                keeper_set.add((pc, pr))
+            # Scatter 1-2 extra tiles within radius 1 at ~60 % probability
+            for _ in range(random.randint(1, 2)):
+                nc = pc + random.randint(-1, 1)
+                nr = pr + random.randint(-1, 1)
+                if (
+                    0 <= nc < cols
+                    and 0 <= nr < rows
+                    and world[nr][nc] != WATER
+                    and random.random() < 0.60
+                ):
+                    world[nr][nc] = mountain_tile
+                    keeper_set.add((nc, nr))
+
+        # Absorb excess range so future bridges can connect to it too
+        keeper_set.update(src_cells)
 
 
 def _generate_mountain_ranges(
@@ -731,7 +952,7 @@ def _place_cave_entrances(world: list[list[int]]) -> None:
 
 
 def _find_spawn_tile(world: list[list[int]]) -> tuple[int, int]:
-    """Return (col, row) of a GRASS/DIRT tile near map centre.
+    """Return (col, row) of a GRASS tile near map centre.
 
     Mirrors the expanding-square search in ``Game.__init__.find_grass_spawn``
     but covers the full map instead of capping at 10 tiles.
@@ -746,7 +967,7 @@ def _find_spawn_tile(world: list[list[int]]) -> tuple[int, int]:
                 c = start_col + dc
                 r = start_row + dr
                 if 0 <= c < WORLD_COLS and 0 <= r < WORLD_ROWS:
-                    if world[r][c] in (GRASS, DIRT):
+                    if world[r][c] == GRASS:
                         return c, r
     return start_col, start_row
 

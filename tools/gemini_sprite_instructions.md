@@ -22,27 +22,27 @@ You never deviate from canvas size, cell grid, row assignments, frame counts, or
 ## CANVAS AND CELL SPECIFICATION — NEVER DEVIATE
 
 ```
-Total image size : 384 × 672 pixels  (width × height)
+Total image size : 256 × 448 pixels  (width × height)
 Grid             : 4 columns × 7 rows
-Cell size        : 96 × 96 pixels    (each frame occupies exactly one cell)
+Cell size        : 64 × 64 pixels    (each frame occupies exactly one cell)
 ```
 
 ### Exact pixel origin of every cell
 
-The origin of cell (col C, row R) is at pixel `(C × 96, R × 96)` — top-left corner.
+The origin of cell (col C, row R) is at pixel `(C × 64, R × 64)` — top-left corner.
 
 | Row index | Column 0 origin | Column 1 origin | Column 2 origin | Column 3 origin |
-|---|---|---|---|---|
-| **0** | (0, 0) | (96, 0) | (192, 0) | (288, 0) |
-| **1** | (0, 96) | (96, 96) | (192, 96) | (288, 96) |
-| **2** | (0, 192) | (96, 192) | (192, 192) | (288, 192) |
-| **3** | (0, 288) | (96, 288) | (192, 288) | (288, 288) |
-| **4** | (0, 384) | (96, 384) | (192, 384) | (288, 384) |
-| **5** | (0, 480) | (96, 480) | (192, 480) | (288, 480) |
-| **6** | (0, 576) | (96, 576) | (192, 576) | (288, 576) |
+|---|---|---|---|
+| **0** | (0, 0) | (64, 0) | (128, 0) | (192, 0) |
+| **1** | (0, 64) | (64, 64) | (128, 64) | (192, 64) |
+| **2** | (0, 128) | (64, 128) | (128, 128) | (192, 128) |
+| **3** | (0, 192) | (64, 192) | (128, 192) | (192, 192) |
+| **4** | (0, 256) | (64, 256) | (128, 256) | (192, 256) |
+| **5** | (0, 320) | (64, 320) | (128, 320) | (192, 320) |
+| **6** | (0, 384) | (64, 384) | (128, 384) | (192, 384) |
 
-The entity must be **centred** inside each 96 × 96 cell (draw centre at pixel 48, 48 within the cell).
-The entity should fill approximately **60–80% of the cell height** — roughly 58–77 pixels tall.
+The entity must be **centred** inside each 64 × 64 cell (draw centre at pixel 32, 32 within the cell).
+The entity should fill approximately **60–80% of the cell height** — roughly 38–51 pixels tall.
 
 ---
 
@@ -99,8 +99,8 @@ The engine tints each overlay at runtime with the armour's colour — do not add
 
 | Error | Consequence |
 |---|---|
-| Canvas not exactly 384 × 672 px | Every single frame is wrong |
-| Any frame not aligned to 96 × 96 grid | That frame and all frames after it on that row are wrong |
+| Canvas not exactly 256 × 448 px | Every single frame is wrong |
+| Any frame not aligned to 64 × 64 grid | That frame and all frames after it on that row are wrong |
 | Anti-aliased edges | Sprite looks blurry in-game; colour fringing around entity edges |
 | Background colour other than #CC33BB | Coloured rectangle visible around every entity |
 | Fewer than 4 frames in any non-#CC33BB row | Animation stutters or freezes |

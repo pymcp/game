@@ -1,7 +1,11 @@
 """Player character class."""
 
+from __future__ import annotations
+
 import math
 import random
+from typing import TYPE_CHECKING, Any
+
 import pygame
 from src.config import (
     TILE,
@@ -24,6 +28,9 @@ from src.data.armor import (
 )
 from src.world import try_spend, xp_for_level, hits_blocking, out_of_bounds
 from src.effects import Particle, FloatingText
+
+if TYPE_CHECKING:
+    from src.world.map import GameMap
 
 
 class ControlScheme:
@@ -153,7 +160,7 @@ class Player:
         self.x = float(x)
         self.y = float(y)
         self.player_id = player_id
-        self.speed = 3.2
+        self.speed = 1.6
 
         # Control scheme
         if control_scheme is None:
@@ -377,10 +384,16 @@ class Player:
     # -- movement / collision ----------------------------------------------
 
     def update_movement(
-        self, keys: pygame.key.ScancodeWrapper, dt: float, world: list[list[int]]
+        self,
+        keys: pygame.key.ScancodeWrapper,
+        dt: float,
+        world: list[list[int]],
+        *,
+        world_objects: list | None = None,
     ) -> None:
         """Handle input and collision using the player's control scheme."""
         from src.config import GRASS, DIRT, MOUNTAIN, WATER
+        from src.world.collision import check_object_collision
 
         dx = dy = 0
         move_keys = self.controls.move_keys
@@ -414,12 +427,18 @@ class Player:
         # X axis - stop if blocked, no bouncing
         if not out_of_bounds(new_px, self.y, h, world):
             if not hits_blocking(world, new_px, self.y, h, boat_pass):
-                self.x = new_px
+                if world_objects is None or not check_object_collision(
+                    world_objects, new_px, self.y, h
+                ):
+                    self.x = new_px
 
         # Y axis - stop if blocked, no bouncing
         if not out_of_bounds(self.x, new_py, h, world):
             if not hits_blocking(world, self.x, new_py, h, boat_pass):
-                self.y = new_py
+                if world_objects is None or not check_object_collision(
+                    world_objects, self.x, new_py, h
+                ):
+                    self.y = new_py
 
         world_cols = len(world[0]) if len(world) > 0 else WORLD_COLS
         world_rows = len(world)
@@ -440,6 +459,8 @@ class Player:
         particles: list,
         floats: list,
         map_key: str | tuple | None = None,
+        game_map: GameMap | None = None,
+        scene: "Any | None" = None,  # type: ignore[name-defined]
     ) -> None:
         """Handle mining input and tile breaking."""
 
@@ -451,6 +472,25 @@ class Player:
         target_col, target_row = None, None
         world_cols = len(world[0]) if world else WORLD_COLS
         world_rows = len(world)
+
+        # Helper: find mineable WorldObject at grid cell (r, c)
+        def _world_obj_at(r: int, c: int):
+            if scene is not None:
+                obj = scene.get_object_at(c, r)
+                if obj is not None and TILE_INFO.get(obj.tile_id, {}).get("mineable"):
+                    return obj
+            return None
+
+        def _cell_mineable(r: int, c: int) -> bool:
+            """Return True if there is a mineable object or terrain tile at (r, c)."""
+            if _world_obj_at(r, c) is not None:
+                return True
+            if game_map:
+                obj = game_map.get_object(r, c)
+                if obj is not None and TILE_INFO.get(obj, {}).get("mineable"):
+                    return True
+            return bool(TILE_INFO[world[r][c]]["mineable"])
+
         if mouse_buttons[0]:
             mx, my = pygame.mouse.get_pos()
             target_col = int((mx + cam_x) // TILE)
@@ -469,7 +509,7 @@ class Player:
             if (
                 0 <= fc < world_cols
                 and 0 <= fr < world_rows
-                and TILE_INFO[world[fr][fc]]["mineable"]
+                and _cell_mineable(fr, fc)
             ):
                 target_col, target_row = fc, fr
             else:
@@ -478,7 +518,7 @@ class Player:
                     for dc in range(-1, 2):
                         c, r = center_col + dc, center_row + dr
                         if 0 <= c < world_cols and 0 <= r < world_rows:
-                            if TILE_INFO[world[r][c]]["mineable"]:
+                            if _cell_mineable(r, c):
                                 d = abs(dc) + abs(dr)
                                 if d < best_dist:
                                     best_dist = d
@@ -487,10 +527,109 @@ class Player:
                     target_col, target_row = best
 
         if mining_input and target_col is not None and target_row is not None:
+            tile_cx = target_col * TILE + TILE // 2
+            tile_cy = target_row * TILE + TILE // 2
+            dist = math.hypot(self.x - tile_cx, self.y - tile_cy)
+
+            # --- WorldObject mining (new system: ores, trees, etc.) ---
+            world_obj = _world_obj_at(target_row, target_col)
+            if world_obj is not None and dist < TILE * 2.5:
+                if self.mining_target != (target_col, target_row):
+                    self.mining_target = (target_col, target_row)
+                    self.mining_progress = 0
+                pick = PICKAXES[self.pick_level]
+                damage_this_frame = pick["power"] * dt * 0.15
+                self.mining_progress += damage_this_frame
+                world_obj.hp = max(0, world_obj.hp - damage_this_frame)
+                if random.random() < 0.4:
+                    pcol = TILE_INFO.get(world_obj.tile_id, {}).get(
+                        "color", (128, 128, 128)
+                    )
+                    particles.append(Particle(tile_cx, tile_cy, pcol, map_key))
+                if world_obj.hp <= 0:
+                    info = TILE_INFO.get(world_obj.tile_id, {})
+                    if info.get("drop"):
+                        self.inventory[info["drop"]] = (
+                            self.inventory.get(info["drop"], 0) + 1
+                        )
+                        floats.append(
+                            FloatingText(
+                                tile_cx,
+                                tile_cy,
+                                f"+1 {info['drop']}",
+                                info.get("drop_color", (255, 255, 255)),
+                                map_key,
+                            )
+                        )
+                    for _ in range(12):
+                        particles.append(
+                            Particle(
+                                tile_cx,
+                                tile_cy,
+                                info.get("color", (128, 128, 128)),
+                                map_key,
+                            )
+                        )
+                    if scene is not None:
+                        scene.remove_world_object(world_obj.obj_id)
+                    self.mining_target = None
+                    self.mining_progress = 0
+                return
+
+            # --- Legacy objects layer mining (fallback) ---
+            object_tid = (
+                game_map.get_object(target_row, target_col) if game_map else None
+            )
+            if (
+                object_tid is not None
+                and dist < TILE * 2.5
+                and TILE_INFO.get(object_tid, {}).get("mineable")
+            ):
+                if self.mining_target != (target_col, target_row):
+                    self.mining_target = (target_col, target_row)
+                    self.mining_progress = 0
+                pick = PICKAXES[self.pick_level]
+                damage_this_frame = pick["power"] * dt * 0.15
+                self.mining_progress += damage_this_frame
+                new_hp = max(
+                    0,
+                    game_map.get_object_hp(target_row, target_col) - damage_this_frame,
+                )
+                game_map.set_object_hp(target_row, target_col, new_hp)
+                if random.random() < 0.4:
+                    pcol = TILE_INFO.get(object_tid, {}).get("color", (128, 128, 128))
+                    particles.append(Particle(tile_cx, tile_cy, pcol, map_key))
+                if new_hp <= 0:
+                    info = TILE_INFO.get(object_tid, {})
+                    if info.get("drop"):
+                        self.inventory[info["drop"]] = (
+                            self.inventory.get(info["drop"], 0) + 1
+                        )
+                        floats.append(
+                            FloatingText(
+                                tile_cx,
+                                tile_cy,
+                                f"+1 {info['drop']}",
+                                info.get("drop_color", (255, 255, 255)),
+                                map_key,
+                            )
+                        )
+                    for _ in range(12):
+                        particles.append(
+                            Particle(
+                                tile_cx,
+                                tile_cy,
+                                info.get("color", (128, 128, 128)),
+                                map_key,
+                            )
+                        )
+                    game_map.clear_object(target_row, target_col)
+                    self.mining_target = None
+                    self.mining_progress = 0
+                return
+
+            # --- Terrain mining (mountains, dirt, etc.) ---
             if 0 <= target_col < world_cols and 0 <= target_row < world_rows:
-                tile_cx = target_col * TILE + TILE // 2
-                tile_cy = target_row * TILE + TILE // 2
-                dist = math.hypot(self.x - tile_cx, self.y - tile_cy)
                 if (
                     dist < TILE * 2.5
                     and TILE_INFO[world[target_row][target_col]]["mineable"]
@@ -530,7 +669,9 @@ class Player:
                                 Particle(tile_cx, tile_cy, info["color"], map_key)
                             )
                         new_tile = (
-                            DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
+                            DIRT
+                            if world[target_row][target_col] == MOUNTAIN
+                            else GRASS
                         )
                         world[target_row][target_col] = new_tile
                         tile_hp[target_row][target_col] = TILE_INFO[new_tile]["hp"]

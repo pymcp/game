@@ -12,6 +12,7 @@ import pygame
 from src.config import (
     TILE,
     WATER,
+    GRASS,
     SECTOR_WIPE_DURATION,
     BiomeType,
     PORTAL_LAVA,
@@ -19,6 +20,7 @@ from src.config import (
 from src.data import ARMOR_PIECES, ArmorMaterial, TILE_INFO
 from src.effects import FloatingText
 from src.world import generate_ocean_sector, spawn_enemies, get_sector_biome
+from src.world.generation import finalize_scene
 from src.world.map import GameMap
 from src.world.scene import MapScene
 
@@ -87,13 +89,18 @@ class SectorManager:
             return game.maps["overland"]
         key = ("sector", sx, sy)
         if key not in game.maps:
-            world_data, has_island, biome = generate_ocean_sector(
+            world_data, objects_data, has_island, biome = generate_ocean_sector(
                 sx, sy, self.world_seed
             )
             sector_map = GameMap(world_data, tileset="overland")
             sector_map.biome = biome
+            for r in range(sector_map.rows):
+                for c in range(sector_map.cols):
+                    if objects_data[r][c] is not None:
+                        sector_map.set_object(r, c, objects_data[r][c])
             sector_map.enemies = spawn_enemies(world_data, biome)
             sector_scene = MapScene(sector_map)
+            finalize_scene(sector_scene, GRASS)
             game.maps[key] = sector_scene
             if has_island:
                 self.land_sectors.add((sx, sy))
@@ -176,13 +183,18 @@ class SectorManager:
                 self.sky_revealed_sectors.add((sx, sy))
                 key = ("sector", sx, sy)
                 if key not in game.maps:
-                    world_data, has_island, biome = generate_ocean_sector(
+                    world_data, objects_data, has_island, biome = generate_ocean_sector(
                         sx, sy, self.world_seed
                     )
                     sector_map = GameMap(world_data, tileset="overland")
                     sector_map.biome = biome
+                    for r in range(sector_map.rows):
+                        for c in range(sector_map.cols):
+                            if objects_data[r][c] is not None:
+                                sector_map.set_object(r, c, objects_data[r][c])
                     sector_map.enemies = spawn_enemies(world_data, biome)
                     scene = MapScene(sector_map)
+                    finalize_scene(scene, GRASS)
                     game.maps[key] = scene
                     if has_island:
                         self.land_sectors.add((sx, sy))
