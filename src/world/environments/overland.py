@@ -29,8 +29,8 @@ class OverlandEnvironment(BaseEnvironment):
         return spawn_enemies(game_map.world)
 
     def spawn_creatures(self, game_map: GameMap) -> list:
-        """Spawn 2–4 horses on GRASS tiles at least 4 tiles from the map edge."""
-        from src.entities.overland_creature import OverlandCreature
+        """Spawn 2–4 horses and 1–2 grasshoppers on GRASS tiles."""
+        from src.entities.creature import Creature
 
         rows = game_map.rows
         cols = game_map.cols
@@ -48,33 +48,42 @@ class OverlandEnvironment(BaseEnvironment):
 
         creatures = []
 
-        def _place_horse(col: int, row: int) -> None:
+        def _place(col: int, row: int, kind: str) -> None:
             creatures.append(
-                OverlandCreature(
+                Creature(
                     col * TILE + TILE // 2,
                     row * TILE + TILE // 2,
-                    kind="horse",
-                    home_map=self.map_key,
+                    kind,
+                    self.map_key,
                 )
             )
 
-        # Guarantee exactly one horse by picking unconditionally from the full list
+        # --- Horses (1 guaranteed + up to 3 more) ---
         first_col, first_row = rng.choice(candidates)
-        _place_horse(first_col, first_row)
-        # Remove tiles too close to the first horse for the remaining placements
+        _place(first_col, first_row, "horse")
         remaining = [
             pos
             for pos in candidates
             if abs(pos[0] - first_col) + abs(pos[1] - first_row) > 6
         ]
-        # Try to add up to 3 more, each separated from all previous
         for _ in range(rng.randint(0, 3)):
             if not remaining:
                 break
             col, row = rng.choice(remaining)
-            _place_horse(col, row)
+            _place(col, row, "horse")
             remaining = [
                 pos for pos in remaining if abs(pos[0] - col) + abs(pos[1] - row) > 6
+            ]
+
+        # --- Grasshoppers (1–2) ---
+        grass_pool = [p for p in candidates if p not in [(c.x // TILE, c.y // TILE) for c in creatures]]
+        for _ in range(rng.randint(1, 20)):
+            if not grass_pool:
+                break
+            col, row = rng.choice(grass_pool)
+            _place(col, row, "grasshopper")
+            grass_pool = [
+                pos for pos in grass_pool if abs(pos[0] - col) + abs(pos[1] - row) > 4
             ]
 
         return creatures

@@ -17,8 +17,6 @@ from src.entities.worker import Worker
 from src.entities.pet import Pet
 from src.entities.enemy import Enemy
 from src.entities.creature import Creature
-from src.entities.sea_creature import SeaCreature
-from src.entities.overland_creature import OverlandCreature
 
 if TYPE_CHECKING:
     from src.game import Game
@@ -256,10 +254,8 @@ def _serialize_enemy(enemy: Enemy) -> dict:
 
 
 def _serialize_creature(c: Creature) -> dict:
-    """Serialize any Creature subclass.  rider_id is always omitted (transient)."""
-    creature_class = "sea" if isinstance(c, SeaCreature) else "overland"
+    """Serialize a Creature.  rider_id is always omitted (transient)."""
     return {
-        "creature_class": creature_class,
         "x": c.x,
         "y": c.y,
         "kind": c.kind,
@@ -424,36 +420,23 @@ def _deserialize_enemy(data: dict) -> Enemy:
     return e
 
 
-def _deserialize_sea_creature(data: dict) -> SeaCreature:
-    """Kept for backward-compat loading of old saves with a 'sea_creatures' key."""
-    sc = SeaCreature(
-        data["x"],
-        data["y"],
-        kind=data["kind"],
-        home_map=_str_to_key(data.get("home_map", "overland")),
-    )
-    sc.speed = data["speed"]
-    sc.size = data["size"]
-    sc.body_color = tuple(data["body_color"])
-    sc.facing_right = data.get("facing_right", True)
-    sc.mount_speed_mult = data.get("mount_speed_mult", 1.5)
-    sc.rider_id = None
-    return sc
+def _deserialize_sea_creature(data: dict) -> Creature:
+    """Backward-compat loader for old saves with a 'sea_creatures' key."""
+    return _deserialize_creature(data)
 
 
 def _deserialize_creature(data: dict) -> Creature:
-    """Deserialize a Creature from a unified dict (version 7+)."""
+    """Deserialize a Creature from a saved dict.
+
+    Handles new saves (no creature_class) and old saves that had
+    creature_class='overland'|'sea'.  All creatures are constructed as
+    Creature(x, y, kind, home_map); saved speed/size/color override the
+    catalogue defaults so older saves round-trip cleanly.
+    """
     kind = data["kind"]
     home_map = _str_to_key(data.get("home_map", "overland"))
-    creature_class = data.get("creature_class", "sea")
-
-    if creature_class == "overland":
-        c: Creature = OverlandCreature(
-            data["x"], data["y"], kind=kind, home_map=home_map
-        )
-    else:
-        c = SeaCreature(data["x"], data["y"], kind=kind, home_map=home_map)
-
+    # creature_class key is present in old saves but ignored — unified Creature now
+    c = Creature(data["x"], data["y"], kind, home_map)
     c.speed = data["speed"]
     c.size = data["size"]
     c.body_color = tuple(data["body_color"])  # type: ignore[assignment]

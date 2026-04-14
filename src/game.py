@@ -95,9 +95,7 @@ from src.entities import (
     Worker,
     Pet,
     Enemy,
-    SeaCreature,
     Creature,
-    OverlandCreature,
 )
 from src.entities.attack import Attack
 from src.entities.player import CONTROL_SCHEME_PLAYER1, CONTROL_SCHEME_PLAYER2
@@ -881,6 +879,8 @@ class Game:
         player_scene = self.maps.get(player.current_map)
         for c in player_scene.creatures if player_scene is not None else []:
             if c.rider_id is not None:
+                continue
+            if not c.mountable:
                 continue
             dist = math.hypot(c.x - player.x, c.y - player.y)
             if dist <= mount_range:

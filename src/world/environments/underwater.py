@@ -121,8 +121,8 @@ class UnderwaterEnvironment(BaseEnvironment):
     def spawn_creatures(
         self, game_map: GameMap, rng: random.Random | None = None
     ) -> list:
-        """Return a list of SeaCreature instances placed on SAND tiles."""
-        from src.entities.sea_creature import SeaCreature
+        """Return a list of Creature instances placed on SAND tiles."""
+        from src.entities.creature import Creature
 
         if rng is None:
             rng = random.Random(self.dive_col * 10_000 + self.dive_row + 1)
@@ -152,11 +152,11 @@ class UnderwaterEnvironment(BaseEnvironment):
             col, row = rng.choice(candidates)
             kind = rng.choices(kinds, weights=probs, k=1)[0]
             creatures.append(
-                SeaCreature(
+                Creature(
                     col * TILE + TILE // 2,
                     row * TILE + TILE // 2,
-                    kind=kind,
-                    home_map=map_key,
+                    kind,
+                    map_key,
                 )
             )
 

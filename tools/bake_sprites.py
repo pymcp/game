@@ -42,10 +42,9 @@ pygame.display.set_mode((1, 1))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.data import ENEMY_TYPES  # noqa: E402
+from src.entities.creature import Creature  # noqa: E402
 from src.entities.enemy import Enemy  # noqa: E402
-from src.entities.overland_creature import OverlandCreature  # noqa: E402
 from src.entities.pet import Pet  # noqa: E402
-from src.entities.sea_creature import SeaCreature  # noqa: E402
 from src.entities.worker import Worker  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -196,7 +195,7 @@ def _bake_enemy(type_key: str) -> None:
 
 def _bake_sea_creature(kind: str) -> None:
     """Bake a sea creature into creatures/<kind>.png (384×672)."""
-    sc = SeaCreature(0.0, 0.0, kind=kind)
+    sc = Creature(0.0, 0.0, kind, ("underwater", 0, 0))
     cam_x = sc.x - CX
     cam_y = sc.y - CY
 
@@ -229,7 +228,7 @@ def _bake_sea_creature(kind: str) -> None:
 
 def _bake_overland_creature(kind: str) -> None:
     """Bake a land creature into creatures/<kind>.png (384×672)."""
-    oc = OverlandCreature(0.0, 0.0, kind=kind)
+    oc = Creature(0.0, 0.0, kind, "overland")
     cam_x = oc.x - CX
     cam_y = oc.y - CY
 
@@ -341,7 +340,8 @@ def main() -> None:
         _bake_sea_creature(kind)
 
     print("\nOverland creatures:")
-    _bake_overland_creature("horse")
+    for kind in ("horse", "grasshopper"):
+        _bake_overland_creature(kind)
 
     print("\nPets:")
     for kind in ("dog", "cat"):
