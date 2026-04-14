@@ -11,7 +11,6 @@ from src.config import TILE
 from src.data.enemies import ENEMY_TYPES, _compute_hitbox_radius
 from src.entities.enemy import Enemy, _PLAYER_COLLISION_HALF
 
-
 # ---------------------------------------------------------------------------
 # _compute_hitbox_radius unit tests
 # ---------------------------------------------------------------------------
@@ -49,7 +48,13 @@ class TestComputeHitboxRadius:
 
     def test_polygon_body(self) -> None:
         # Large polygons counted as body shapes (e.g. boss body)
-        cmds = [("polygon", (0, 0, 0), [(-12, -10), (0, -14), (12, -10), (10, 10), (-10, 10)])]
+        cmds = [
+            (
+                "polygon",
+                (0, 0, 0),
+                [(-12, -10), (0, -14), (12, -10), (10, 10), (-10, 10)],
+            )
+        ]
         # max of abs values: 14
         assert _compute_hitbox_radius(cmds) == 14 * (TILE // 32)
 
@@ -69,14 +74,14 @@ class TestComputeHitboxRadius:
     def test_small_rect_skipped_by_area(self) -> None:
         # A larger-area shape wins over a smaller one with wider extent
         cmds = [
-            ("rect", (0, 0, 0), -2, -2, 4, 4),   # area 16, extent 2
+            ("rect", (0, 0, 0), -2, -2, 4, 4),  # area 16, extent 2
             ("ellipse", (0, 0, 0), -10, -5, 20, 10),  # area 200, extent 10
         ]
         assert _compute_hitbox_radius(cmds) == 10 * (TILE // 32)
 
     def test_multiple_commands_takes_max(self) -> None:
         cmds = [
-            ("circle", (0, 0, 0), 0, 0, 5),    # extent = 5
+            ("circle", (0, 0, 0), 0, 0, 5),  # extent = 5
             ("rect", (0, 0, 0), -15, -3, 30, 6),  # extent = 15
         ]
         assert _compute_hitbox_radius(cmds) == 15 * (TILE // 32)
@@ -97,7 +102,9 @@ class TestEnemyTypesHitbox:
     def test_all_types_have_hitbox_radius(self) -> None:
         for type_key, info in ENEMY_TYPES.items():
             assert "hitbox_radius" in info, f"{type_key} missing hitbox_radius"
-            assert isinstance(info["hitbox_radius"], int), f"{type_key} hitbox_radius not int"
+            assert isinstance(
+                info["hitbox_radius"], int
+            ), f"{type_key} hitbox_radius not int"
             assert info["hitbox_radius"] > 0, f"{type_key} hitbox_radius <= 0"
 
     def test_large_enemies_have_larger_hitbox(self) -> None:

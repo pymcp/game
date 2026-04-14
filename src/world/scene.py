@@ -127,9 +127,7 @@ class MapScene:
             return None
         return world_objects[idx]
 
-    def objects_near(
-        self, cx: float, cy: float, radius: float
-    ) -> list["WorldObject"]:
+    def objects_near(self, cx: float, cy: float, radius: float) -> list["WorldObject"]:
         """Return all WorldObjects whose centres are within *radius* pixels of
         *(cx, cy)*, sorted by distance (closest first)."""
         world_objects: list = object.__getattribute__(self, "world_objects")

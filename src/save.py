@@ -293,7 +293,11 @@ def _deserialize_map(data: dict) -> MapScene:
                     obj = raw_objects[r][c]
                     if obj is not None:
                         game_map.set_object(r, c, obj)
-                        if raw_object_hp and r < len(raw_object_hp) and c < len(raw_object_hp[r]):
+                        if (
+                            raw_object_hp
+                            and r < len(raw_object_hp)
+                            and c < len(raw_object_hp[r])
+                        ):
                             game_map.object_hp[r][c] = raw_object_hp[r][c]
     else:
         # v10 migration: extract object tiles from terrain into objects layer

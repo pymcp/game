@@ -94,9 +94,9 @@ class TestFindSpawnTile:
         col, row = _find_spawn_tile(world)
         cx = col * TILE + TILE // 2
         cy = row * TILE + TILE // 2
-        assert not hits_blocking(world, cx, cy, 20), (
-            f"spawn at ({col}, {row}) clips a blocking tile"
-        )
+        assert not hits_blocking(
+            world, cx, cy, 20
+        ), f"spawn at ({col}, {row}) clips a blocking tile"
 
 
 # ---------------------------------------------------------------------------
@@ -317,9 +317,9 @@ class TestConsolidateMountainRanges:
         positions = [(5, 15), (9, 15), (13, 15), (17, 15), (21, 15), (25, 15)]
         for c, r in positions:
             world[r][c] = MOUNTAIN
-        assert _count_mountain_ranges(world) == 6, (
-            "pre-condition: mountains must not be 8-connected to each other"
-        )
+        assert (
+            _count_mountain_ranges(world) == 6
+        ), "pre-condition: mountains must not be 8-connected to each other"
         _consolidate_mountain_ranges(
             world, mountain_tile=MOUNTAIN, max_ranges=2, connect_radius=4
         )
@@ -328,7 +328,7 @@ class TestConsolidateMountainRanges:
     def test_leaves_distant_ranges_alone(self) -> None:
         """Ranges farther than connect_radius apart must not be bridged."""
         world = _make_world(rows=30, cols=30, fill=GRASS)
-        world[2][2] = MOUNTAIN   # range A — far corner
+        world[2][2] = MOUNTAIN  # range A — far corner
         world[28][28] = MOUNTAIN  # range B — opposite corner
         assert _count_mountain_ranges(world) == 2
         _consolidate_mountain_ranges(
@@ -370,7 +370,9 @@ class TestConsolidateMountainRanges:
                 for r in range(len(world))
                 for c in range(len(world[0]))
             )
-            assert has_mountain, f"seed={seed}: generate_world produced no mountain tiles"
+            assert (
+                has_mountain
+            ), f"seed={seed}: generate_world produced no mountain tiles"
 
 
 # ---------------------------------------------------------------------------

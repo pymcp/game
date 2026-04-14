@@ -47,20 +47,21 @@ def _compute_hitbox_radius(draw_commands: list[tuple]) -> int:
         elif shape in ("rect", "ellipse"):
             x_off, y_off, w, h = args
             area = float(w * h)
-            extent = max(
-                abs(x_off), abs(x_off + w), abs(y_off), abs(y_off + h)
-            )
+            extent = max(abs(x_off), abs(x_off + w), abs(y_off), abs(y_off + h))
         elif shape == "polygon":
             points = args[0]
             # Shoelace formula for polygon area
             n = len(points)
-            area = abs(
-                sum(
-                    points[i][0] * points[(i + 1) % n][1]
-                    - points[(i + 1) % n][0] * points[i][1]
-                    for i in range(n)
+            area = (
+                abs(
+                    sum(
+                        points[i][0] * points[(i + 1) % n][1]
+                        - points[(i + 1) % n][0] * points[i][1]
+                        for i in range(n)
+                    )
                 )
-            ) / 2.0
+                / 2.0
+            )
             extent = max(max(abs(px), abs(py)) for px, py in points)
         else:
             continue  # skip lines (limbs/decorative)

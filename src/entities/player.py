@@ -506,11 +506,7 @@ class Player:
                 1 if self.facing_dy > 0.1 else (-1 if self.facing_dy < -0.1 else 0)
             )
             fc, fr = center_col + face_dc, center_row + face_dr
-            if (
-                0 <= fc < world_cols
-                and 0 <= fr < world_rows
-                and _cell_mineable(fr, fc)
-            ):
+            if 0 <= fc < world_cols and 0 <= fr < world_rows and _cell_mineable(fr, fc):
                 target_col, target_row = fc, fr
             else:
                 best, best_dist = None, 999
@@ -669,9 +665,7 @@ class Player:
                                 Particle(tile_cx, tile_cy, info["color"], map_key)
                             )
                         new_tile = (
-                            DIRT
-                            if world[target_row][target_col] == MOUNTAIN
-                            else GRASS
+                            DIRT if world[target_row][target_col] == MOUNTAIN else GRASS
                         )
                         world[target_row][target_col] = new_tile
                         tile_hp[target_row][target_col] = TILE_INFO[new_tile]["hp"]

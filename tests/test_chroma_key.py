@@ -11,12 +11,14 @@ import pytest
 
 from src.rendering.registry import _apply_chroma_key
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _solid_surface(color: tuple[int, int, int, int], w: int = 4, h: int = 4) -> pygame.Surface:
+
+def _solid_surface(
+    color: tuple[int, int, int, int], w: int = 4, h: int = 4
+) -> pygame.Surface:
     """Return a small SRCALPHA surface filled with *color*."""
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
     surf.fill(color)
@@ -131,6 +133,6 @@ class TestMixedSurface:
 
         result = _apply_chroma_key(surf)
 
-        assert result.get_at((0, 0))[3] == 0    # background gone
+        assert result.get_at((0, 0))[3] == 0  # background gone
         assert result.get_at((1, 0))[3] == 255  # sprite pixel kept
         assert result.get_at((1, 0))[:3] == (100, 150, 200)  # colour unchanged

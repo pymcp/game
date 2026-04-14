@@ -2758,13 +2758,9 @@ class Game:
         active_pid = self.death_challenge.get_active_player_id()
         if active_pid is not None:
             active_player = (
-                self.player1
-                if active_pid == self.player1.player_id
-                else self.player2
+                self.player1 if active_pid == self.player1.player_id else self.player2
             )
-            self.death_challenge.draw(
-                active_player, 0, 0, screen_width, screen_height
-            )
+            self.death_challenge.draw(active_player, 0, 0, screen_width, screen_height)
 
         # Exit confirmation overlay
         if self._confirm_quit:
@@ -3030,12 +3026,11 @@ class Game:
             for enemy in scene.enemies:
                 enemy.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
             if self._debug_hitboxes:
-                hitbox_surf = pygame.Surface(
-                    (view_w, view_h), pygame.SRCALPHA
-                )
+                hitbox_surf = pygame.Surface((view_w, view_h), pygame.SRCALPHA)
 
                 # --- Terrain blocking tiles: full tile rect (red) -----------
                 from src.data.tiles import BLOCKING_TILES as _BLOCKING
+
                 for r in range(start_row, end_row):
                     for c in range(start_col, end_col):
                         tid = current_map.get_tile(r, c)
@@ -3062,24 +3057,18 @@ class Game:
                     oy = int(obj.y - cam_y)
                     if obj.interact_radius > 0:
                         r = int(obj.interact_radius)
-                        pygame.draw.circle(
-                            hitbox_surf, (0, 220, 220, 40), (ox, oy), r
-                        )
+                        pygame.draw.circle(hitbox_surf, (0, 220, 220, 40), (ox, oy), r)
                         pygame.draw.circle(
                             hitbox_surf, (0, 220, 220, 160), (ox, oy), r, 2
                         )
                     if obj.hitbox_radius > 0:
                         r = int(obj.hitbox_radius)
-                        pygame.draw.circle(
-                            hitbox_surf, (255, 160, 0, 60), (ox, oy), r
-                        )
+                        pygame.draw.circle(hitbox_surf, (255, 160, 0, 60), (ox, oy), r)
                         pygame.draw.circle(
                             hitbox_surf, (255, 160, 0, 200), (ox, oy), r, 2
                         )
                     # Centre dot
-                    pygame.draw.circle(
-                        hitbox_surf, (255, 255, 255, 180), (ox, oy), 2
-                    )
+                    pygame.draw.circle(hitbox_surf, (255, 255, 255, 180), (ox, oy), 2)
 
                 # --- Enemies: hitbox (green) + attack range (red) -----------
                 for enemy in scene.enemies:
@@ -3126,15 +3115,9 @@ class Game:
                     px = int(p.x - cam_x)
                     py = int(p.y - cam_y)
                     r = p.COLLISION_HALF
-                    pygame.draw.circle(
-                        hitbox_surf, (80, 140, 255, 50), (px, py), r
-                    )
-                    pygame.draw.circle(
-                        hitbox_surf, (80, 140, 255, 200), (px, py), r, 2
-                    )
-                    pygame.draw.circle(
-                        hitbox_surf, (255, 255, 255, 200), (px, py), 3
-                    )
+                    pygame.draw.circle(hitbox_surf, (80, 140, 255, 50), (px, py), r)
+                    pygame.draw.circle(hitbox_surf, (80, 140, 255, 200), (px, py), r, 2)
+                    pygame.draw.circle(hitbox_surf, (255, 255, 255, 200), (px, py), 3)
 
                 self.screen.blit(hitbox_surf, (screen_x, screen_y))
             for proj in scene.projectiles:

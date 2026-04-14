@@ -587,56 +587,60 @@ BLOCKING_TILES = (
 # These are resource deposits, vegetation, and decorations — never structural
 # blockers.  Terrain beneath them is always a walkable floor tile.
 # Backward-compat alias: code that still uses OBJECT_TILE_IDS continues to work.
-OBJECT_TILE_IDS: frozenset[int] = frozenset({
-    TREE,
-    STONE,
-    IRON_ORE,
-    GOLD_ORE,
-    DIAMOND_ORE,
-    CORAL,
-    FROST_CRYSTAL_ORE,
-    MAGMA_ORE,
-    BONE_PILE,
-    GRAVE,
-    DESERT_CRYSTAL_ORE,
-    CACTUS_TILE,
-    VOID_ORE,
-})
+OBJECT_TILE_IDS: frozenset[int] = frozenset(
+    {
+        TREE,
+        STONE,
+        IRON_ORE,
+        GOLD_ORE,
+        DIAMOND_ORE,
+        CORAL,
+        FROST_CRYSTAL_ORE,
+        MAGMA_ORE,
+        BONE_PILE,
+        GRAVE,
+        DESERT_CRYSTAL_ORE,
+        CACTUS_TILE,
+        VOID_ORE,
+    }
+)
 
 # Expanded set: all tile IDs that are represented as WorldObjects rather than
 # terrain tiles.  Includes every mineable, interactable, and transition tile.
-WORLD_OBJECT_TILE_IDS: frozenset[int] = frozenset({
-    # Mineables / resources (same as old OBJECT_TILE_IDS)
-    TREE,
-    STONE,
-    IRON_ORE,
-    GOLD_ORE,
-    DIAMOND_ORE,
-    CORAL,
-    FROST_CRYSTAL_ORE,
-    MAGMA_ORE,
-    BONE_PILE,
-    GRAVE,
-    DESERT_CRYSTAL_ORE,
-    CACTUS_TILE,
-    VOID_ORE,
-    # Solid interactables
-    TREASURE_CHEST,
-    BROKEN_LADDER,
-    SKY_LADDER,
-    ANCIENT_STONE,
-    PORTAL_RUINS,
-    WORKTABLE,
-    # Walkable interactables / signs
-    SIGN,
-    # Transition triggers (walkable, interaction opens map transition)
-    HOUSE,
-    CAVE_MOUNTAIN,
-    CAVE_HILL,
-    CAVE_EXIT,
-    HOUSE_EXIT,
-    SETTLEMENT_HOUSE,
-    DIVE_EXIT,
-    PIER,
-    PORTAL_ACTIVE,
-})
+WORLD_OBJECT_TILE_IDS: frozenset[int] = frozenset(
+    {
+        # Mineables / resources (same as old OBJECT_TILE_IDS)
+        TREE,
+        STONE,
+        IRON_ORE,
+        GOLD_ORE,
+        DIAMOND_ORE,
+        CORAL,
+        FROST_CRYSTAL_ORE,
+        MAGMA_ORE,
+        BONE_PILE,
+        GRAVE,
+        DESERT_CRYSTAL_ORE,
+        CACTUS_TILE,
+        VOID_ORE,
+        # Solid interactables
+        TREASURE_CHEST,
+        BROKEN_LADDER,
+        SKY_LADDER,
+        ANCIENT_STONE,
+        PORTAL_RUINS,
+        WORKTABLE,
+        # Walkable interactables / signs
+        SIGN,
+        # Transition triggers (walkable, interaction opens map transition)
+        HOUSE,
+        CAVE_MOUNTAIN,
+        CAVE_HILL,
+        CAVE_EXIT,
+        HOUSE_EXIT,
+        SETTLEMENT_HOUSE,
+        DIVE_EXIT,
+        PIER,
+        PORTAL_ACTIVE,
+    }
+)

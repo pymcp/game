@@ -39,12 +39,14 @@ CREATURE_TYPES: dict[str, dict] = {
         "environment": CreatureEnvironment.OVERLAND,
         "speed": 0.3,
         "size": 0.9,
-        "color_fn": _choice([
-            (139, 90, 43),   # chestnut
-            (101, 67, 33),   # dark bay
-            (180, 130, 70),  # palomino
-            (60, 40, 25),    # near-black
-        ]),
+        "color_fn": _choice(
+            [
+                (139, 90, 43),  # chestnut
+                (101, 67, 33),  # dark bay
+                (180, 130, 70),  # palomino
+                (60, 40, 25),  # near-black
+            ]
+        ),
         "mount_speed_mult": 1.5,
         "mountable": True,
     },
@@ -52,11 +54,13 @@ CREATURE_TYPES: dict[str, dict] = {
         "environment": CreatureEnvironment.OVERLAND,
         "speed": 0.4,
         "size": 0.6,
-        "color_fn": _choice([
-            (80, 140, 60),   # grass green
-            (110, 160, 50),  # bright lime
-            (60, 100, 40),   # dark green
-        ]),
+        "color_fn": _choice(
+            [
+                (80, 140, 60),  # grass green
+                (110, 160, 50),  # bright lime
+                (60, 100, 40),  # dark green
+            ]
+        ),
         "mount_speed_mult": 1.8,
         "mountable": True,
     },
@@ -75,12 +79,14 @@ CREATURE_TYPES: dict[str, dict] = {
         "environment": CreatureEnvironment.UNDERWATER,
         "speed": 1.0,
         "size": 0.35,
-        "color_fn": _choice([
-            (240, 150, 30),
-            (80, 200, 80),
-            (180, 60, 200),
-            (60, 200, 200),
-        ]),
+        "color_fn": _choice(
+            [
+                (240, 150, 30),
+                (80, 200, 80),
+                (180, 60, 200),
+                (60, 200, 200),
+            ]
+        ),
         "mount_speed_mult": 1.5,
         "mountable": False,
     },
@@ -88,11 +94,13 @@ CREATURE_TYPES: dict[str, dict] = {
         "environment": CreatureEnvironment.UNDERWATER,
         "speed": 0.4,
         "size": 0.40,
-        "color_fn": _choice([
-            (220, 80, 200),
-            (180, 80, 255),
-            (80, 200, 240),
-        ]),
+        "color_fn": _choice(
+            [
+                (220, 80, 200),
+                (180, 80, 255),
+                (80, 200, 240),
+            ]
+        ),
         "mount_speed_mult": 1.5,
         "mountable": False,
     },

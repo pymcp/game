@@ -92,7 +92,14 @@ class TestCreatureCatalogue:
     def test_all_types_have_required_keys(self) -> None:
         from src.data.creatures import CREATURE_TYPES
 
-        required = {"environment", "speed", "size", "color_fn", "mount_speed_mult", "mountable"}
+        required = {
+            "environment",
+            "speed",
+            "size",
+            "color_fn",
+            "mount_speed_mult",
+            "mountable",
+        }
         for kind, spec in CREATURE_TYPES.items():
             missing = required - set(spec.keys())
             assert not missing, f"{kind} missing keys: {missing}"
@@ -412,6 +419,7 @@ class TestWanderFSM:
     def test_blocked_creature_returns_to_idle(self) -> None:
         """Creature blocked by a wall transitions back to IDLE."""
         from src.data.tiles import CAVE_WALL
+
         world = _make_world()
         # Fill a column of walls directly to the right of the creature
         cx, cy = TILE * 5, TILE * 5

@@ -270,7 +270,9 @@ class Creature:
 
         body_w = r * 2
         body_h = r
-        pygame.draw.ellipse(screen, c, (sx - body_w // 2, sy - body_h // 2, body_w, body_h))
+        pygame.draw.ellipse(
+            screen, c, (sx - body_w // 2, sy - body_h // 2, body_w, body_h)
+        )
 
         leg_w = max(3, r // 6)
         leg_h = r // 2 + 4
@@ -279,18 +281,32 @@ class Creature:
         for i, lx_off in enumerate([-r // 3, -r // 8, r // 8, r // 3]):
             swing = leg_swing if i % 2 == 0 else -leg_swing
             lx = sx + flip * lx_off
-            pygame.draw.rect(screen, dark, (lx - leg_w // 2, leg_y_top + swing, leg_w, leg_h))
+            pygame.draw.rect(
+                screen, dark, (lx - leg_w // 2, leg_y_top + swing, leg_w, leg_h)
+            )
 
         neck_base_x = sx + flip * (r // 2)
         neck_base_y = sy - body_h // 4
         neck_tip_x = neck_base_x + flip * (r // 3)
         neck_tip_y = neck_base_y - r // 2
-        pygame.draw.line(screen, c, (neck_base_x, neck_base_y), (neck_tip_x, neck_tip_y), max(5, r // 5))
+        pygame.draw.line(
+            screen,
+            c,
+            (neck_base_x, neck_base_y),
+            (neck_tip_x, neck_tip_y),
+            max(5, r // 5),
+        )
 
         head_r = max(5, r // 4)
         pygame.draw.ellipse(
-            screen, c,
-            (neck_tip_x - head_r + flip * head_r // 2, neck_tip_y - head_r, head_r * 2, int(head_r * 1.4)),
+            screen,
+            c,
+            (
+                neck_tip_x - head_r + flip * head_r // 2,
+                neck_tip_y - head_r,
+                head_r * 2,
+                int(head_r * 1.4),
+            ),
         )
         eye_x = neck_tip_x + flip * head_r // 2
         eye_y = neck_tip_y - head_r // 3
@@ -306,7 +322,9 @@ class Creature:
         tail_base_y = sy - body_h // 4
         tail_tip_x = tail_base_x - flip * (r // 3)
         tail_tip_y = tail_base_y + r // 3
-        pygame.draw.line(screen, mane_color, (tail_base_x, tail_base_y), (tail_tip_x, tail_tip_y), 3)
+        pygame.draw.line(
+            screen, mane_color, (tail_base_x, tail_base_y), (tail_tip_x, tail_tip_y), 3
+        )
 
         if rider_color is not None:
             seat_x = sx
@@ -314,7 +332,9 @@ class Creature:
             pygame.draw.rect(screen, rider_color, (seat_x - 5, seat_y - 10, 10, 10))
             pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 14), 5)
             for side in (-1, 1):
-                pygame.draw.rect(screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8))
+                pygame.draw.rect(
+                    screen, rider_color, (seat_x + side * 5, seat_y - 4, 4, 8)
+                )
 
     def _draw_grasshopper(
         self,
@@ -337,7 +357,9 @@ class Creature:
         # Body — elongated horizontal oval
         body_w = int(r * 1.6)
         body_h = int(r * 0.7)
-        pygame.draw.ellipse(screen, c, (sx - body_w // 2, sy - body_h // 2, body_w, body_h))
+        pygame.draw.ellipse(
+            screen, c, (sx - body_w // 2, sy - body_h // 2, body_w, body_h)
+        )
 
         # Head — small circle at front
         head_r = max(4, r // 4)
@@ -363,7 +385,9 @@ class Creature:
         leg_top = sy + body_h // 2 - 2
         for lx_off in [body_w // 3, body_w // 6]:
             lx = sx + flip * lx_off
-            pygame.draw.rect(screen, dark, (lx - leg_w // 2, leg_top, leg_w, body_h // 2))
+            pygame.draw.rect(
+                screen, dark, (lx - leg_w // 2, leg_top, leg_w, body_h // 2)
+            )
 
         # Long articulated hind legs
         hind_swing = int(math.sin(ticks * 0.012) * 5)
@@ -397,7 +421,9 @@ class Creature:
             pygame.draw.rect(screen, rider_color, (seat_x - 4, seat_y - 9, 8, 9))
             pygame.draw.circle(screen, (240, 200, 160), (seat_x, seat_y - 12), 4)
             for side in (-1, 1):
-                pygame.draw.rect(screen, rider_color, (seat_x + side * 4, seat_y - 3, 3, 7))
+                pygame.draw.rect(
+                    screen, rider_color, (seat_x + side * 4, seat_y - 3, 3, 7)
+                )
 
     def _draw_dolphin(
         self,
@@ -414,17 +440,25 @@ class Creature:
         sy += bob
         flip = 1 if self.facing_right else -1
         pygame.draw.ellipse(screen, c, (sx - r, sy - r // 2, r * 2, r))
-        pygame.draw.polygon(screen, bright, [
-            (sx, sy - r // 2),
-            (sx + flip * r // 2, sy - r),
-            (sx + flip * r // 3, sy - r // 2),
-        ])
+        pygame.draw.polygon(
+            screen,
+            bright,
+            [
+                (sx, sy - r // 2),
+                (sx + flip * r // 2, sy - r),
+                (sx + flip * r // 3, sy - r // 2),
+            ],
+        )
         tail_x = sx - flip * r
-        pygame.draw.polygon(screen, c, [
-            (tail_x, sy),
-            (tail_x - flip * r // 2, sy - r // 2),
-            (tail_x - flip * r // 2, sy + r // 2),
-        ])
+        pygame.draw.polygon(
+            screen,
+            c,
+            [
+                (tail_x, sy),
+                (tail_x - flip * r // 2, sy - r // 2),
+                (tail_x - flip * r // 2, sy + r // 2),
+            ],
+        )
         eye_x = sx + flip * r // 2
         pygame.draw.circle(screen, (20, 20, 30), (eye_x, sy - 2), max(2, r // 5))
         if rider_color is not None:
@@ -445,11 +479,15 @@ class Creature:
         flip = 1 if self.facing_right else -1
         pygame.draw.ellipse(screen, c, (sx - r, sy - r // 2, r * 2, r))
         tail_x = sx - flip * r
-        pygame.draw.polygon(screen, bright, [
-            (tail_x, sy),
-            (tail_x - flip * r // 2, sy - r // 2),
-            (tail_x - flip * r // 2, sy + r // 2),
-        ])
+        pygame.draw.polygon(
+            screen,
+            bright,
+            [
+                (tail_x, sy),
+                (tail_x - flip * r // 2, sy - r // 2),
+                (tail_x - flip * r // 2, sy + r // 2),
+            ],
+        )
         eye_x = sx + flip * (r // 2)
         pygame.draw.circle(screen, (240, 240, 240), (eye_x, sy - 2), max(2, r // 4))
         pygame.draw.circle(screen, (10, 10, 10), (eye_x, sy - 2), max(1, r // 6))
@@ -473,7 +511,9 @@ class Creature:
             angle = (i / 4) * math.pi
             tx = sx + int(math.cos(math.pi + angle) * r * 0.7)
             wave = int(math.sin(ticks * 0.005 + i * 1.3) * 3)
-            pygame.draw.line(screen, tentacle_color, (tx, sy), (tx + wave, sy + r * 2), 1)
+            pygame.draw.line(
+                screen, tentacle_color, (tx, sy), (tx + wave, sy + r * 2), 1
+            )
 
     # ------------------------------------------------------------------
     # Wander helper
@@ -485,4 +525,3 @@ class Creature:
         dist = random.uniform(TILE * 1.5, TILE * 4)
         self.dest_x = max(TILE, min((cols - 1) * TILE, self.x + math.cos(angle) * dist))
         self.dest_y = max(TILE, min((rows - 1) * TILE, self.y + math.sin(angle) * dist))
-

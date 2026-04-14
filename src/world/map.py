@@ -43,9 +43,7 @@ class GameMap:
         self.objects: list[list[int | None]] = [
             [None] * self.cols for _ in range(self.rows)
         ]
-        self.object_hp: list[list[int]] = [
-            [0] * self.cols for _ in range(self.rows)
-        ]
+        self.object_hp: list[list[int]] = [[0] * self.cols for _ in range(self.rows)]
 
     def get_tile(self, row: int, col: int) -> int | None:
         """Get tile ID at position."""

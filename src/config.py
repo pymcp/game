@@ -120,5 +120,9 @@ PORTAL_WARP_DURATION = 180  # frames for the portal vortex warp effect (~3 s at 
 OCEAN_ISLAND_CHANCE = 0.25  # Probability any non-home sector contains an island
 
 # WorldObject hitbox constants (pixel radii)
-WORLD_OBJ_HITBOX_RADIUS: int = TILE // 2  # solid WorldObjects block movement at this radius
-INTERACT_RADIUS: int = int(TILE * 1.5)    # E-key interact range for WorldObjects and creatures
+WORLD_OBJ_HITBOX_RADIUS: int = (
+    TILE // 2
+)  # solid WorldObjects block movement at this radius
+INTERACT_RADIUS: int = int(
+    TILE * 1.5
+)  # E-key interact range for WorldObjects and creatures

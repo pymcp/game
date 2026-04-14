@@ -81,7 +81,11 @@ class OverlandEnvironment(BaseEnvironment):
             ]
 
         # --- Grasshoppers (1–2) ---
-        grass_pool = [p for p in candidates if p not in [(c.x // TILE, c.y // TILE) for c in creatures]]
+        grass_pool = [
+            p
+            for p in candidates
+            if p not in [(c.x // TILE, c.y // TILE) for c in creatures]
+        ]
         for _ in range(rng.randint(1, 20)):
             if not grass_pool:
                 break
