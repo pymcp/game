@@ -141,6 +141,9 @@ class DeathChallengeManager:
         elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
             self.submit(player)
             return True
+        elif key == pygame.K_ESCAPE:
+            self.game._confirm_quit = True
+            return True
         return False
 
     # ------------------------------------------------------------------

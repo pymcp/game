@@ -114,6 +114,45 @@ def finalize_scene(
                         legacy_hp[r][c] = 0
                     scene.add_world_object(obj)
 
+    # --- Sub-tile jitter pass for trees -----------------------------------
+    # Offset each tree's pixel position by a small random amount so trunks
+    # are not locked to exact grid centres.  Skips if the jittered position
+    # would land in a different grid cell that is already occupied or
+    # contains a blocking tile.
+    _JITTER_TILES: frozenset[int] = frozenset({TREE})
+    _JITTER_MAX: int = 10  # pixels each axis
+    index_snap = scene._obj_index  # dict[(col,row) -> list idx]
+    for obj in scene.world_objects:
+        if obj.tile_id not in _JITTER_TILES:
+            continue
+        orig_col, orig_row = obj.col, obj.row
+        for _ in range(4):  # up to 4 attempts to find a valid jitter
+            dx = random.randint(-_JITTER_MAX, _JITTER_MAX)
+            dy = random.randint(-_JITTER_MAX, _JITTER_MAX)
+            nx = obj.x + dx
+            ny = obj.y + dy
+            new_col = int(nx) // TILE
+            new_row = int(ny) // TILE
+            if new_col == orig_col and new_row == orig_row:
+                # Same cell — always safe; apply and stop
+                obj.x = nx
+                obj.y = ny
+                break
+            # Different cell — only accept if empty and walkable
+            if (new_col, new_row) in index_snap:
+                continue
+            if not (0 <= new_col < cols and 0 <= new_row < rows):
+                continue
+            if world[new_row][new_col] in BLOCKING_TILES:
+                continue
+            # Move index entry to new cell
+            idx = index_snap.pop((orig_col, orig_row), None)
+            if idx is not None:
+                index_snap[(new_col, new_row)] = idx
+            obj.x = nx
+            obj.y = ny
+            break
+
 
 def generate_world() -> tuple[list[list[int]], list[list[int | None]]]:
     """Return terrain tiles and objects layer using simple noise-like placement.

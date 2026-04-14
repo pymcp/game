@@ -112,6 +112,14 @@ from src.ui.inventory import (
 from src.ui.inventory_renderer import InventoryRenderer
 from src.world.sector_manager import SectorManager
 from src.world.portal_manager import PortalManager
+from src.rendering.tile_registry import (
+    TileSpriteRegistry,
+    TILE_ID_TO_NAME as _TID2N,
+    STANDALONE_TILE_IDS as _STANDALONE_IDS,
+    compute_adjacency as _compute_adj,
+    compute_scene_object_adjacency as _cso_adj,
+)
+from src.data.tiles import BLOCKING_TILES as _BLOCKING
 
 
 class _EffectRouter:
@@ -156,15 +164,6 @@ class Game:
         SpriteRegistry.get_instance().load_all(_sprites_dir)
 
         # Load tile atlas sprite sheets
-        from src.rendering.tile_registry import (
-            TileSpriteRegistry,
-            TILE_ID_TO_NAME as _TID2N,
-            STANDALONE_TILE_IDS as _STANDALONE_IDS,
-            compute_adjacency as _compute_adj,
-            compute_scene_object_adjacency as _cso_adj,
-        )
-        from src.data.tiles import BLOCKING_TILES as _BLOCKING
-
         _tiles_dir = _os.path.join(
             _os.path.dirname(_os.path.dirname(__file__)), "assets", "tiles"
         )
@@ -2971,7 +2970,11 @@ class Game:
                 tile_color = current_map.get_tileset_color(tid)
                 pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
         # Draw WorldObjects (mineables, interactables, transition tiles)
-        _viewport_objs = current_map.objects_in_viewport(cam_x, cam_y, view_w, view_h)
+        # Y-sort so objects with higher Y draw on top (correct depth overlap)
+        _viewport_objs = sorted(
+            current_map.objects_in_viewport(cam_x, cam_y, view_w, view_h),
+            key=lambda o: o.y,
+        )
         for obj in _viewport_objs:
             tile_name = _TID2N.get(obj.tile_id)
             if tile_name is None:
@@ -2982,7 +2985,12 @@ class Game:
                 tile_color = current_map.get_tileset_color(obj.tile_id)
                 pygame.draw.rect(self.screen, tile_color, (osx, osy, TILE, TILE))
                 fps = _tile_reg.get_standalone_fps(tile_name)
-                fidx = int(ticks * fps / 1000.0) if fps > 0 else 0
+                if fps > 0:
+                    fidx = int(ticks * fps / 1000.0)
+                else:
+                    # Static multi-frame: pick variant from position (deterministic)
+                    nframes = _tile_reg.get_standalone_frames(tile_name)
+                    fidx = int(obj.x + obj.y) % nframes if nframes > 1 else 0
                 result = _tile_reg.get_standalone(tile_name, fidx, _tileset)
                 if result is not None:
                     frame_surf, (dx, dy) = result

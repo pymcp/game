@@ -123,3 +123,52 @@ Examples:
 
 The system prompt above contains all descriptions, colours, frame poses, and rules.
 You do not need to repeat them in your message.
+
+---
+
+## TILE SPRITE SPECIFICATION
+
+Tile sprites are **not** entity sheets. They use a completely different canvas format.
+They are placed in `assets/tiles/standalone/` as a `<name>.png` + `<name>.json` pair.
+
+### Tree tile sprite
+
+| Property | Value |
+|---|---|
+| **Canvas size** | 128 × 64 px (width × height) |
+| **Frames** | 4 (side-by-side horizontally) |
+| **Frame size** | 32 × 64 px |
+| **fps** | 0 (static — no animation) |
+| **draw_offset** | [0, −32] (the trunk base aligns to the tile's y; the canopy extends 32 px above) |
+
+**What each frame is:**
+The 4 frames are 4 distinct tree **shape variants** — same species, same colour palette, but different canopy silhouettes.  The engine picks a variant per-tree based on position, so nearby trees look slightly different from each other.
+
+| Frame (column) | Variant description |
+|---|---|
+| 0 (x 0–31) | Tall and narrow canopy, slightly left-leaning |
+| 1 (x 32–63) | Short and wide canopy, symmetrical |
+| 2 (x 64–95) | Medium canopy, right-leaning |
+| 3 (x 96–127) | Full round canopy, largest |
+
+**Visual style:**
+- **Angle**: slight isometric top-down angle (same as entity sheets — viewed from slightly above and in front)
+- **Trunk**: brown, ~6–8 px wide, ~14–18 px tall, centred in the lower half of the 32×64 cell (occupies roughly y=46–64 of the cell)
+- **Canopy**: dark green to medium green, roughly elliptical/round, fills roughly y=2–48 of the cell
+- Each variant differs in canopy **width** (20–30 px) and **height** (28–46 px)
+- Pixel art only — hard edges, no anti-aliasing, no gradients
+- **Background**: solid **#CC33BB** — every non-tree pixel must be exactly this colour
+
+**JSON manifest** to write alongside the PNG:
+```json
+{
+  "frame_size": [32, 64],
+  "frames": 4,
+  "fps": 0.0,
+  "draw_offset": [0, -32]
+}
+```
+
+**How to request:**
+> Generate the **tree tile sprite** for a top-down RPG. Canvas 128×64 px, 4 side-by-side frames each 32×64 px. Each frame is a distinct tree shape variant (tall-narrow, wide-short, medium-right-lean, large-round). Slight isometric angle. Brown trunk in the lower ~16 px, leafy green canopy above. Pixel art, hard edges, background #CC33BB. Output file: `tree.png`.
+

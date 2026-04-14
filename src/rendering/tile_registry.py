@@ -176,7 +176,7 @@ TILE_ID_TO_NAME: dict[int, str] = {
 }
 
 # Standalone tile IDs (not in adjacency atlases)
-STANDALONE_TILE_IDS: frozenset[int] = frozenset({SIGN, BROKEN_LADDER, SKY_LADDER})
+STANDALONE_TILE_IDS: frozenset[int] = frozenset({SIGN, BROKEN_LADDER, SKY_LADDER, TREE})
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +519,11 @@ class TileSpriteRegistry:
         """Return the animation FPS for a standalone tile (0 = static)."""
         st = self._standalone.get(tile_name)
         return st.fps if st else 0.0
+
+    def get_standalone_frames(self, tile_name: str) -> int:
+        """Return the total frame count for a standalone tile (1 if not loaded)."""
+        st = self._standalone.get(tile_name)
+        return st.num_frames if st else 1
 
     # ------------------------------------------------------------------
     # Tint cache
