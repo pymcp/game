@@ -2211,7 +2211,7 @@ class Game:
                     cs1 = self.player1.controls.move_keys
                     dx1 = (keys[cs1["right"]] - keys[cs1["left"]]) * 1.0
                     dy1 = (keys[cs1["down"]] - keys[cs1["up"]]) * 1.0
-                    mount1.update_riding(dx1, dy1, dt, map1.world)
+                    mount1.update_riding(dx1, dy1, dt, map1.world, self.player1.speed)
                     self.player1.x = mount1.x
                     self.player1.y = mount1.y
             else:
@@ -2247,7 +2247,7 @@ class Game:
                     cs2 = self.player2.controls.move_keys
                     dx2 = (keys[cs2["right"]] - keys[cs2["left"]]) * 1.0
                     dy2 = (keys[cs2["down"]] - keys[cs2["up"]]) * 1.0
-                    mount2.update_riding(dx2, dy2, dt, map2.world)
+                    mount2.update_riding(dx2, dy2, dt, map2.world, self.player2.speed)
                     self.player2.x = mount2.x
                     self.player2.y = mount2.y
             else:

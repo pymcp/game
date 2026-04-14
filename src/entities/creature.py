@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import math
 import random
 
@@ -10,6 +11,13 @@ import pygame
 from src.config import TILE
 from src.data import BLOCKING_TILES
 from src.rendering.animator import Animator, AnimationState
+
+
+class WanderState(enum.Enum):
+    """States for the creature wander finite-state machine."""
+
+    IDLE = "idle"
+    WALKING = "walking"
 
 
 class Creature:
@@ -28,6 +36,7 @@ class Creature:
         speed: float,
         size: float,
         body_color: tuple[int, int, int],
+        mount_speed_mult: float = 1.5,
     ) -> None:
         self.x = float(x)
         self.y = float(y)
@@ -36,12 +45,14 @@ class Creature:
         self.speed = speed
         self.size = size
         self.body_color: tuple[int, int, int] = body_color
+        self.mount_speed_mult: float = mount_speed_mult
         self.facing_direction: str = random.choice(["left", "right"])
 
         # Wander FSM
         self.dest_x: float = self.x
         self.dest_y: float = self.y
-        self.wander_timer: float = random.uniform(60, 180)
+        self._wander_state: WanderState = WanderState.IDLE
+        self._idle_timer: float = random.uniform(3.0, 8.0)
 
         # Mount state — rider_id is always None when loaded from save (transient)
         self.rider_id: int | None = None
@@ -98,16 +109,22 @@ class Creature:
         rows = len(world)
         cols = len(world[0])
 
-        self.wander_timer -= dt
-        if self.wander_timer <= 0:
-            self._pick_wander_dest(cols, rows)
+        if self._wander_state is WanderState.IDLE:
+            self._idle_timer -= dt
+            if self._idle_timer <= 0:
+                self._pick_wander_dest(cols, rows)
+                self._wander_state = WanderState.WALKING
+            self._is_moving = False
+            return
 
+        # WALKING state — move toward destination
         dx = self.dest_x - self.x
         dy = self.dest_y - self.y
         dist = math.hypot(dx, dy)
 
         if dist < 4:
-            self.wander_timer = 0.0
+            self._wander_state = WanderState.IDLE
+            self._idle_timer = random.uniform(3.0, 8.0)
             self._is_moving = False
             return
 
@@ -126,18 +143,22 @@ class Creature:
             self.x = nx
             self.y = ny
         else:
-            self.wander_timer = 0.0
+            # Blocked — rest before trying again
+            self._wander_state = WanderState.IDLE
+            self._idle_timer = random.uniform(3.0, 8.0)
 
     def update_riding(
-        self, dx: float, dy: float, dt: float, world: list[list[int]]
+        self, dx: float, dy: float, dt: float, world: list[list[int]],
+        player_speed: float = 3.2,
     ) -> None:
-        """Move this creature under player control at 1.5× its wander speed.
+        """Move this creature under player control at mount_speed_mult × player speed.
 
         Args:
             dx: Horizontal input direction (-1, 0 or 1).
             dy: Vertical input direction (-1, 0 or 1).
             dt: Frame delta time.
             world: The tile grid for collision checking.
+            player_speed: The rider's base movement speed.
         """
         if dx == 0 and dy == 0:
             self._is_moving = False
@@ -154,7 +175,7 @@ class Creature:
         if dx != 0 or dy != 0:
             self._update_facing(dx, dy)
 
-        step = self.speed * 1.5 * dt
+        step = player_speed * self.mount_speed_mult * dt
         nx = self.x + dx * step
         ny = self.y + dy * step
         nc = int(nx) // TILE
@@ -184,9 +205,8 @@ class Creature:
     # ------------------------------------------------------------------
 
     def _pick_wander_dest(self, cols: int, rows: int) -> None:
-        """Choose a new random destination within the map bounds."""
+        """Choose a new random destination within a short range."""
         angle = random.uniform(0, 2 * math.pi)
-        dist = random.uniform(TILE * 3, TILE * 8)
+        dist = random.uniform(TILE * 1.5, TILE * 4)
         self.dest_x = max(TILE, min((cols - 1) * TILE, self.x + math.cos(angle) * dist))
         self.dest_y = max(TILE, min((rows - 1) * TILE, self.y + math.sin(angle) * dist))
-        self.wander_timer = random.uniform(60, 180)

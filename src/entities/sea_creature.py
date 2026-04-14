@@ -10,9 +10,9 @@ from src.entities.creature import Creature
 
 # Speeds (world-units per second)
 _SPEEDS: dict[str, float] = {
-    "dolphin": 3.5,
-    "fish": 4.0,
-    "jellyfish": 1.5,
+    "dolphin": 0.9,
+    "fish": 1.0,
+    "jellyfish": 0.4,
 }
 
 # Visual sizes (pixels, relative to TILE)

@@ -269,6 +269,7 @@ def _serialize_creature(c: Creature) -> dict:
         "facing_direction": getattr(c, "facing_direction", "right"),
         "facing_right": c.facing_right,
         "home_map": _key_to_str(c.home_map),
+        "mount_speed_mult": c.mount_speed_mult,
     }
 
 
@@ -435,6 +436,7 @@ def _deserialize_sea_creature(data: dict) -> SeaCreature:
     sc.size = data["size"]
     sc.body_color = tuple(data["body_color"])
     sc.facing_right = data.get("facing_right", True)
+    sc.mount_speed_mult = data.get("mount_speed_mult", 1.5)
     sc.rider_id = None
     return sc
 
@@ -455,6 +457,7 @@ def _deserialize_creature(data: dict) -> Creature:
     c.speed = data["speed"]
     c.size = data["size"]
     c.body_color = tuple(data["body_color"])  # type: ignore[assignment]
+    c.mount_speed_mult = data.get("mount_speed_mult", 1.5)
     # Prefer facing_direction (new saves); fall back to facing_right (old saves)
     if "facing_direction" in data:
         c.facing_direction = data["facing_direction"]

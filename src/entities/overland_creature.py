@@ -12,7 +12,7 @@ from src.entities.creature import Creature
 
 # Base speeds (world-units per second)
 _SPEEDS: dict[str, float] = {
-    "horse": 1.125,
+    "horse": 0.3,
 }
 
 # Visual sizes (multiplier of TILE)
