@@ -60,21 +60,43 @@ class TestFindSpawnTile:
         world = _make_world()
         cr = WORLD_ROWS // 2
         cc = WORLD_COLS // 2
-        world[cr][cc] = GRASS
+        # Stamp a 3×3 GRASS block so collision corners don't clip WATER
+        _stamp_grass_island(world, cr - 1, cc - 1, 3, 3)
         col, row = _find_spawn_tile(world)
         assert world[row][col] == GRASS
         assert (col, row) == (cc, cr)
 
     def test_skips_dirt_prefers_grass(self) -> None:
         world = _make_world()
-        # DIRT at cc+1 (closer), GRASS at cc+3 (farther) — GRASS must be chosen
         cr = WORLD_ROWS // 2
         cc = WORLD_COLS // 2
+        # DIRT at cc+1 — closer but must be skipped
         world[cr][cc + 1] = DIRT
-        world[cr][cc + 3] = GRASS
+        # GRASS island at cc+3 with 3×3 clear area so collision check passes
+        _stamp_grass_island(world, cr - 1, cc + 2, 3, 3)
         col, row = _find_spawn_tile(world)
         assert world[row][col] == GRASS
+        # The centre of the island (cc+3, cr) should be returned
         assert (col, row) == (cc + 3, cr)
+
+    def test_spawn_does_not_clip_blocking_tiles(self) -> None:
+        """Chosen spawn tile centre must not clip any blocking tile."""
+        from src.world.collision import hits_blocking
+        from src.config import TILE
+
+        world = _make_world()
+        cr = WORLD_ROWS // 2
+        cc = WORLD_COLS // 2
+        # Single GRASS tile surrounded by WATER — corners clip WATER, so skip
+        world[cr][cc] = GRASS
+        # Place a safe 3×3 GRASS island one step away
+        _stamp_grass_island(world, cr - 1, cc + 4, 3, 3)
+        col, row = _find_spawn_tile(world)
+        cx = col * TILE + TILE // 2
+        cy = row * TILE + TILE // 2
+        assert not hits_blocking(world, cx, cy, 20), (
+            f"spawn at ({col}, {row}) clips a blocking tile"
+        )
 
 
 # ---------------------------------------------------------------------------

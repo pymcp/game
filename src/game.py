@@ -196,7 +196,12 @@ class Game:
 
         # Two Players - find grass tiles near center
         def find_grass_spawn(offset_x):
-            """Find a grass tile near center offset by offset_x."""
+            """Find a grass tile near center offset by offset_x where the
+            player collision circle (COLLISION_HALF=20) fits without clipping
+            any blocking tile."""
+            from src.world.collision import hits_blocking as _hb
+
+            _HALF = Player.COLLISION_HALF
             start_col = (WORLD_COLS // 2) + (offset_x // TILE)
             start_row = WORLD_ROWS // 2
 
@@ -210,7 +215,10 @@ class Game:
                         row = start_row + dr
                         if 0 <= col < WORLD_COLS and 0 <= row < WORLD_ROWS:
                             if overland_map.get_tile(row, col) == GRASS:
-                                return col * TILE + TILE // 2, row * TILE + TILE // 2
+                                cx = col * TILE + TILE // 2
+                                cy = row * TILE + TILE // 2
+                                if not _hb(overland_map.world, cx, cy, _HALF):
+                                    return cx, cy
             # Fallback to center if no walkable tile found
             return (WORLD_COLS // 2) * TILE + TILE // 2, (
                 WORLD_ROWS // 2
@@ -646,7 +654,12 @@ class Game:
     def _find_grass_spawn(
         self, game_map: GameMap, prefer_col: int, prefer_row: int
     ) -> tuple[float, float]:
-        """Return (x, y) pixel centre of the nearest GRASS tile to prefer_col/row."""
+        """Return (x, y) pixel centre of the nearest GRASS tile to prefer_col/row
+        where the player collision circle (COLLISION_HALF) doesn't clip any
+        blocking tile."""
+        from src.world.collision import hits_blocking as _hb
+
+        _HALF = Player.COLLISION_HALF
         rows = game_map.rows
         cols = game_map.cols
         for sd in range(max(rows, cols)):
@@ -658,7 +671,10 @@ class Game:
                     r = prefer_row + dr
                     if 0 <= c < cols and 0 <= r < rows:
                         if game_map.get_tile(r, c) == GRASS:
-                            return c * TILE + TILE // 2, r * TILE + TILE // 2
+                            cx = c * TILE + TILE // 2
+                            cy = r * TILE + TILE // 2
+                            if not _hb(game_map.world, cx, cy, _HALF):
+                                return cx, cy
         return prefer_col * TILE + TILE // 2, prefer_row * TILE + TILE // 2
 
     # -- sailing / pier / boat / interaction --------------------------------
@@ -3017,25 +3033,72 @@ class Game:
                 hitbox_surf = pygame.Surface(
                     (view_w, view_h), pygame.SRCALPHA
                 )
+
+                # --- Terrain blocking tiles: full tile rect (red) -----------
+                from src.data.tiles import BLOCKING_TILES as _BLOCKING
+                for r in range(start_row, end_row):
+                    for c in range(start_col, end_col):
+                        tid = current_map.get_tile(r, c)
+                        if tid in _BLOCKING:
+                            tx = c * TILE - int(cam_x)
+                            ty = r * TILE - int(cam_y)
+                            pygame.draw.rect(
+                                hitbox_surf,
+                                (255, 50, 50, 40),
+                                (tx, ty, TILE, TILE),
+                            )
+                            pygame.draw.rect(
+                                hitbox_surf,
+                                (255, 50, 50, 180),
+                                (tx, ty, TILE, TILE),
+                                2,
+                            )
+
+                # --- WorldObjects: hitbox (orange) + interact radius (cyan) --
+                for obj in current_map.objects_in_viewport(
+                    cam_x, cam_y, view_w, view_h
+                ):
+                    ox = int(obj.x - cam_x)
+                    oy = int(obj.y - cam_y)
+                    if obj.interact_radius > 0:
+                        r = int(obj.interact_radius)
+                        pygame.draw.circle(
+                            hitbox_surf, (0, 220, 220, 40), (ox, oy), r
+                        )
+                        pygame.draw.circle(
+                            hitbox_surf, (0, 220, 220, 160), (ox, oy), r, 2
+                        )
+                    if obj.hitbox_radius > 0:
+                        r = int(obj.hitbox_radius)
+                        pygame.draw.circle(
+                            hitbox_surf, (255, 160, 0, 60), (ox, oy), r
+                        )
+                        pygame.draw.circle(
+                            hitbox_surf, (255, 160, 0, 200), (ox, oy), r, 2
+                        )
+                    # Centre dot
+                    pygame.draw.circle(
+                        hitbox_surf, (255, 255, 255, 180), (ox, oy), 2
+                    )
+
+                # --- Enemies: hitbox (green) + attack range (red) -----------
                 for enemy in scene.enemies:
                     if enemy.hp <= 0:
                         continue
-                    ex = int(enemy.x - cam_x + screen_x)
-                    ey = int(enemy.y - cam_y + screen_y)
-                    lx = ex - screen_x
-                    ly = ey - screen_y
+                    ex = int(enemy.x - cam_x)
+                    ey = int(enemy.y - cam_y)
                     # Hitbox body (green filled)
                     pygame.draw.circle(
                         hitbox_surf,
                         (50, 255, 50, 60),
-                        (lx, ly),
+                        (ex, ey),
                         enemy.hitbox_radius,
                     )
                     # Hitbox outline (green)
                     pygame.draw.circle(
                         hitbox_surf,
                         (50, 255, 50, 180),
-                        (lx, ly),
+                        (ex, ey),
                         enemy.hitbox_radius,
                         2,
                     )
@@ -3043,7 +3106,7 @@ class Game:
                     pygame.draw.circle(
                         hitbox_surf,
                         (255, 50, 50, 100),
-                        (lx, ly),
+                        (ex, ey),
                         enemy.hitbox_radius + 20,
                         2,
                     )
@@ -3051,9 +3114,28 @@ class Game:
                     pygame.draw.circle(
                         hitbox_surf,
                         (255, 255, 255, 200),
-                        (lx, ly),
+                        (ex, ey),
                         3,
                     )
+
+                # --- Players: collision circle (blue) -----------------------
+                current_map_key = player.current_map
+                for p in (self.player1, self.player2):
+                    if p.current_map != current_map_key:
+                        continue
+                    px = int(p.x - cam_x)
+                    py = int(p.y - cam_y)
+                    r = p.COLLISION_HALF
+                    pygame.draw.circle(
+                        hitbox_surf, (80, 140, 255, 50), (px, py), r
+                    )
+                    pygame.draw.circle(
+                        hitbox_surf, (80, 140, 255, 200), (px, py), r, 2
+                    )
+                    pygame.draw.circle(
+                        hitbox_surf, (255, 255, 255, 200), (px, py), 3
+                    )
+
                 self.screen.blit(hitbox_surf, (screen_x, screen_y))
             for proj in scene.projectiles:
                 proj.draw(self.screen, cam_x - screen_x, cam_y - screen_y)

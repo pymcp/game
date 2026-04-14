@@ -952,11 +952,15 @@ def _place_cave_entrances(world: list[list[int]]) -> None:
 
 
 def _find_spawn_tile(world: list[list[int]]) -> tuple[int, int]:
-    """Return (col, row) of a GRASS tile near map centre.
+    """Return (col, row) of a GRASS tile near map centre where the player
+    spawn circle (radius COLLISION_HALF) does not clip any blocking tile.
 
     Mirrors the expanding-square search in ``Game.__init__.find_grass_spawn``
     but covers the full map instead of capping at 10 tiles.
     """
+    from src.world.collision import hits_blocking as _hb
+
+    _HALF: int = 20  # Player.COLLISION_HALF
     start_col = WORLD_COLS // 2
     start_row = WORLD_ROWS // 2
     for dist in range(max(WORLD_COLS, WORLD_ROWS)):
@@ -968,7 +972,10 @@ def _find_spawn_tile(world: list[list[int]]) -> tuple[int, int]:
                 r = start_row + dr
                 if 0 <= c < WORLD_COLS and 0 <= r < WORLD_ROWS:
                     if world[r][c] == GRASS:
-                        return c, r
+                        cx = c * TILE + TILE // 2
+                        cy = r * TILE + TILE // 2
+                        if not _hb(world, cx, cy, _HALF):
+                            return c, r
     return start_col, start_row
 
 
