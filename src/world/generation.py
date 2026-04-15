@@ -833,7 +833,7 @@ def spawn_enemies(
     eligible_types = [
         k
         for k, v in ENEMY_TYPES.items()
-        if any(env in v.get("environments", []) for env in valid_envs)
+        if any(env in v.environments for env in valid_envs)
     ]
 
     # Biome floor tiles that are valid enemy spawn tiles
@@ -862,7 +862,7 @@ def spawn_enemies(
                         break
                     enemy_key = random.choice(eligible_types)
                     count = spawn_count.get(enemy_key, 0)
-                    if count >= ENEMY_TYPES[enemy_key]["maximum"]:
+                    if count >= ENEMY_TYPES[enemy_key].maximum:
                         continue
                     spawn_count[enemy_key] = count + 1
                     enemies.append(Enemy(cx, cy, enemy_key))

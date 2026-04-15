@@ -8,7 +8,7 @@ from src.data.tiles import (
 )
 from src.data.pickaxes import PICKAXES, UPGRADE_COSTS
 from src.data.weapons import WEAPONS, WEAPON_UNLOCK_COSTS
-from src.data.enemies import ENEMY_TYPES, EnemyEnvironment, PortalQuestType
+from src.data.enemies import ENEMY_TYPES, EnemyEnvironment, EnemyTypeInfo, PortalQuestType
 from src.data.creatures import CREATURE_TYPES, CreatureEnvironment
 from src.data.recipes import RECIPES
 from src.data.armor import (
@@ -34,6 +34,7 @@ __all__ = [
     "WEAPON_UNLOCK_COSTS",
     "ENEMY_TYPES",
     "EnemyEnvironment",
+    "EnemyTypeInfo",
     "PortalQuestType",
     "CREATURE_TYPES",
     "CreatureEnvironment",

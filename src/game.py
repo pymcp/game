@@ -48,6 +48,8 @@ from src.config import (
     SECTOR_WIPE_DURATION,
     PORTAL_WARP_DURATION,
     BiomeType,
+    SkyAnimPhase,
+    MapType,
     PORTAL_LAVA,
     SIGN,
     BROKEN_LADDER,
@@ -116,9 +118,11 @@ from src.rendering.tile_registry import (
     TileSpriteRegistry,
     TILE_ID_TO_NAME as _TID2N,
     STANDALONE_TILE_IDS as _STANDALONE_IDS,
+    MOUNTAIN_PEAK_IDS as _MTN_PEAK_IDS,
     compute_adjacency as _compute_adj,
     compute_scene_object_adjacency as _cso_adj,
 )
+from src.rendering.houses import draw_house_tile as _draw_house_tile_fn
 from src.data.tiles import BLOCKING_TILES as _BLOCKING
 
 
@@ -302,7 +306,7 @@ class Game:
 
         # Sky-ladder quest state
         self._sky_view: dict[int, bool] = {1: False, 2: False}
-        # phase: "ascend" | "sky" | "descend" | None; progress: 0.0 → 1.0 (ticks)
+        # SkyAnimPhase state per player; None = no animation in progress
         self._sky_anim: dict[int, dict | None] = {1: None, 2: None}
         self._sky_clouds: list[dict] = []
         # Per-player sign text popup: {text: str, timer: float (seconds)}
@@ -343,7 +347,7 @@ class Game:
         if self._sky_anim[pid] is not None:
             return  # already animating
         # Don't switch to sky yet — animate over the world first
-        self._sky_anim[pid] = {"phase": "ascend_out", "progress": 0.0}
+        self._sky_anim[pid] = {"phase": SkyAnimPhase.ASCEND_OUT, "progress": 0.0}
         self.sectors.reveal_sky_sectors(player)
         if not self._sky_clouds:
             self._init_sky_clouds()
@@ -352,9 +356,9 @@ class Game:
         """Begin the descend animation for *player*, closing the sky view."""
         pid = player.player_id
         anim = self._sky_anim[pid]
-        if anim is not None and anim["phase"] == "sky":
+        if anim is not None and anim["phase"] == SkyAnimPhase.SKY:
             # Animate over sky first, then switch to world at the peak
-            self._sky_anim[pid] = {"phase": "descend_out", "progress": 0.0}
+            self._sky_anim[pid] = {"phase": SkyAnimPhase.DESCEND_OUT, "progress": 0.0}
         else:
             # Already animating — skip straight to closed
             self._sky_view[pid] = False
@@ -501,60 +505,87 @@ class Game:
         elif key == pygame.K_F9:
             self._debug_restore_portal(self.player1)
             self._debug_give_all_items()
-        # Player 1 controls (blocked while dead)
-        elif not self.player1.is_dead and key == self.player1.controls.upgrade_pick_key:
-            self.player1.try_upgrade_pick()
-        elif (
-            not self.player1.is_dead and key == self.player1.controls.upgrade_weapon_key
-        ):
-            self.player1.try_upgrade_weapon()
-        elif not self.player1.is_dead and key == self.player1.controls.build_house_key:
-            self._try_build_house(self.player1)
-        elif (
-            not self.player1.is_dead
-            and key == self.player1.controls.toggle_auto_mine_key
-        ):
-            self.player1.toggle_auto_mine()
-        elif (
-            not self.player1.is_dead
-            and key == self.player1.controls.toggle_auto_fire_key
-        ):
-            self.player1.toggle_auto_fire()
-        elif not self.player1.is_dead and key == self.player1.controls.interact_key:
-            self._try_interact(self.player1)
-        elif not self.player1.is_dead and key == self.player1.controls.build_pier_key:
-            self._try_build_pier(self.player1)
-        elif not self.player1.is_dead and key == self.player1.controls.equip_key:
-            self.inventory.toggle(self.player1.player_id)
-        elif not self.player1.is_dead and key == self.player1.controls.cycle_weapon_key:
-            self.player1.cycle_weapon()
-        # Player 2 controls (blocked while dead)
-        elif not self.player2.is_dead and key == self.player2.controls.upgrade_pick_key:
-            self.player2.try_upgrade_pick()
-        elif (
-            not self.player2.is_dead and key == self.player2.controls.upgrade_weapon_key
-        ):
-            self.player2.try_upgrade_weapon()
-        elif not self.player2.is_dead and key == self.player2.controls.build_house_key:
-            self._try_build_house(self.player2)
-        elif (
-            not self.player2.is_dead
-            and key == self.player2.controls.toggle_auto_mine_key
-        ):
-            self.player2.toggle_auto_mine()
-        elif (
-            not self.player2.is_dead
-            and key == self.player2.controls.toggle_auto_fire_key
-        ):
-            self.player2.toggle_auto_fire()
-        elif not self.player2.is_dead and key == self.player2.controls.interact_key:
-            self._try_interact(self.player2)
-        elif not self.player2.is_dead and key == self.player2.controls.build_pier_key:
-            self._try_build_pier(self.player2)
-        elif not self.player2.is_dead and key == self.player2.controls.equip_key:
-            self.inventory.toggle(self.player2.player_id)
-        elif not self.player2.is_dead and key == self.player2.controls.cycle_weapon_key:
-            self.player2.cycle_weapon()
+        else:
+            # Player-specific actions — each player's key bindings are independent
+            for player in (self.player1, self.player2):
+                if self._handle_player_keydown(player, key):
+                    break
+
+    def _handle_player_keydown(self, player: Player, key: int) -> bool:
+        """Handle a key event for *player*. Returns True if the key was consumed."""
+        if player.is_dead:
+            return False
+        ctrl = player.controls
+        if key == ctrl.upgrade_pick_key:
+            player.try_upgrade_pick()
+        elif key == ctrl.upgrade_weapon_key:
+            player.try_upgrade_weapon()
+        elif key == ctrl.build_house_key:
+            self._try_build_house(player)
+        elif key == ctrl.toggle_auto_mine_key:
+            player.toggle_auto_mine()
+        elif key == ctrl.toggle_auto_fire_key:
+            player.toggle_auto_fire()
+        elif key == ctrl.interact_key:
+            self._try_interact(player)
+        elif key == ctrl.build_pier_key:
+            self._try_build_pier(player)
+        elif key == ctrl.equip_key:
+            self.inventory.toggle(player.player_id)
+        elif key == ctrl.cycle_weapon_key:
+            player.cycle_weapon()
+        else:
+            return False
+        return True
+
+    def _update_player_movement(
+        self,
+        player: Player,
+        player_map: "MapScene",
+        cam_x: float,
+        cam_y: float,
+        keys: "pygame.key.ScancodeWrapper",
+        mouse_buttons: tuple,
+        dt: float,
+    ) -> None:
+        """Update movement, mining, and hurt-timer for *player* this frame."""
+        if not player.is_dead and not self.inventory.is_open(player.player_id):
+            if player.on_mount:
+                mount = self._player_mounts[player.player_id]
+                if mount is not None:
+                    cs = player.controls.move_keys
+                    dx = (keys[cs["right"]] - keys[cs["left"]]) * 1.0
+                    dy = (keys[cs["down"]] - keys[cs["up"]]) * 1.0
+                    mount.update_riding(dx, dy, dt, player_map.world, player.speed)
+                    player.x = mount.x
+                    player.y = mount.y
+            else:
+                speed_mult = 1.0 + player.active_effects().get(
+                    AccessoryEffect.SPEED_BOOST, 0.0
+                )
+                base_speed = player.speed
+                player.speed = base_speed * speed_mult
+                player.update_movement(
+                    keys, dt, player_map.world, world_objects=player_map.world_objects
+                )
+                player.speed = base_speed
+            player.update_mining(
+                keys,
+                mouse_buttons,
+                dt,
+                player_map.world,
+                player_map.tile_hp,
+                cam_x,
+                cam_y,
+                self.particles,
+                self.floats,
+                player.current_map,
+                game_map=player_map.map,
+                scene=player_map,
+            )
+        if not player.is_dead:
+            if player.hurt_timer > 0:
+                player.hurt_timer -= dt
 
     def _try_build_house(self, player: Player) -> None:
         """Attempt to build a house at player position."""
@@ -688,31 +719,21 @@ class Game:
     def _try_interact(self, player: Player) -> None:
         """Context-sensitive interact key handler.
 
-        Priority:
-          0. Standing ON a HOUSE tile on a surface map → enter the housing environment.
-          0.5. Inside a housing env adjacent to WORKTABLE → open craft menu.
-          0.6. Inside a housing env standing on SETTLEMENT_HOUSE → enter sub-house.
-          0.7. Inside a housing env standing on HOUSE_EXIT → exit housing env.
-          1. If standing on a cave entrance → enter the cave.
-          2. If in a cave and standing on a CAVE_EXIT tile → exit the cave.
-          2.5. If in an underwater map and standing on DIVE_EXIT → surface.
-          3. If player is on_boat → dive (with Scuba Gear) or show hint.
-          4. If adjacent to a TREASURE_CHEST → open it.
-          5. If standing on a PIER tile with WATER adjacent → build boat (if materials).
+        Dispatches to one of the ``_interact_*`` helpers in priority order;
+        each helper returns ``True`` if it consumed the interaction.
         """
         pid = player.player_id
-        current_map_obj = self.get_player_current_map(player)
-        if current_map_obj is None:
+        cur_map = self.get_player_current_map(player)
+        if cur_map is None:
             return
-
         p_col = int(player.x) // TILE
         p_row = int(player.y) // TILE
 
         # Block interaction during sky-view animation
-        if self._sky_anim[pid] is not None and self._sky_anim[pid]["phase"] != "sky":
+        if self._sky_anim[pid] is not None and self._sky_anim[pid]["phase"] != SkyAnimPhase.SKY:
             return
 
-        # 3.6 Sky-view exit — takes priority over everything else
+        # Sky-view exit takes priority over everything else
         if self._sky_view[pid]:
             self._exit_sky_view(player)
             return
@@ -722,176 +743,201 @@ class Game:
             self._sign_display[pid] = None
             return
 
-        # 0. Enter housing environment — stand ON a HOUSE tile on any surface map
-        if (
-            current_map_obj.tileset == "overland"
-            and current_map_obj.get_tile(p_row, p_col) == HOUSE
+        for handler in (
+            self._interact_housing,           # 0 / 0.5 / 0.6 / 0.7
+            self._interact_cave_entry,         # 1
+            self._interact_cave_exit,          # 2
+            self._interact_underwater_exit,    # 2.5
+            self._interact_boat,               # 3 / 3.5
+            self._interact_treasure,           # 4
+            self._interact_sign,               # 4.4
+            self._interact_broken_ladder,      # 4.45
+            self._interact_sky_ladder,         # 4.46
+            self._interact_ancient_stone,      # 4.5
+            self._interact_portal_ruins,       # 4.6
+            self._interact_portal,             # 4.7 / 4.8
+            self._interact_build_boat,         # 5
         ):
+            if handler(player, cur_map, p_col, p_row):
+                return
+
+    # -- interact sub-handlers -----------------------------------------------
+
+    def _interact_housing(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 0 + 0.5/0.6/0.7: housing environment entry and interior interactions."""
+        # 0. Enter housing environment
+        if cur_map.tileset == "overland" and cur_map.get_tile(p_row, p_col) == HOUSE:
             self._enter_housing(player, p_col, p_row)
-            return
-
-        # 0.5 / 0.6 / 0.7  — interactions inside a housing environment
+            return True
+        # 0.5/0.6/0.7: interactions inside a housing environment
         if self._is_in_housing_env(player):
-            tile_id = current_map_obj.get_tile(p_row, p_col)
-
-            # 0.7. Exit housing env
+            tile_id = cur_map.get_tile(p_row, p_col)
             if tile_id == HOUSE_EXIT:
                 self._exit_housing(player)
-                return
-
-            # 0.6. Enter a sub-house (SETTLEMENT_HOUSE tile)
+                return True
             if tile_id == SETTLEMENT_HOUSE:
                 self._enter_sub_house(player, p_col, p_row)
-                return
-
-            # 0.5. Craft at worktable — standing on or adjacent to WORKTABLE
+                return True
             for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                if current_map_obj.get_tile(p_row + dr, p_col + dc) == WORKTABLE:
+                if cur_map.get_tile(p_row + dr, p_col + dc) == WORKTABLE:
                     self.inventory.open_to_tab(player.player_id, InventoryTab.RECIPES)
-                    return
+                    return True
+        return False
 
-        # 1. Cave entry — standing on a cave entrance tile on a surface map
-        if current_map_obj.tileset == "overland" and not (
-            isinstance(player.current_map, tuple) and len(player.current_map) == 2
-        ):
-            tile_id = current_map_obj.get_tile(p_row, p_col)
-            if tile_id in (CAVE_MOUNTAIN, CAVE_HILL):
-                cave_key = (p_col, p_row)
-                if cave_key not in self.maps:
-                    surface_biome = getattr(
-                        current_map_obj, "biome", BiomeType.STANDARD
-                    )
-                    env = CaveEnvironment(
-                        p_col, p_row, cave_type=tile_id, biome=surface_biome
-                    )
-                    _cave_scene = MapScene(env.generate())
-                    finalize_scene(_cave_scene, GRASS)
-                    self.maps[cave_key] = _cave_scene
-                cave_map = self.maps[cave_key]
-                cave_map.origin_map = player.current_map
-                player.x = cave_map.spawn_col * TILE + TILE // 2
-                player.y = cave_map.spawn_row * TILE + TILE // 2
-                player.current_map = cave_key
-                self._snap_camera_to_player(player)
-                self.floats.append(
-                    FloatingText(
-                        player.x,
-                        player.y - 30,
-                        "Entered cave!",
-                        (100, 150, 255),
-                        player.current_map,
-                    )
-                )
-                return
+    def _interact_cave_entry(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 1: enter a cave from a surface map."""
+        if cur_map.tileset != "overland":
+            return False
+        if isinstance(player.current_map, tuple) and len(player.current_map) == 2:
+            return False
+        tile_id = cur_map.get_tile(p_row, p_col)
+        if tile_id not in (CAVE_MOUNTAIN, CAVE_HILL):
+            return False
+        cave_key = (p_col, p_row)
+        if cave_key not in self.maps:
+            surface_biome = getattr(cur_map, "biome", BiomeType.STANDARD)
+            env = CaveEnvironment(p_col, p_row, cave_type=tile_id, biome=surface_biome)
+            _cave_scene = MapScene(env.generate())
+            finalize_scene(_cave_scene, GRASS)
+            self.maps[cave_key] = _cave_scene
+        cave_map = self.maps[cave_key]
+        cave_map.origin_map = player.current_map
+        player.x = cave_map.spawn_col * TILE + TILE // 2
+        player.y = cave_map.spawn_row * TILE + TILE // 2
+        player.current_map = cave_key
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(
+                player.x,
+                player.y - 30,
+                "Entered cave!",
+                (100, 150, 255),
+                player.current_map,
+            )
+        )
+        return True
 
-        # 2. Cave exit — in a cave and standing on the exit tile
-        if (
+    def _interact_cave_exit(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 2: exit a cave back to the surface."""
+        if not (
             isinstance(player.current_map, tuple)
             and len(player.current_map) == 2
-            and hasattr(current_map_obj, "entrance_col")
+            and hasattr(cur_map, "entrance_col")
         ):
-            tile_id = current_map_obj.get_tile(p_row, p_col)
-            if tile_id == CAVE_EXIT:
-                origin_key = getattr(current_map_obj, "origin_map", "overland")
-                origin_map = self.maps.get(origin_key)
-                if origin_map is None:
-                    origin_key = "overland"
-                    origin_map = self.maps["overland"]
-                entrance_col = current_map_obj.entrance_col
-                entrance_row = current_map_obj.entrance_row
-                placed = False
-                for dr, dc in [
-                    (1, 0),
-                    (-1, 0),
-                    (0, 1),
-                    (0, -1),
-                    (1, 1),
-                    (-1, -1),
-                    (1, -1),
-                    (-1, 1),
-                ]:
-                    adj_c = entrance_col + dc
-                    adj_r = entrance_row + dr
-                    if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
-                        adj_tile = origin_map.get_tile(adj_r, adj_c)
-                        if adj_tile not in (WATER, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL):
-                            player.x = adj_c * TILE + TILE // 2
-                            player.y = adj_r * TILE + TILE // 2
-                            placed = True
-                            break
-                if not placed:
-                    player.x = entrance_col * TILE + TILE // 2
-                    player.y = entrance_row * TILE + TILE // 2
-                player.current_map = origin_key
-                if player.on_mount:
-                    self._dismount_player(player)
-                self._snap_camera_to_player(player)
-                self.floats.append(
-                    FloatingText(
-                        player.x,
-                        player.y - 30,
-                        "Exited cave!",
-                        (100, 255, 150),
-                        player.current_map,
-                    )
-                )
-                return
+            return False
+        tile_id = cur_map.get_tile(p_row, p_col)
+        if tile_id != CAVE_EXIT:
+            return False
+        origin_key = getattr(cur_map, "origin_map", "overland")
+        origin_map = self.maps.get(origin_key)
+        if origin_map is None:
+            origin_key = "overland"
+            origin_map = self.maps["overland"]
+        entrance_col = cur_map.entrance_col
+        entrance_row = cur_map.entrance_row
+        placed = False
+        for dr, dc in [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (-1, -1),
+            (1, -1),
+            (-1, 1),
+        ]:
+            adj_c = entrance_col + dc
+            adj_r = entrance_row + dr
+            if 0 <= adj_c < origin_map.cols and 0 <= adj_r < origin_map.rows:
+                adj_tile = origin_map.get_tile(adj_r, adj_c)
+                if adj_tile not in (WATER, MOUNTAIN, CAVE_MOUNTAIN, CAVE_HILL):
+                    player.x = adj_c * TILE + TILE // 2
+                    player.y = adj_r * TILE + TILE // 2
+                    placed = True
+                    break
+        if not placed:
+            player.x = entrance_col * TILE + TILE // 2
+            player.y = entrance_row * TILE + TILE // 2
+        player.current_map = origin_key
+        if player.on_mount:
+            self._dismount_player(player)
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(
+                player.x,
+                player.y - 30,
+                "Exited cave!",
+                (100, 255, 150),
+                player.current_map,
+            )
+        )
+        return True
 
-        # 2.5. Underwater exit — standing on DIVE_EXIT returns player to the surface
-        if (
+    def _interact_underwater_exit(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 2.5: surface from an underwater map via DIVE_EXIT."""
+        if not (
             isinstance(player.current_map, tuple)
             and len(player.current_map) == 3
-            and player.current_map[0] == "underwater"
+            and player.current_map[0] == MapType.UNDERWATER
         ):
-            tile_id = current_map_obj.get_tile(p_row, p_col)
-            if tile_id == DIVE_EXIT:
-                origin_key = getattr(current_map_obj, "origin_map", "overland")
-                origin_map = self.maps.get(origin_key)
-                if origin_map is None:
-                    origin_key = "overland"
-                    origin_map = self.maps["overland"]
-                # Place player back on the boat tile position
-                dive_col = getattr(current_map_obj, "dive_col", 0)
-                dive_row = getattr(current_map_obj, "dive_row", 0)
-                player.x = dive_col * TILE + TILE // 2
-                player.y = dive_row * TILE + TILE // 2
-                player.current_map = origin_key
-                # Restore boat at dive position (player is back on the water)
-                player.on_boat = True
-                player.boat_col = dive_col
-                player.boat_row = dive_row
-                origin_map.set_tile(dive_row, dive_col, WATER)
-                if player.on_mount:
-                    self._dismount_player(player)
-                self._snap_camera_to_player(player)
-                self.floats.append(
-                    FloatingText(
-                        player.x,
-                        player.y - 30,
-                        "Surfaced!",
-                        (60, 200, 255),
-                        player.current_map,
-                    )
-                )
-                return
+            return False
+        tile_id = cur_map.get_tile(p_row, p_col)
+        if tile_id != DIVE_EXIT:
+            return False
+        origin_key = getattr(cur_map, "origin_map", "overland")
+        origin_map = self.maps.get(origin_key)
+        if origin_map is None:
+            origin_key = "overland"
+            origin_map = self.maps["overland"]
+        dive_col = getattr(cur_map, "dive_col", 0)
+        dive_row = getattr(cur_map, "dive_row", 0)
+        player.x = dive_col * TILE + TILE // 2
+        player.y = dive_row * TILE + TILE // 2
+        player.current_map = origin_key
+        player.on_boat = True
+        player.boat_col = dive_col
+        player.boat_row = dive_row
+        origin_map.set_tile(dive_row, dive_col, WATER)
+        if player.on_mount:
+            self._dismount_player(player)
+        self._snap_camera_to_player(player)
+        self.floats.append(
+            FloatingText(
+                player.x,
+                player.y - 30,
+                "Surfaced!",
+                (60, 200, 255),
+                player.current_map,
+            )
+        )
+        return True
 
-        # 3. On boat — dive if player has Scuba Gear, otherwise show sailing hint
+    def _interact_boat(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 3 / 3.5: boat diving, mount, or dismount."""
         if player.on_boat:
             if player.inventory.get("Scuba Gear", 0) > 0:
                 self._try_dive(player)
-                return
-            self.floats.append(
-                FloatingText(
-                    int(player.x),
-                    int(player.y) - 36,
-                    "Sail to the edge of the map!",
-                    (100, 200, 255),
-                    player.current_map,
+            else:
+                self.floats.append(
+                    FloatingText(
+                        int(player.x),
+                        int(player.y) - 36,
+                        "Sail to the edge of the map!",
+                        (100, 200, 255),
+                        player.current_map,
+                    )
                 )
-            )
-            return
-
-        # 3.5. Mount / dismount a nearby rideable creature
+            return True
         if player.on_mount:
             self._dismount_player(player)
             self.floats.append(
@@ -903,8 +949,7 @@ class Game:
                     player.current_map,
                 )
             )
-            return
-        # Check for a nearby unmounted creature on the same map
+            return True
         mount_range = TILE * 1.5
         player_scene = self.maps.get(player.current_map)
         for c in player_scene.creatures if player_scene is not None else []:
@@ -924,158 +969,193 @@ class Game:
                         player.current_map,
                     )
                 )
-                return
+                return True
+        return False
 
-        # 4. Adjacent treasure chest
+    def _interact_treasure(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4: open an adjacent treasure chest."""
         for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
             cc, rr = p_col + dc, p_row + dr
-            if current_map_obj.get_tile(rr, cc) == TREASURE_CHEST:
-                current_map_obj.set_tile(rr, cc, GRASS)
-                current_map_obj.set_tile_hp(rr, cc, 0)
+            if cur_map.get_tile(rr, cc) == TREASURE_CHEST:
+                cur_map.set_tile(rr, cc, GRASS)
+                cur_map.set_tile_hp(rr, cc, 0)
                 tx = cc * TILE + TILE // 2
                 ty = rr * TILE + TILE // 2
                 self.treasure.open_chest(player, tx, ty)
-                return
+                return True
+        return False
 
-        # 4.4 Adjacent SIGN — read its text
-        if current_map_obj.tileset == "overland":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == SIGN:
-                    raw = object.__getattribute__(current_map_obj, "map")
-                    text = raw.sign_texts.get((cc, rr), "...")
-                    self._sign_display[pid] = {
-                        "text": text,
-                        "timer": 6.0,
-                        "tile_col": cc,
-                        "tile_row": rr,
-                    }
-                    return
+    def _interact_sign(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4.4: read an adjacent sign."""
+        if cur_map.tileset != "overland":
+            return False
+        for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if cur_map.get_tile(rr, cc) == SIGN:
+                raw = object.__getattribute__(cur_map, "map")
+                text = raw.sign_texts.get((cc, rr), "...")
+                self._sign_display[player.player_id] = {
+                    "text": text,
+                    "timer": 6.0,
+                    "tile_col": cc,
+                    "tile_row": rr,
+                }
+                return True
+        return False
 
-        # 4.45 Adjacent BROKEN_LADDER — repair if player has materials
-        if current_map_obj.tileset == "overland":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == BROKEN_LADDER:
-                    tx = cc * TILE + TILE // 2
-                    ty = rr * TILE + TILE // 2
-                    if all(
-                        player.inventory.get(item, 0) >= qty
-                        for item, qty in self._SKY_LADDER_COST.items()
-                    ):
-                        for item, qty in self._SKY_LADDER_COST.items():
-                            player.inventory[item] -= qty
-                        current_map_obj.set_tile(rr, cc, SKY_LADDER)
-                        raw = object.__getattribute__(current_map_obj, "map")
-                        raw.ladder_repaired = True
-                        self.floats.append(
-                            FloatingText(
-                                tx,
-                                ty - 36,
-                                "Ladder repaired!",
-                                (120, 220, 80),
-                                player.current_map,
-                            )
-                        )
-                        for _ in range(14):
-                            self.particles.append(
-                                Particle(tx, ty, (200, 180, 80), player.current_map)
-                            )
-                    else:
-                        needs = ", ".join(
-                            f"{qty} {item}"
-                            for item, qty in self._SKY_LADDER_COST.items()
-                        )
-                        self.floats.append(
-                            FloatingText(
-                                tx,
-                                ty - 30,
-                                f"Need: {needs}",
-                                (255, 120, 80),
-                                player.current_map,
-                            )
-                        )
-                    return
-
-        # 4.46 Adjacent SKY_LADDER — ascend to sky view
-        if current_map_obj.tileset == "overland":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == SKY_LADDER:
-                    self._enter_sky_view(player)
-                    return
-
-        # 4.5. Adjacent ANCIENT_STONE — ritual quest progress (surface maps only)
-        if current_map_obj.tileset == "overland":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == ANCIENT_STONE:
-                    self.portals.try_activate_ritual_stone(
-                        player, current_map_obj, cc, rr
-                    )
-                    return
-
-        # 4.6. Adjacent PORTAL_RUINS — show quest status or gather delivery
-        if current_map_obj.tileset == "overland":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == PORTAL_RUINS:
-                    self.portals.try_interact_portal_ruins(player, player.current_map)
-                    return
-
-        # 4.7. Adjacent PORTAL_ACTIVE on island — enter portal realm
-        if current_map_obj.tileset == "overland":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
-                    self.portals.enter_portal_realm(player)
-                    return
-
-        # 4.8. PORTAL_ACTIVE tile inside portal realm — exit to linked island
-        if player.current_map == "portal_realm":
-            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == PORTAL_ACTIVE:
-                    self.portals.exit_portal_realm(player, cc, rr)
-                    return
-
-        # 5. On a PIER tile → try to build a boat in the next water cell
-        if current_map_obj.get_tile(p_row, p_col) == PIER:
-            for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                cc, rr = p_col + dc, p_row + dr
-                if current_map_obj.get_tile(rr, cc) == WATER:
-                    cost = {"Wood": BOAT_BUILD_COST, "Sail": 1}
-                    tx = p_col * TILE + TILE // 2
-                    ty = p_row * TILE + TILE // 2
-                    if not try_spend(player.inventory, cost):
-                        self.floats.append(
-                            FloatingText(
-                                tx,
-                                ty - 20,
-                                f"Need {BOAT_BUILD_COST} Wood + 1 Sail!",
-                                (255, 100, 100),
-                                player.current_map,
-                            )
-                        )
-                        return
-                    current_map_obj.set_tile(rr, cc, BOAT)
-                    current_map_obj.set_tile_hp(rr, cc, 0)
-                    btx = cc * TILE + TILE // 2
-                    bty = rr * TILE + TILE // 2
+    def _interact_broken_ladder(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4.45: repair an adjacent broken ladder if materials allow."""
+        if cur_map.tileset != "overland":
+            return False
+        for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if cur_map.get_tile(rr, cc) == BROKEN_LADDER:
+                tx = cc * TILE + TILE // 2
+                ty = rr * TILE + TILE // 2
+                if all(
+                    player.inventory.get(item, 0) >= qty
+                    for item, qty in self._SKY_LADDER_COST.items()
+                ):
+                    for item, qty in self._SKY_LADDER_COST.items():
+                        player.inventory[item] -= qty
+                    cur_map.set_tile(rr, cc, SKY_LADDER)
+                    raw = object.__getattribute__(cur_map, "map")
+                    raw.ladder_repaired = True
                     self.floats.append(
                         FloatingText(
-                            btx,
-                            bty - 20,
-                            "Boat built!",
-                            (100, 200, 255),
+                            tx,
+                            ty - 36,
+                            "Ladder repaired!",
+                            (120, 220, 80),
                             player.current_map,
                         )
                     )
-                    for _ in range(12):
+                    for _ in range(14):
                         self.particles.append(
-                            Particle(btx, bty, (80, 160, 220), player.current_map)
+                            Particle(tx, ty, (200, 180, 80), player.current_map)
                         )
-                    return
+                else:
+                    needs = ", ".join(
+                        f"{qty} {item}"
+                        for item, qty in self._SKY_LADDER_COST.items()
+                    )
+                    self.floats.append(
+                        FloatingText(
+                            tx,
+                            ty - 30,
+                            f"Need: {needs}",
+                            (255, 120, 80),
+                            player.current_map,
+                        )
+                    )
+                return True
+        return False
+
+    def _interact_sky_ladder(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4.46: ascend to sky view via an adjacent sky ladder."""
+        if cur_map.tileset != "overland":
+            return False
+        for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if cur_map.get_tile(rr, cc) == SKY_LADDER:
+                self._enter_sky_view(player)
+                return True
+        return False
+
+    def _interact_ancient_stone(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4.5: activate an adjacent ancient stone for the ritual quest."""
+        if cur_map.tileset != "overland":
+            return False
+        for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if cur_map.get_tile(rr, cc) == ANCIENT_STONE:
+                self.portals.try_activate_ritual_stone(player, cur_map, cc, rr)
+                return True
+        return False
+
+    def _interact_portal_ruins(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4.6: interact with adjacent portal ruins."""
+        if cur_map.tileset != "overland":
+            return False
+        for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if cur_map.get_tile(rr, cc) == PORTAL_RUINS:
+                self.portals.try_interact_portal_ruins(player, player.current_map)
+                return True
+        return False
+
+    def _interact_portal(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 4.7/4.8: enter or exit the portal realm."""
+        if cur_map.tileset == "overland":
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if cur_map.get_tile(rr, cc) == PORTAL_ACTIVE:
+                    self.portals.enter_portal_realm(player)
+                    return True
+        if player.current_map == MapType.PORTAL_REALM:
+            for dc, dr in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+                cc, rr = p_col + dc, p_row + dr
+                if cur_map.get_tile(rr, cc) == PORTAL_ACTIVE:
+                    self.portals.exit_portal_realm(player, cc, rr)
+                    return True
+        return False
+
+    def _interact_build_boat(
+        self, player: Player, cur_map: "MapScene", p_col: int, p_row: int
+    ) -> bool:
+        """Priority 5: build a boat at an adjacent water tile from a PIER."""
+        if cur_map.get_tile(p_row, p_col) != PIER:
+            return False
+        for dc, dr in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            cc, rr = p_col + dc, p_row + dr
+            if cur_map.get_tile(rr, cc) == WATER:
+                cost = {"Wood": BOAT_BUILD_COST, "Sail": 1}
+                tx = p_col * TILE + TILE // 2
+                ty = p_row * TILE + TILE // 2
+                if not try_spend(player.inventory, cost):
+                    self.floats.append(
+                        FloatingText(
+                            tx,
+                            ty - 20,
+                            f"Need {BOAT_BUILD_COST} Wood + 1 Sail!",
+                            (255, 100, 100),
+                            player.current_map,
+                        )
+                    )
+                    return True
+                cur_map.set_tile(rr, cc, BOAT)
+                cur_map.set_tile_hp(rr, cc, 0)
+                btx = cc * TILE + TILE // 2
+                bty = rr * TILE + TILE // 2
+                self.floats.append(
+                    FloatingText(
+                        btx,
+                        bty - 20,
+                        "Boat built!",
+                        (100, 200, 255),
+                        player.current_map,
+                    )
+                )
+                for _ in range(12):
+                    self.particles.append(
+                        Particle(btx, bty, (80, 160, 220), player.current_map)
+                    )
+                return True
+        return False
 
     # -- mount helpers -------------------------------------------------------
 
@@ -1106,7 +1186,7 @@ class Game:
         if dive_col is None or dive_row is None:
             return
 
-        dive_key = ("underwater", dive_col, dive_row)
+        dive_key = (MapType.UNDERWATER, dive_col, dive_row)
         if dive_key not in self.maps:
             env = UnderwaterEnvironment(dive_col, dive_row)
             underwater_map = env.generate()
@@ -1147,12 +1227,12 @@ class Game:
         return (
             isinstance(key, tuple)
             and len(key) >= 3
-            and key[0] in ("house", "house_sub")
+            and key[0] in (MapType.HOUSE, MapType.HOUSE_SUB)
         )
 
     def _enter_housing(self, player: Player, entry_col: int, entry_row: int) -> None:
         """Generate (or retrieve) the housing env for the given HOUSE tile and enter it."""
-        house_key = ("house", entry_col, entry_row)
+        house_key = (MapType.HOUSE, entry_col, entry_row)
         if house_key not in self.maps:
             current_map_obj = self.get_player_current_map(player)
             cluster_size = (
@@ -1286,7 +1366,7 @@ class Game:
         entrance_row = getattr(current_map_obj, "entrance_row", 0)
 
         # If returning to another housing env, land on the SETTLEMENT_HOUSE tile
-        if isinstance(origin_key, tuple) and origin_key[0] in ("house", "house_sub"):
+        if isinstance(origin_key, tuple) and origin_key[0] in (MapType.HOUSE, MapType.HOUSE_SUB):
             player.x = entrance_col * TILE + TILE // 2
             player.y = entrance_row * TILE + TILE // 2
         else:
@@ -1716,22 +1796,8 @@ class Game:
         w: bool,
         ticks: int,
     ) -> None:
-        """Draw a house tile styled to its settlement tier.
-
-        Args:
-            tx, ty: top-left screen position of the tile
-            tier: 0=Cottage, 1=Hamlet, 2=Village, 3=Town, 4=Large Town, 5=City
-            n, s, e, w: True if that direction has an adjacent house tile
-            ticks: pygame.time.get_ticks() for animations
-        """
-        # Draw at 32×32 base scale into a buffer, then scale up to TILE×TILE.
-        _TS = TILE // 32
-        buf = pygame.Surface((32, 32), pygame.SRCALPHA)
-        buf.fill((0, 0, 0, 0))
-        self._draw_house_tile_32(buf, 0, 0, tier, n, s, e, w, ticks)
-        if _TS > 1:
-            buf = pygame.transform.scale(buf, (TILE, TILE))
-        self.screen.blit(buf, (tx, ty))
+        """Draw a house tile styled to its settlement tier."""
+        _draw_house_tile_fn(self.screen, tx, ty, tier, n, s, e, w, ticks, TILE)
 
     def _draw_house_tile_32(
         self,
@@ -1746,223 +1812,8 @@ class Game:
         ticks: int,
     ) -> None:
         """Draw a house tile at 32×32 base scale into *sc*."""
-
-        if tier == 0:
-            # -- Isolated Cottage --
-            pygame.draw.rect(sc, (180, 120, 60), (tx + 4, ty + 12, 24, 18))
-            pygame.draw.polygon(
-                sc,
-                (160, 40, 40),
-                [(tx + 2, ty + 12), (tx + 16, ty + 2), (tx + 30, ty + 12)],
-            )
-            pygame.draw.rect(sc, (100, 60, 30), (tx + 12, ty + 19, 8, 11))
-            pygame.draw.rect(sc, (180, 220, 255), (tx + 7, ty + 15, 5, 5))
-            pygame.draw.rect(sc, (80, 60, 40), (tx + 7, ty + 15, 5, 5), 1)
-
-        elif tier == 1:
-            # -- Hamlet: warm cottage with chimney, wood grain, amber window --
-            wall_c = (185, 130, 70)
-            roof_c = (178, 55, 55)
-            pygame.draw.rect(sc, wall_c, (tx + 3, ty + 11, 26, 19))
-            # Wood-grain horizontal lines
-            for ly in range(ty + 15, ty + 30, 4):
-                pygame.draw.line(sc, (150, 100, 45), (tx + 3, ly), (tx + 29, ly), 1)
-            # Roof
-            if n:
-                pygame.draw.rect(sc, roof_c, (tx + 3, ty + 7, 26, 5))
-            else:
-                pygame.draw.polygon(
-                    sc,
-                    roof_c,
-                    [(tx + 1, ty + 11), (tx + 16, ty + 1), (tx + 31, ty + 11)],
-                )
-            # Chimney
-            pygame.draw.rect(sc, (120, 100, 85), (tx + 21, ty + 3, 4, 9))
-            pygame.draw.rect(sc, (90, 80, 70), (tx + 20, ty + 2, 6, 3))
-            # Door with arch top
-            pygame.draw.rect(sc, (110, 65, 30), (tx + 12, ty + 21, 8, 9))
-            pygame.draw.ellipse(sc, (110, 65, 30), (tx + 11, ty + 17, 10, 8))
-            # Amber lit window
-            pygame.draw.rect(sc, (255, 215, 120), (tx + 5, ty + 14, 5, 5))
-            pygame.draw.rect(sc, (80, 60, 40), (tx + 5, ty + 14, 5, 5), 1)
-            # Second window (right side)
-            pygame.draw.rect(sc, (255, 215, 120), (tx + 22, ty + 14, 5, 5))
-            pygame.draw.rect(sc, (80, 60, 40), (tx + 22, ty + 14, 5, 5), 1)
-            # Path connectors on linked sides
-            path_c = (175, 158, 128)
-            if s:
-                pygame.draw.rect(sc, path_c, (tx + 13, ty + 30, 6, 2))
-            if e:
-                pygame.draw.rect(sc, path_c, (tx + 30, ty + 22, 2, 5))
-            if w:
-                pygame.draw.rect(sc, path_c, (tx, ty + 22, 2, 5))
-
-        elif tier == 2:
-            # -- Village: row-house with brick walls, parapet, double windows --
-            wall_c = (195, 105, 55)  # orange brick
-            brick_c = (155, 78, 38)  # mortar / darker brick
-            roof_c = (160, 82, 60)  # terracotta parapet
-            # Wall extends to adjacent sides seamlessly
-            lx = tx if w else tx + 3
-            rx = tx + 32 if e else tx + 29
-            ty2 = ty if n else ty + 6
-            by2 = ty + 32 if s else ty + 30
-            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
-            # Brick mortar lines
-            for ly in range(ty2 + 5, by2, 5):
-                pygame.draw.line(sc, brick_c, (lx, ly), (rx, ly), 1)
-            # Parapet / roof on exposed north
-            if not n:
-                pygame.draw.rect(sc, roof_c, (lx, ty2 - 4, rx - lx, 5))
-                for bx in range(lx, rx, 6):
-                    pygame.draw.rect(sc, (130, 65, 45), (bx, ty2 - 7, 4, 3))
-            # Two windows side by side
-            for wx in (tx + 5, tx + 20):
-                pygame.draw.rect(sc, (200, 225, 255), (wx, ty + 10, 6, 8))
-                pygame.draw.line(
-                    sc, (130, 100, 75), (wx + 3, ty + 10), (wx + 3, ty + 18), 1
-                )
-            # Arched doorway on south-exposed face
-            if not s:
-                pygame.draw.rect(sc, (105, 58, 28), (tx + 13, ty + 22, 6, 8))
-                pygame.draw.ellipse(sc, (105, 58, 28), (tx + 11, ty + 18, 10, 8))
-
-        elif tier == 3:
-            # -- Town: stone walls, slate parapet with crenellations, 4-window grid --
-            wall_c = (130, 125, 118)  # stone gray
-            stone_c = (108, 104, 98)  # stone shadow
-            roof_c = (88, 90, 102)  # slate
-            lx = tx if w else tx + 2
-            rx = tx + 32 if e else tx + 30
-            ty2 = ty if n else ty + 3
-            by2 = ty + 32 if s else ty + 30
-            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
-            # Stone block texture (horizontal courses)
-            for iy in range(ty2 + 6, by2, 7):
-                pygame.draw.line(sc, stone_c, (lx, iy), (rx, iy), 1)
-            # Vertical joints (offset each row)
-            row_i = 0
-            for iy in range(ty2 + 6, by2, 7):
-                offset = 5 if row_i % 2 == 0 else 1
-                for ix in range(lx + offset, rx, 10):
-                    pygame.draw.line(sc, stone_c, (ix, iy - 6), (ix, iy), 1)
-                row_i += 1
-            # Slate roof + crenellations on exposed north
-            if not n:
-                pygame.draw.rect(sc, roof_c, (lx, ty2 - 5, rx - lx, 6))
-                for bx in range(lx, rx, 5):
-                    pygame.draw.rect(sc, (68, 70, 82), (bx, ty2 - 8, 3, 3))
-            # 2×2 window grid
-            win_c = (145, 175, 215)
-            for wy, wx in [
-                (ty + 8, tx + 5),
-                (ty + 8, tx + 19),
-                (ty + 18, tx + 5),
-                (ty + 18, tx + 19),
-            ]:
-                pygame.draw.rect(sc, win_c, (wx, wy, 5, 6))
-                pygame.draw.line(sc, (85, 110, 150), (wx + 2, wy), (wx + 2, wy + 6), 1)
-                pygame.draw.line(sc, (85, 110, 150), (wx, wy + 3), (wx + 5, wy + 3), 1)
-            # Recessed door
-            if not s:
-                pygame.draw.rect(sc, (55, 42, 28), (tx + 12, ty + 23, 8, 7))
-
-        elif tier == 4:
-            # -- Large Town: deep red brick, multi-row windows, iron roof, awning --
-            wall_c = (158, 78, 65)  # deep red brick
-            brick_c = (122, 55, 44)  # dark mortar
-            roof_c = (55, 58, 68)  # iron grey
-            lx = tx if w else tx + 1
-            rx = tx + 32 if e else tx + 31
-            ty2 = ty if n else ty + 2
-            by2 = ty + 32 if s else ty + 31
-            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
-            # Dense brick courses
-            for iy in range(ty2 + 4, by2, 5):
-                pygame.draw.line(sc, brick_c, (lx, iy), (rx, iy), 1)
-            # Brick bonds (alternating vertical joints)
-            row_i = 0
-            for iy in range(ty2 + 4, by2, 5):
-                offset = 4 if row_i % 2 == 0 else 0
-                for ix in range(lx + offset, rx, 8):
-                    pygame.draw.line(sc, brick_c, (ix, iy - 4), (ix, iy), 1)
-                row_i += 1
-            # Iron roof parapet
-            if not n:
-                pygame.draw.rect(sc, roof_c, (lx, ty2 - 4, rx - lx, 5))
-                for bx in range(lx, rx, 4):
-                    pygame.draw.rect(sc, (35, 38, 48), (bx, ty2 - 6, 2, 2))
-            # 3 rows × 2 columns of windows
-            win_c = (185, 205, 245)
-            for wy in (ty + 4, ty + 13, ty + 22):
-                for wx in (tx + 5, tx + 21):
-                    pygame.draw.rect(sc, win_c, (wx, wy, 5, 7))
-                    pygame.draw.line(
-                        sc, (130, 150, 200), (wx + 2, wy), (wx + 2, wy + 7), 1
-                    )
-                    pygame.draw.line(
-                        sc, (130, 150, 200), (wx, wy + 3), (wx + 5, wy + 3), 1
-                    )
-            # Merchant awning on exposed south
-            if not s:
-                pygame.draw.rect(sc, (195, 85, 55), (tx + 3, ty + 24, 26, 3))
-                for ax in range(tx + 3, tx + 29, 4):
-                    pygame.draw.line(
-                        sc, (220, 100, 70), (ax, ty + 24), (ax + 2, ty + 27), 1
-                    )
-
-        else:
-            # -- City (tier 5): dark slate, gothic arch windows, spire --
-            pulse = int(math.sin(ticks * 0.002) * 10)
-            wall_c = (72, 78, 95)  # slate blue-grey
-            stone_c = (56, 62, 78)  # deep shadow
-            roof_c = (38, 42, 58)  # dark steel
-            gold_c = (200, 170, 80 + pulse)  # animated gold trim
-            lx = tx
-            rx = tx + 32
-            ty2 = ty
-            by2 = ty + 32
-            pygame.draw.rect(sc, wall_c, (lx, ty2, rx - lx, by2 - ty2))
-            # Stone block grid
-            for iy in range(ty2 + 5, by2, 6):
-                for ix in range(lx, rx, 9):
-                    pygame.draw.rect(sc, stone_c, (ix, iy, 8, 5), 1)
-            # Spire on exposed north
-            if not n:
-                mid = tx + 16
-                pygame.draw.polygon(
-                    sc,
-                    roof_c,
-                    [
-                        (mid - 3, ty2),
-                        (mid + 3, ty2),
-                        (mid + 1, ty2 - 9),
-                        (mid - 1, ty2 - 9),
-                    ],
-                )
-                pygame.draw.polygon(
-                    sc,
-                    gold_c,
-                    [(mid - 1, ty2 - 9), (mid + 1, ty2 - 9), (mid, ty2 - 14)],
-                )
-                pygame.draw.rect(sc, roof_c, (lx, ty2 - 4, rx - lx, 5))
-                # Gold crenellation trim
-                for bx in range(lx, rx, 5):
-                    pygame.draw.rect(sc, gold_c, (bx, ty2 - 5, 3, 2))
-            # Gothic arch windows (3 rows × 2 cols)
-            win_c = (110, 145, 205)
-            for wy in (ty + 3, ty + 13, ty + 21):
-                for wx in (tx + 4, tx + 21):
-                    # Arch body
-                    pygame.draw.rect(sc, win_c, (wx, wy + 3, 6, 6))
-                    pygame.draw.ellipse(sc, win_c, (wx, wy, 6, 6))
-                    # Gold arch trim
-                    pygame.draw.ellipse(sc, gold_c, (wx, wy, 6, 6), 1)
-            # Iron-bound door on exposed south
-            if not s:
-                pygame.draw.rect(sc, (40, 32, 22), (tx + 12, ty + 24, 8, 8))
-                pygame.draw.ellipse(sc, (40, 32, 22), (tx + 11, ty + 20, 10, 8))
-                pygame.draw.ellipse(sc, gold_c, (tx + 11, ty + 20, 10, 8), 1)
+        from src.rendering.houses import draw_house_tile_32
+        draw_house_tile_32(sc, tx, ty, tier, n, s, e, w, ticks)
 
     def _nearest_living_player(
         self, map_key: str | tuple, enemy: Enemy
@@ -2137,20 +1988,20 @@ class Game:
                 continue
             anim["progress"] += dt / _SKY_ANIM_DURATION
             phase = anim["phase"]
-            if phase == "ascend_out" and anim["progress"] >= 1.0:
+            if phase == SkyAnimPhase.ASCEND_OUT and anim["progress"] >= 1.0:
                 # Peak white — switch to sky view, then fade out
                 self._sky_view[pid] = True
-                anim["phase"] = "ascend_in"
+                anim["phase"] = SkyAnimPhase.ASCEND_IN
                 anim["progress"] = 0.0
-            elif phase == "ascend_in" and anim["progress"] >= 1.0:
-                anim["phase"] = "sky"
+            elif phase == SkyAnimPhase.ASCEND_IN and anim["progress"] >= 1.0:
+                anim["phase"] = SkyAnimPhase.SKY
                 anim["progress"] = 0.0
-            elif phase == "descend_out" and anim["progress"] >= 1.0:
+            elif phase == SkyAnimPhase.DESCEND_OUT and anim["progress"] >= 1.0:
                 # Peak white — switch to world view, then fade out
                 self._sky_view[pid] = False
-                anim["phase"] = "descend_in"
+                anim["phase"] = SkyAnimPhase.DESCEND_IN
                 anim["progress"] = 0.0
-            elif phase == "descend_in" and anim["progress"] >= 1.0:
+            elif phase == SkyAnimPhase.DESCEND_IN and anim["progress"] >= 1.0:
                 self._sky_anim[pid] = None
         # -- Sign display timer tick ---------------------------------------
         for pid in (1, 2):
@@ -2180,7 +2031,7 @@ class Game:
             if player.is_dead:
                 continue
             pid = player.player_id
-            if player.current_map != ("portal_realm",):
+            if player.current_map != MapType.PORTAL_REALM:
                 self._lava_hurt_timers[pid] = 0
                 continue
             cur_map = self.get_player_current_map(player)
@@ -2239,85 +2090,13 @@ class Game:
                 player.y = pr * TILE + TILE // 2
         # ----------------------------------------------------------------
 
-        # Player 1 movement & mining (skipped while dead or inventory open)
-        if not self.player1.is_dead and not self.inventory.is_open(1):
-            if self.player1.on_mount:
-                # Drive the mounted creature with player input
-                mount1 = self._player_mounts[1]
-                if mount1 is not None:
-                    cs1 = self.player1.controls.move_keys
-                    dx1 = (keys[cs1["right"]] - keys[cs1["left"]]) * 1.0
-                    dy1 = (keys[cs1["down"]] - keys[cs1["up"]]) * 1.0
-                    mount1.update_riding(dx1, dy1, dt, map1.world, self.player1.speed)
-                    self.player1.x = mount1.x
-                    self.player1.y = mount1.y
-            else:
-                p1_speed_mult = 1.0 + self.player1.active_effects().get(
-                    AccessoryEffect.SPEED_BOOST, 0.0
-                )
-                base_speed1 = self.player1.speed
-                self.player1.speed = base_speed1 * p1_speed_mult
-                self.player1.update_movement(
-                    keys, dt, map1.world, world_objects=list(map1.world_objects)
-                )
-                self.player1.speed = base_speed1
-            self.player1.update_mining(
-                keys,
-                mouse_buttons,
-                dt,
-                map1.world,
-                map1.tile_hp,
-                self.cam1_x,
-                self.cam1_y,
-                self.particles,
-                self.floats,
-                self.player1.current_map,
-                game_map=map1.map,
-                scene=map1,
-            )
-        if not self.player1.is_dead:
-            if self.player1.hurt_timer > 0:
-                self.player1.hurt_timer -= dt
-
-        # Player 2 movement & mining (skipped while dead or inventory open)
-        if not self.player2.is_dead and not self.inventory.is_open(2):
-            if self.player2.on_mount:
-                # Drive the mounted creature with player input
-                mount2 = self._player_mounts[2]
-                if mount2 is not None:
-                    cs2 = self.player2.controls.move_keys
-                    dx2 = (keys[cs2["right"]] - keys[cs2["left"]]) * 1.0
-                    dy2 = (keys[cs2["down"]] - keys[cs2["up"]]) * 1.0
-                    mount2.update_riding(dx2, dy2, dt, map2.world, self.player2.speed)
-                    self.player2.x = mount2.x
-                    self.player2.y = mount2.y
-            else:
-                p2_speed_mult = 1.0 + self.player2.active_effects().get(
-                    AccessoryEffect.SPEED_BOOST, 0.0
-                )
-                base_speed2 = self.player2.speed
-                self.player2.speed = base_speed2 * p2_speed_mult
-                self.player2.update_movement(
-                    keys, dt, map2.world, world_objects=list(map2.world_objects)
-                )
-                self.player2.speed = base_speed2
-            self.player2.update_mining(
-                keys,
-                mouse_buttons,
-                dt,
-                map2.world,
-                map2.tile_hp,
-                self.cam2_x,
-                self.cam2_y,
-                self.particles,
-                self.floats,
-                self.player2.current_map,
-                game_map=map2.map,
-                scene=map2,
-            )
-        if not self.player2.is_dead:
-            if self.player2.hurt_timer > 0:
-                self.player2.hurt_timer -= dt
+        # Player movement, mining, and hurt-timer — one call per player
+        self._update_player_movement(
+            self.player1, map1, self.cam1_x, self.cam1_y, keys, mouse_buttons, dt
+        )
+        self._update_player_movement(
+            self.player2, map2, self.cam2_x, self.cam2_y, keys, mouse_buttons, dt
+        )
 
         # -- Boat boarding detection --------------------------------------
         for player in (self.player1, self.player2):
@@ -2431,10 +2210,10 @@ class Game:
         for scene in self.maps.values():
             for par in scene.particles:
                 par.update()
-            scene.particles = [par for par in scene.particles if par.life > 0]
+            scene.particles[:] = [par for par in scene.particles if par.life > 0]
             for f in scene.floats:
                 f.update()
-            scene.floats = [f for f in scene.floats if f.life > 0]
+            scene.floats[:] = [f for f in scene.floats if f.life > 0]
 
         # Tick treasure reveals
         self.treasure.tick(dt)
@@ -2937,6 +2716,17 @@ class Game:
                     frame = _tile_reg.get_frame(tile_name, adj, fidx, _tileset)
                     if frame is not None:
                         self.screen.blit(frame, (sx, sy))
+                        # Mountain peak overlay — draws a tall standalone sprite
+                        # on top of the atlas base tile.  Row iteration order
+                        # (top-to-bottom) provides correct depth: southern
+                        # mountains draw over northern ones automatically.
+                        if tid in _MTN_PEAK_IDS:
+                            _mtn = _tile_reg.get_standalone(
+                                "mountain", (c + r) % 4, _tileset
+                            )
+                            if _mtn is not None:
+                                _ms, (_mdx, _mdy) = _mtn
+                                self.screen.blit(_ms, (sx + _mdx, sy + _mdy))
                         # ANCIENT_STONE: pulse overlay if next ritual target
                         if tid == ANCIENT_STONE:
                             quest = self.portal_quests.get(player.current_map)
@@ -2969,12 +2759,17 @@ class Game:
                 # --- Fallback: flat colored rect ---
                 tile_color = current_map.get_tileset_color(tid)
                 pygame.draw.rect(self.screen, tile_color, (sx, sy, TILE, TILE))
+                if tid in _MTN_PEAK_IDS:
+                    _mtn = _tile_reg.get_standalone(
+                        "mountain", (c + r) % 4, _tileset
+                    )
+                    if _mtn is not None:
+                        _ms, (_mdx, _mdy) = _mtn
+                        self.screen.blit(_ms, (sx + _mdx, sy + _mdy))
         # Draw WorldObjects (mineables, interactables, transition tiles)
-        # Y-sort so objects with higher Y draw on top (correct depth overlap)
-        _viewport_objs = sorted(
-            current_map.objects_in_viewport(cam_x, cam_y, view_w, view_h),
-            key=lambda o: o.y,
-        )
+        # Y-sort so objects with higher Y draw on top (correct depth overlap).
+        # Uses a cached sorted list rebuilt only when objects are added/removed.
+        _viewport_objs = current_map.objects_in_viewport_sorted(cam_x, cam_y, view_w, view_h)
         for obj in _viewport_objs:
             tile_name = _TID2N.get(obj.tile_id)
             if tile_name is None:
@@ -3131,7 +2926,7 @@ class Game:
             if p.current_map == current_map_key:
                 # Hide player while ascending to sky view (not during descent back)
                 anim = self._sky_anim[p.player_id]
-                if anim is not None and anim["phase"] in ("ascend_out", "ascend_in"):
+                if anim is not None and anim["phase"] in (SkyAnimPhase.ASCEND_OUT, SkyAnimPhase.ASCEND_IN):
                     continue
                 p.draw(self.screen, cam_x - screen_x, cam_y - screen_y)
 
@@ -3259,7 +3054,7 @@ class Game:
 
         # --- Ascend/descend flash overlay on top ---
         anim = self._sky_anim[pid]
-        if anim is not None and anim["phase"] != "sky":
+        if anim is not None and anim["phase"] != SkyAnimPhase.SKY:
             self.player_hud._draw_sky_anim_overlay(
                 player, screen_x, screen_y, view_w, view_h
             )

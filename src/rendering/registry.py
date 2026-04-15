@@ -24,49 +24,19 @@ Directory layout expected under *assets_dir*::
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import TYPE_CHECKING
 
 import pygame
 
 from src.rendering.animator import Animator
+from src.rendering.chroma import apply_chroma_key
 
 if TYPE_CHECKING:
     pass
 
-# ---------------------------------------------------------------------------
-# Chroma-key stripping
-# ---------------------------------------------------------------------------
-
-# #CC33BB = RGB(204, 51, 187) — background colour Gemini uses on sprite sheets.
-# Tolerance expressed as a normalised distance (0–1) fed to PixelArray.replace().
-# 40/255 ≈ 0.157 catches slight colour shifts from JPEG artefacts or
-# rounding while staying well clear of any plausible sprite colour.
-_CHROMA_COLOR: tuple[int, int, int] = (204, 51, 187)
-_CHROMA_TOLERANCE: float = 40 / 255
-
-
-def _apply_chroma_key(sheet: pygame.Surface) -> pygame.Surface:
-    """Return a copy of *sheet* with #CC33BB and near-colours made transparent.
-
-    Any pixel whose distance from (204, 51, 187) is within _CHROMA_TOLERANCE
-    (using pygame's default luminance-weighted metric) is replaced with alpha 0.
-    This lets Gemini-generated sprite sheets use #CC33BB as a solid background
-    and have it stripped automatically at load-time.
-
-    Uses ``pygame.PixelArray.replace()`` (C-level) for performance.
-
-    Args:
-        sheet: Source sprite sheet surface.
-
-    Returns:
-        New SRCALPHA Surface with chroma pixels zeroed out.
-    """
-    result = sheet.copy()
-    pa = pygame.PixelArray(result)
-    pa.replace(_CHROMA_COLOR, (0, 0, 0, 0), distance=_CHROMA_TOLERANCE)
-    del pa  # unlock the surface
-    return result
+_log = logging.getLogger(__name__)
 
 
 class SpriteRegistry:
@@ -118,13 +88,12 @@ class SpriteRegistry:
                 entity_id = os.path.splitext(fname)[0]
                 try:
                     sheet = pygame.image.load(os.path.join(root, fname)).convert_alpha()
-                    sheet = _apply_chroma_key(sheet)
+                    sheet = apply_chroma_key(sheet)
                     with open(json_path) as fh:
                         manifest = json.load(fh)
                     self._cache[entity_id] = (sheet, manifest)
-                except Exception:
-                    # Bad file — skip silently; entity will use procedural draw.
-                    pass
+                except Exception as exc:
+                    _log.warning("Failed to load entity sprite %s: %s", fname, exc)
 
         self._loaded = True
 

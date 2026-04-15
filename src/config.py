@@ -107,6 +107,33 @@ class BiomeType(Enum):
     DESERT = "desert"
 
 
+class SkyAnimPhase(Enum):
+    """Phase of the sky-view transition animation."""
+
+    ASCEND_OUT = "ascend_out"   # fade to white while still in world view
+    ASCEND_IN = "ascend_in"     # fade in from white inside sky view
+    SKY = "sky"                 # settled in sky view — no wipe in progress
+    DESCEND_OUT = "descend_out" # fade to white while still in sky view
+    DESCEND_IN = "descend_in"   # fade in from white back in world view
+
+
+class MapType(str, Enum):
+    """Top-level map type identifiers.
+
+    Using ``str`` as a base class means each member IS its string value, so it
+    hashes and compares equal to the plain string — existing dict keys and
+    save-file strings are fully compatible without any migration.
+    """
+
+    OVERLAND = "overland"
+    PORTAL_REALM = "portal_realm"
+    SECTOR = "sector"       # tuple key prefix: ("sector", col, row)
+    CAVE = "cave"           # tuple key prefix: ("cave", col, row)
+    UNDERWATER = "underwater"  # tuple key prefix: ("underwater", col, row)
+    HOUSE = "house"         # tuple key prefix: ("house", col, row)
+    HOUSE_SUB = "house_sub" # tuple key prefix: ("house_sub", col, row)
+
+
 # Settlement tiers: minimum connected-house cluster size to reach each tier
 SETTLEMENT_TIER_SIZES = [1, 2, 4, 9, 16, 25]
 SETTLEMENT_TIER_NAMES = ["Cottage", "Hamlet", "Village", "Town", "Large Town", "City"]

@@ -2,11 +2,11 @@
 
 import json
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from src.world.map import GameMap
 from src.world.scene import MapScene
-from src.config import BiomeType, GRASS as _GRASS_ID
+from src.config import BiomeType, MapType, GRASS as _GRASS_ID
 from src.data.tiles import OBJECT_TILE_IDS
 from src.entities.player import (
     Player,
@@ -39,15 +39,15 @@ def _key_to_str(key: str | tuple) -> str:
     if key == "overland":
         return "overland"
     if isinstance(key, tuple):
-        if len(key) == 3 and key[0] == "sector":
+        if len(key) == 3 and key[0] == MapType.SECTOR:
             return f"sector:{key[1]}:{key[2]}"
-        if len(key) == 3 and key[0] == "underwater":
+        if len(key) == 3 and key[0] == MapType.UNDERWATER:
             return f"underwater:{key[1]}:{key[2]}"
         if len(key) == 2:
             return f"cave:{key[0]}:{key[1]}"
-        if len(key) == 3 and key[0] == "house":
+        if len(key) == 3 and key[0] == MapType.HOUSE:
             return f"house:{key[1]}:{key[2]}"
-        if len(key) == 4 and key[0] == "house_sub":
+        if len(key) == 4 and key[0] == MapType.HOUSE_SUB:
             return f"house_sub:{key[1]}:{key[2]}:{key[3]}"
     return str(key)
 
@@ -491,7 +491,7 @@ def save_game(game: "Game") -> None:
         if (
             isinstance(key, tuple)
             and len(key) == 3
-            and key[0] == "sector"
+            and key[0] == MapType.SECTOR
             and key[1] == 0
             and key[2] == 0
         ):
@@ -533,6 +533,44 @@ def _migrate_legacy_save() -> None:
         os.rename(_LEGACY_SAVE_PATH, SAVE_PATH)
 
 
+# ---------------------------------------------------------------------------
+# Schema migration
+# ---------------------------------------------------------------------------
+
+
+def _migrate_v10_to_v11(data: dict) -> dict:
+    """v10 → v11: WorldObjects layer added to maps.
+
+    The per-map extraction of OBJECT_TILE_IDS from the terrain grid is
+    handled lazily in ``_deserialize_map`` when the ``'objects'`` key is
+    absent from a map entry.
+    """
+    data["version"] = 11
+    return data
+
+
+# Map: save_version → migration callable that advances to the next version.
+_MIGRATIONS: dict[int, Callable[[dict], dict]] = {
+    10: _migrate_v10_to_v11,
+}
+
+
+def _run_migrations(data: dict) -> "dict | None":
+    """Apply all pending schema migrations to *data* in version order.
+
+    Returns the migrated dict, or ``None`` if the save is too old to migrate
+    (i.e., there is a gap in the migration chain).
+    """
+    version = data.get("version", 0)
+    while version < SAVE_VERSION:
+        migrate = _MIGRATIONS.get(version)
+        if migrate is None:
+            return None  # gap in chain — save is too old
+        data = migrate(data)
+        version = data.get("version", 0)
+    return data
+
+
 def load_game() -> dict | None:
     """Load saves/save.json and return the raw dict, or None if no save exists."""
     _migrate_legacy_save()
@@ -543,11 +581,7 @@ def load_game() -> dict | None:
             data = json.load(f)
         if data.get("version") == SAVE_VERSION:
             return data
-        # v10 → v11: objects layer added (migration happens per-map in _deserialize_map)
-        if data.get("version") == 10:
-            data["version"] = SAVE_VERSION
-            return data
-        return None
+        return _run_migrations(data)
     except (json.JSONDecodeError, KeyError, OSError):
         return None
 

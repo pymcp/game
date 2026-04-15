@@ -31,12 +31,12 @@ from src.world.map import GameMap
 _MOUNTAIN_CAVE_ENEMIES = [
     k
     for k, v in ENEMY_TYPES.items()
-    if EnemyEnvironment.CAVE_MOUNTAIN in v.get("environments", [])
+    if EnemyEnvironment.CAVE_MOUNTAIN in v.environments
 ]
 _HILL_CAVE_ENEMIES = [
     k
     for k, v in ENEMY_TYPES.items()
-    if EnemyEnvironment.CAVE_HILL in v.get("environments", [])
+    if EnemyEnvironment.CAVE_HILL in v.environments
 ]
 
 # Size chosen so the 5-tile MAP_BORDER leaves a 26×26 walkable interior.
@@ -380,7 +380,7 @@ class CaveEnvironment(BaseEnvironment):
                 break
             col, row = rng.choice(candidates)
             key = rng.choice(enemy_pool)
-            max_n = ENEMY_TYPES[key].get("maximum", 5)
+            max_n = ENEMY_TYPES[key].maximum
             if spawn_count[key] >= max_n:
                 continue
             enemies.append(Enemy(col * TILE + TILE // 2, row * TILE + TILE // 2, key))

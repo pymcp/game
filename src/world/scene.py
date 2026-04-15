@@ -38,6 +38,8 @@ class MapScene:
             "floats",
             "world_objects",
             "_obj_index",
+            "_y_sorted_objects",
+            "_sorted_objects_dirty",
         }
     )
 
@@ -68,6 +70,9 @@ class MapScene:
         object.__setattr__(self, "world_objects", [])
         # Spatial index: (col, row) → index into world_objects list
         object.__setattr__(self, "_obj_index", {})
+        # Y-sort cache: sorted copy of world_objects; rebuilt lazily when dirty
+        object.__setattr__(self, "_y_sorted_objects", [])
+        object.__setattr__(self, "_sorted_objects_dirty", False)
 
     # ------------------------------------------------------------------
     # Proxy: unknown attribute reads go to the underlying GameMap.
@@ -99,6 +104,7 @@ class MapScene:
         idx = len(world_objects)
         world_objects.append(obj)
         idx_map[(obj.col, obj.row)] = idx
+        object.__setattr__(self, "_sorted_objects_dirty", True)
 
     def remove_world_object(self, obj_id: int) -> "WorldObject | None":
         """Remove the WorldObject with *obj_id* and rebuild the spatial index."""
@@ -107,6 +113,7 @@ class MapScene:
             if obj.obj_id == obj_id:
                 world_objects.pop(i)
                 self._rebuild_obj_index()
+                object.__setattr__(self, "_sorted_objects_dirty", True)
                 return obj
         return None
 
@@ -155,6 +162,34 @@ class MapScene:
         x1 = cam_x + view_w + margin
         y1 = cam_y + view_h + margin
         return [obj for obj in world_objects if x0 <= obj.x <= x1 and y0 <= obj.y <= y1]
+
+    def objects_in_viewport_sorted(
+        self,
+        cam_x: float,
+        cam_y: float,
+        view_w: int,
+        view_h: int,
+        margin: int = 64,
+    ) -> list["WorldObject"]:
+        """Return WorldObjects in the viewport, pre-sorted by y for correct depth.
+
+        The sorted order is cached and only recomputed when objects are added
+        or removed from the scene (world objects are generally static).
+        """
+        if object.__getattribute__(self, "_sorted_objects_dirty"):
+            world_objects: list = object.__getattribute__(self, "world_objects")
+            object.__setattr__(
+                self,
+                "_y_sorted_objects",
+                sorted(world_objects, key=lambda o: o.y),
+            )
+            object.__setattr__(self, "_sorted_objects_dirty", False)
+        y_sorted: list = object.__getattribute__(self, "_y_sorted_objects")
+        x0 = cam_x - margin
+        y0 = cam_y - margin
+        x1 = cam_x + view_w + margin
+        y1 = cam_y + view_h + margin
+        return [obj for obj in y_sorted if x0 <= obj.x <= x1 and y0 <= obj.y <= y1]
 
     def __repr__(self) -> str:
         game_map = object.__getattribute__(self, "map")

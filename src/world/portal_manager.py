@@ -22,6 +22,7 @@ from src.config import (
     SKY_LADDER,
     PORTAL_WARP_DURATION,
     TREASURE_CHEST,
+    MapType,
 )
 from src.data import PortalQuestType
 from src.effects import FloatingText, Particle
@@ -68,7 +69,7 @@ class PortalManager:
             if (
                 isinstance(map_key, tuple)
                 and len(map_key) == 3
-                and map_key[0] == "sector"
+                and map_key[0] == MapType.SECTOR
             ):
                 dist = abs(map_key[1]) + abs(map_key[2])
             else:

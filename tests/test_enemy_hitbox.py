@@ -101,20 +101,20 @@ class TestComputeHitboxRadius:
 class TestEnemyTypesHitbox:
     def test_all_types_have_hitbox_radius(self) -> None:
         for type_key, info in ENEMY_TYPES.items():
-            assert "hitbox_radius" in info, f"{type_key} missing hitbox_radius"
+            assert hasattr(info, "hitbox_radius"), f"{type_key} missing hitbox_radius"
             assert isinstance(
-                info["hitbox_radius"], int
+                info.hitbox_radius, int
             ), f"{type_key} hitbox_radius not int"
-            assert info["hitbox_radius"] > 0, f"{type_key} hitbox_radius <= 0"
+            assert info.hitbox_radius > 0, f"{type_key} hitbox_radius <= 0"
 
     def test_large_enemies_have_larger_hitbox(self) -> None:
-        slime_r = ENEMY_TYPES["slime"]["hitbox_radius"]
-        troll_r = ENEMY_TYPES["cave_troll"]["hitbox_radius"]
+        slime_r = ENEMY_TYPES["slime"].hitbox_radius
+        troll_r = ENEMY_TYPES["cave_troll"].hitbox_radius
         assert troll_r > slime_r, "cave_troll should have larger hitbox than slime"
 
     def test_small_enemies_have_smaller_hitbox(self) -> None:
-        bat_r = ENEMY_TYPES["bat"]["hitbox_radius"]
-        sentinel_r = ENEMY_TYPES["stone_sentinel"]["hitbox_radius"]
+        bat_r = ENEMY_TYPES["bat"].hitbox_radius
+        sentinel_r = ENEMY_TYPES["stone_sentinel"].hitbox_radius
         assert bat_r < sentinel_r, "bat should have smaller hitbox than stone_sentinel"
 
 
@@ -126,7 +126,7 @@ class TestEnemyTypesHitbox:
 class TestEnemyInstance:
     def test_hitbox_radius_on_instance(self) -> None:
         enemy = Enemy(100.0, 100.0, "slime")
-        assert enemy.hitbox_radius == ENEMY_TYPES["slime"]["hitbox_radius"]
+        assert enemy.hitbox_radius == ENEMY_TYPES["slime"].hitbox_radius
 
     def test_hitbox_radius_varies_by_type(self) -> None:
         slime = Enemy(100.0, 100.0, "slime")

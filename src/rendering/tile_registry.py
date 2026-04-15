@@ -49,14 +49,19 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import os
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
+
+_log = logging.getLogger(__name__)
 
 import pygame
 
 if TYPE_CHECKING:
     from src.world.map import GameMap
+
+from src.rendering.chroma import apply_chroma_key
 
 from src.config import (
     GRASS,
@@ -177,6 +182,11 @@ TILE_ID_TO_NAME: dict[int, str] = {
 
 # Standalone tile IDs (not in adjacency atlases)
 STANDALONE_TILE_IDS: frozenset[int] = frozenset({SIGN, BROKEN_LADDER, SKY_LADDER, TREE})
+
+# Mountain-type terrain IDs that receive a tall standalone peak overlay sprite
+# drawn on top of their atlas base tile.  Row-order rendering gives correct
+# depth: southern (higher row index) mountains draw over northern ones.
+MOUNTAIN_PEAK_IDS: frozenset[int] = frozenset({MOUNTAIN, ICE_PEAK, MAGMA_STONE, RUINS_WALL, SANDSTONE})
 
 
 # ---------------------------------------------------------------------------
@@ -413,17 +423,19 @@ class TileSpriteRegistry:
                     continue
                 atlas_name = os.path.splitext(fname)[0]
                 try:
-                    sheet = pygame.image.load(
-                        os.path.join(tiles_dir, fname)
-                    ).convert_alpha()
+                    sheet = apply_chroma_key(
+                        pygame.image.load(
+                            os.path.join(tiles_dir, fname)
+                        ).convert_alpha()
+                    )
                     with open(json_path) as fh:
                         manifest = json.load(fh)
                     atlas = TileAtlas(sheet, manifest)
                     self._atlases[atlas_name] = atlas
                     for tile_name in atlas.tiles:
                         self._tile_to_atlas[tile_name] = atlas_name
-                except Exception:
-                    pass  # skip bad files — tiles fall back gracefully
+                except Exception as exc:
+                    _log.warning("Failed to load tile atlas %s: %s", fname, exc)
 
         # --- standalone sprites ---
         standalone_dir = os.path.join(tiles_dir, "standalone")
@@ -436,14 +448,16 @@ class TileSpriteRegistry:
                     continue
                 tile_name = os.path.splitext(fname)[0]
                 try:
-                    sheet = pygame.image.load(
-                        os.path.join(standalone_dir, fname)
-                    ).convert_alpha()
+                    sheet = apply_chroma_key(
+                        pygame.image.load(
+                            os.path.join(standalone_dir, fname)
+                        ).convert_alpha()
+                    )
                     with open(json_path) as fh:
                         manifest = json.load(fh)
                     self._standalone[tile_name] = StandaloneTile(sheet, manifest)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.warning("Failed to load standalone tile %s: %s", fname, exc)
 
         self._loaded = True
 

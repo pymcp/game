@@ -135,40 +135,43 @@ They are placed in `assets/tiles/standalone/` as a `<name>.png` + `<name>.json` 
 
 | Property | Value |
 |---|---|
-| **Canvas size** | 128 × 64 px (width × height) |
+| **Canvas size** | 192 × 96 px (width × height) |
 | **Frames** | 4 (side-by-side horizontally) |
-| **Frame size** | 32 × 64 px |
+| **Frame size** | 48 × 96 px |
 | **fps** | 0 (static — no animation) |
-| **draw_offset** | [0, −32] (the trunk base aligns to the tile's y; the canopy extends 32 px above) |
+| **draw_offset** | [−8, −64] (centers the 48 px frame on a 32 px tile; trunk base sits at tile bottom, canopy towers above) |
 
 **What each frame is:**
-The 4 frames are 4 distinct tree **shape variants** — same species, same colour palette, but different canopy silhouettes.  The engine picks a variant per-tree based on position, so nearby trees look slightly different from each other.
+The 4 frames are 4 distinct tree **shape variants** — same species, same colour palette, but different canopy silhouettes.
+The engine picks a variant per-tree based on world position, so nearby trees look slightly different from each other.
 
 | Frame (column) | Variant description |
 |---|---|
-| 0 (x 0–31) | Tall and narrow canopy, slightly left-leaning |
-| 1 (x 32–63) | Short and wide canopy, symmetrical |
-| 2 (x 64–95) | Medium canopy, right-leaning |
-| 3 (x 96–127) | Full round canopy, largest |
+| 0 (x 0–47) | Tall and narrow canopy, slightly left-leaning. Canopy ~22 px wide, ~60 px tall. |
+| 1 (x 48–95) | Short and wide canopy, symmetrical. Canopy ~40 px wide, ~44 px tall. |
+| 2 (x 96–143) | Medium canopy, right-leaning. Canopy ~32 px wide, ~50 px tall. |
+| 3 (x 144–191) | Full round canopy, largest. Canopy ~44 px wide, ~64 px tall. |
 
-**Visual style:**
-- **Angle**: slight isometric top-down angle (same as entity sheets — viewed from slightly above and in front)
-- **Trunk**: brown, ~6–8 px wide, ~14–18 px tall, centred in the lower half of the 32×64 cell (occupies roughly y=46–64 of the cell)
-- **Canopy**: dark green to medium green, roughly elliptical/round, fills roughly y=2–48 of the cell
-- Each variant differs in canopy **width** (20–30 px) and **height** (28–46 px)
-- Pixel art only — hard edges, no anti-aliasing, no gradients
-- **Background**: solid **#CC33BB** — every non-tree pixel must be exactly this colour
+**Visual style (top-down view of the treetop, slight isometric angle):**
+- **View angle**: looking down and slightly from the front — you see the TOP of the canopy, not the side.
+- **Canopy appearance**: a round to oval mass of foliage viewed from above. The canopy should look like a dense ball of leaves — use a lighter green highlight in the upper-left to suggest light hitting the top, and darker greens at the edges to give a 3-D rounded look. Use 3–4 discrete green shades (no gradients — step them in pixel blocks). The canopy should be the dominant visual element, filling most of the frame height and width.
+- **Trunk visibility**: only 8–12 px of trunk visible at the very bottom of the frame, peeking out from underneath the canopy. Brown, ~6 px wide, centered horizontally in the frame. Because we're looking down, the trunk is mostly hidden under the canopy.
+- **Canopy colours**: use at minimum 3 green tones — e.g. highlight `#5DB33D`, mid `#3A8C22`, shadow `#22601A`. Darker ring at canopy perimeter.
+- **Trunk colour**: `#7A4B1E` (medium brown), with a slightly darker shadow side `#5A3412`.
+- Each variant has a distinct silhouette (round, oval, tilted left, tilted right) but the same palette.
+- Pixel art only — hard edges, no anti-aliasing, no gradients.
+- **Background**: solid **#CC33BB** — every non-tree pixel must be exactly this colour.
 
 **JSON manifest** to write alongside the PNG:
 ```json
 {
-  "frame_size": [32, 64],
+  "frame_size": [48, 96],
   "frames": 4,
   "fps": 0.0,
-  "draw_offset": [0, -32]
+  "draw_offset": [-8, -64]
 }
 ```
 
 **How to request:**
-> Generate the **tree tile sprite** for a top-down RPG. Canvas 128×64 px, 4 side-by-side frames each 32×64 px. Each frame is a distinct tree shape variant (tall-narrow, wide-short, medium-right-lean, large-round). Slight isometric angle. Brown trunk in the lower ~16 px, leafy green canopy above. Pixel art, hard edges, background #CC33BB. Output file: `tree.png`.
+> Generate the **tree tile sprite** for a top-down RPG. Canvas 192×96 px, 4 side-by-side frames each 48×96 px. Each frame is a distinct overhead tree variant viewed from above (slight isometric top-down angle — you see the TOP of the round canopy). Frame 0: tall narrow canopy leaning left. Frame 1: short wide canopy. Frame 2: medium canopy leaning right. Frame 3: large full round canopy. The canopy is a round/oval mass of leaves viewed from above — 3–4 stepped green tones (highlight top-left, shadow at edges), no gradients, hard pixel edges. Only 8–12 px of brown trunk visible at the very bottom of each frame. Background solid #CC33BB. Pixel art only. Output file: `tree.png`.
 

@@ -21,6 +21,10 @@ def _clamp_color(
 class Enemy:
     """A data-driven enemy instance. Create with an enemy-type key."""
 
+    # Class-level cache: (type_key, is_hurt_flash) → pre-rendered pygame.Surface.
+    # Avoids creating a new Surface + redrawing every procedural fallback call.
+    _proc_surface_cache: dict[tuple, "pygame.Surface"] = {}
+
     def __init__(self, x: float, y: float, type_key: str) -> None:
         from src.data import ENEMY_TYPES
 
@@ -28,17 +32,17 @@ class Enemy:
         self.y = float(y)
         self.type_key = type_key
         info = ENEMY_TYPES[type_key]
-        self.hp = info["hp"]
-        self.max_hp = info["hp"]
-        self.attack = info["attack"]
-        self.speed = info["speed"]
-        self.xp = info["xp"]
-        self.color = info["color"]
-        self.attack_cd = info["attack_cd"]
-        self.draw_commands = info["draw_commands"]
-        self.name = info["name"]
-        self.chase_range = info["chase_range"]
-        self.hitbox_radius: int = info["hitbox_radius"]
+        self.hp = info.hp
+        self.max_hp = info.hp
+        self.attack = info.attack
+        self.speed = info.speed
+        self.xp = info.xp
+        self.color = info.color
+        self.attack_cd = info.attack_cd
+        self.draw_commands = info.draw_commands
+        self.name = info.name
+        self.chase_range = info.chase_range
+        self.hitbox_radius: int = info.hitbox_radius
 
         self.state = "idle"
         self.cooldown = 0.0
@@ -205,40 +209,46 @@ class Enemy:
                 )
             return
 
-        # --- Procedural fallback (draw at 32-unit scale then scale up) ---
-        base = (255, 255, 255) if self.hurt_flash > 0 else self.color
-        buf_sz = 64
-        buf = pygame.Surface((buf_sz, buf_sz), pygame.SRCALPHA)
-        buf.fill((0, 0, 0, 0))
-        bx_c, by_c = buf_sz // 2, buf_sz // 2
+        # --- Procedural fallback: cached surface per (type_key, is_hurt_flash) ---
+        is_hurt = self.hurt_flash > 0
+        cache_key = (self.type_key, is_hurt)
+        if cache_key not in Enemy._proc_surface_cache:
+            base = (255, 255, 255) if is_hurt else self.color
+            buf_sz = 64
+            buf = pygame.Surface((buf_sz, buf_sz), pygame.SRCALPHA)
+            buf.fill((0, 0, 0, 0))
+            bx_c, by_c = buf_sz // 2, buf_sz // 2
 
-        for cmd in self.draw_commands:
-            shape = cmd[0]
-            color_offset = cmd[1]
-            c = _clamp_color(base, color_offset)
-            args = cmd[2:]
+            for cmd in self.draw_commands:
+                shape = cmd[0]
+                color_offset = cmd[1]
+                c = _clamp_color(base, color_offset)
+                args = cmd[2:]
 
-            if shape == "circle":
-                cx_off, cy_off, radius = args
-                pygame.draw.circle(buf, c, (bx_c + cx_off, by_c + cy_off), radius)
-            elif shape == "rect":
-                xo, yo, w, h = args
-                pygame.draw.rect(buf, c, (bx_c + xo, by_c + yo, w, h))
-            elif shape == "ellipse":
-                xo, yo, w, h = args
-                pygame.draw.ellipse(buf, c, (bx_c + xo, by_c + yo, w, h))
-            elif shape == "line":
-                x1, y1, x2, y2, width = args
-                pygame.draw.line(
-                    buf, c, (bx_c + x1, by_c + y1), (bx_c + x2, by_c + y2), width
-                )
-            elif shape == "polygon":
-                points_off = args[0]
-                pts = [(bx_c + px_off, by_c + py_off) for px_off, py_off in points_off]
-                pygame.draw.polygon(buf, c, pts)
+                if shape == "circle":
+                    cx_off, cy_off, radius = args
+                    pygame.draw.circle(buf, c, (bx_c + cx_off, by_c + cy_off), radius)
+                elif shape == "rect":
+                    xo, yo, w, h = args
+                    pygame.draw.rect(buf, c, (bx_c + xo, by_c + yo, w, h))
+                elif shape == "ellipse":
+                    xo, yo, w, h = args
+                    pygame.draw.ellipse(buf, c, (bx_c + xo, by_c + yo, w, h))
+                elif shape == "line":
+                    x1, y1, x2, y2, width = args
+                    pygame.draw.line(
+                        buf, c, (bx_c + x1, by_c + y1), (bx_c + x2, by_c + y2), width
+                    )
+                elif shape == "polygon":
+                    points_off = args[0]
+                    pts = [(bx_c + px_off, by_c + py_off) for px_off, py_off in points_off]
+                    pygame.draw.polygon(buf, c, pts)
 
-        if _TS > 1:
-            buf = pygame.transform.scale(buf, (buf_sz * _TS, buf_sz * _TS))
+            if _TS > 1:
+                buf = pygame.transform.scale(buf, (buf_sz * _TS, buf_sz * _TS))
+            Enemy._proc_surface_cache[cache_key] = buf
+
+        buf = Enemy._proc_surface_cache[cache_key]
         surf.blit(buf, (sx - buf.get_width() // 2, sy - buf.get_height() // 2))
 
         if self.hp < self.max_hp:
